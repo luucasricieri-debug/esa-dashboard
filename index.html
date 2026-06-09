@@ -960,7 +960,7 @@ async function loadAllData() {
         crmEtapasCustom = {};
         Object.keys(_funis).forEach(function(k){ crmEtapasCustom[k] = (_funis[k]&&_funis[k].etapas)||{}; });
       } catch(e){ crmEtapasCustom = {}; }
-    } else if(_lvlCrm==='executivo'){
+    } else if(_lvlCrm==='executivo'||_lvlCrm==='sdr'||_lvlCrm==='jackeline'){
       crmDeals = await fbGet('crm/deals') || {};
     }
     try {
@@ -3031,7 +3031,15 @@ function crmFmtBRL(v){
 }
 function crmCanManage(){
   var l=(CU.level||'').toLowerCase().trim();
-  return l==='diretor'||l==='trafego'||l==='gestor'||l==='executivo';
+  return l==='diretor'||l==='trafego'||l==='gestor'||l==='executivo'||l==='sdr'||l==='jackeline';
+}
+function crmIsAdmin(){
+  var l=(CU.level||'').toLowerCase().trim();
+  return l==='diretor'||l==='trafego'||l==='gestor';
+}
+function crmCanEditDeal(d){
+  if(crmIsAdmin()) return true;
+  return d.responsavelUid===CU.uid||d.responsavelNome===CU.name;
 }
 function crmDealsList(){
   return Object.entries(crmDeals||{}).filter(function(e){return !!e[1];})
@@ -3052,7 +3060,21 @@ function crmProdutosUnicos(){
 }
 function crmFilteredDeals(){
   var list=crmDealsList().filter(function(d){return d.funil===crmFunilAtual;});
-  if(CU.level==='executivo') list=list.filter(function(d){return d.captadorUid===CU.uid||d.responsavelUid===CU.uid;});
+  var l=CU.level||'';
+  if(l==='diretor'||l==='gestor'||l==='trafego'){
+    // vê todos
+  } else if(l==='executivo'){
+    list=list.filter(function(d){
+      return d.responsavelNome===CU.name||d.captadorNome===CU.name||
+             d.responsavelUid===CU.uid||d.captadorUid===CU.uid;
+    });
+  } else if(l==='sdr'||l==='jackeline'){
+    list=list.filter(function(d){
+      return d.captadorNome===CU.name||d.captadorUid===CU.uid;
+    });
+  } else {
+    list=[];
+  }
   if(crmFiltResp) list=list.filter(function(d){return d.responsavelUid===crmFiltResp;});
   if(crmFiltStatus) list=list.filter(function(d){return (d.status||'Em andamento')===crmFiltStatus;});
   if(crmFiltProduto) list=list.filter(function(d){return d.produto===crmFiltProduto;});
@@ -3060,7 +3082,7 @@ function crmFilteredDeals(){
 }
 
 function renderCRM(c){
-  if(!crmCanManage()){c.innerHTML='<div class="empty"><div class="empty-icon">🔒</div><div class="empty-text">Acesso restrito</div></div>';return;}
+  if(!crmCanManage()){goPage('prosp');return;}
   var respUsers=Object.values(allUsers).filter(function(u){
     return ['diretor','trafego','gestor','executivo','sdr','jackeline','engenharia','marketing'].indexOf(u.level)>=0;
   }).sort(function(a,b){return a.name.localeCompare(b.name);});
@@ -3078,8 +3100,8 @@ function renderCRM(c){
     +'<select class="filter-select" id="crm-f-prod" onchange="crmSetFilter(\'produto\',this.value)"><option value="">Todos os produtos</option>'
       +produtos.map(function(p){return '<option'+(p===crmFiltProduto?' selected':'')+'>'+crmEsc(p)+'</option>';}).join('')+'</select>'
     +'<div style="margin-left:auto;display:flex;gap:8px">'
-      +'<button class="btn btn-secondary btn-sm" onclick="crmOpenImport()">Importar CSV</button>'
-      +'<button class="btn btn-primary btn-sm" onclick="crmOpenNew()">+ Novo Deal</button>'
+      +(crmIsAdmin()?'<button class="btn btn-secondary btn-sm" onclick="crmOpenImport()">Importar CSV</button>':'')
+      +((crmIsAdmin()||CU.level==='executivo')?'<button class="btn btn-primary btn-sm" onclick="crmOpenNew()">+ Novo Deal</button>':'')
     +'</div></div>';
   html+='<div id="crm-view-area"></div>';
   c.innerHTML=html;
@@ -3125,7 +3147,7 @@ function crmKanbanHtml(list){
   var defaultEtapas=CRM_FUNIS[crmFunilAtual].etapas;
   var custom=crmEtapasCustom[crmFunilAtual]||{};
   var etapas=defaultEtapas.map(function(nome,i){return custom[i]!==undefined?custom[i]:nome;});
-  var canEdit=crmCanManage();
+  var canEdit=crmIsAdmin();
   var origToDisplay={};
   defaultEtapas.forEach(function(nome,i){origToDisplay[nome]=etapas[i];});
   etapas.forEach(function(nome){origToDisplay[nome]=nome;});
@@ -3160,7 +3182,7 @@ function crmListaHtml(list){
       +'<td>'+crmStatusBadge(d.status)+'</td>'
       +'<td style="font-family:DM Mono,monospace">'+crmDiasNaEtapa(d)+'d</td>'
       +'<td style="font-size:11px;color:var(--gr);font-family:DM Mono,monospace">'+dt+'</td>'
-      +'<td><button class="btn btn-secondary btn-sm" onclick="crmOpenEdit(\''+d._id+'\')">Ver/Editar</button></td>'
+      +'<td><button class="btn btn-secondary btn-sm" onclick="crmOpenEdit(\''+d._id+'\')">'+(crmCanEditDeal(d)?'Ver/Editar':'Ver')+'</button></td>'
       +'</tr>';
   });
   html+='</tbody></table></div>';
@@ -3314,7 +3336,8 @@ window.crmOpenEdit=function(id){
   var d=crmDeals[id];
   if(!d){ showToast('Deal não encontrado',false); return; }
   crmEditId=id;
-  document.getElementById('crm-deal-modal-title').textContent='Editar Deal';
+  var _canEdit=crmCanEditDeal(d);
+  document.getElementById('crm-deal-modal-title').textContent=_canEdit?'Editar Deal':'Visualizar Deal';
   document.getElementById('cd-id').value=id;
   document.getElementById('cd-captador-uid').value=d.captadorUid||'';
   document.getElementById('cd-captador-nome').value=d.captadorNome||'';
@@ -3328,7 +3351,12 @@ window.crmOpenEdit=function(id){
   crmPopulateFunilSelect('cd-funil',d.funil);
   crmPopulateEtapaSelect('cd-etapa',d.funil,d.etapa);
   crmPopulateRespSelect('cd-responsavel',d.responsavelUid);
-  document.getElementById('cd-save-btn').textContent='Salvar alterações';
+  var _saveBtn=document.getElementById('cd-save-btn');
+  _saveBtn.textContent='Salvar alterações';
+  _saveBtn.style.display=_canEdit?'':'none';
+  ['cd-nome','cd-empresa','cd-telefone','cd-valor','cd-produto','cd-funil','cd-etapa','cd-status','cd-responsavel'].forEach(function(fid){
+    var el=document.getElementById(fid); if(el) el.disabled=!_canEdit;
+  });
   crmRenderHistPanel(d);
   openModal('modal-crm-deal');
 };
