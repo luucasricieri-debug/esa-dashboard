@@ -1460,7 +1460,7 @@ async function saveProsp() {
         });
         guests=[{name:mu?mu.name:rec.proximo,status:'pending'}];
       }
-      var ev={id:evId,title:'Visita — '+rec.nome,time:timePart,duration:'60',date:datePart,author:CU.name,guests:guests,type:'visita',prospId:id};
+      var ev={id:evId,title:'Visita — '+rec.nome,time:timePart,duration:'60',date:datePart,author:CU.name,guests:guests,type:'visita',prospId:id,tipo_atendimento:'cliente'};
       await fbSet('events/'+datePart+'/'+evId,ev);
     }
     // Encaminhamento (SDR ou Jackeline) com status qualificado
@@ -2393,7 +2393,7 @@ window.saveEditProsp=async function(){
       var _evGuests=[];
       var _destUser=epProximo?Object.values(allUsers).find(function(u){return (u.name+' — '+(u.cargo||ROLE_LABELS[u.level]||u.level))===epProximo||u.name===epProximo;}):null;
       if(_destUser) _evGuests=[{name:_destUser.name,status:'pending'}];
-      var _ev={id:_evId,title:'Visita — '+_evPNome,time:_evTime,duration:'60',date:_evDate,author:CU.name,guests:_evGuests,type:'visita',prospId:overlay._pid};
+      var _ev={id:_evId,title:'Visita — '+_evPNome,time:_evTime,duration:'60',date:_evDate,author:CU.name,guests:_evGuests,type:'visita',prospId:overlay._pid,tipo_atendimento:'cliente'};
       await fbSet('events/'+_evDate+'/'+_evId,_ev);
       // Encaminhamento: copy lead to destination user
       if(_destUser && (CU.level==='sdr'||CU.level==='jackeline'||CU.level==='executivo')){
@@ -3783,7 +3783,7 @@ window.crmSaveAtividade=async function(){
         guests.push({uid:sel.options[i].value,name:sel.options[i].textContent,status:'pending'});
       }
     }
-    var ev={id:evId,title:title,time:time,duration:duracao,date:date,author:CU.name,guests:guests,type:'crm',dealId:dealId,dealNome:dealNome,tipoAtividade:tipo};
+    var ev={id:evId,title:title,time:time,duration:duracao,date:date,author:CU.name,guests:guests,type:'crm',dealId:dealId,dealNome:dealNome,tipoAtividade:tipo,tipo_atendimento:'cliente'};
     if(desc) ev.desc=desc;
     await fbSet('events/'+date+'/'+evId,ev);
     if(typeof agEvs!=='undefined'&&agEvs){
@@ -4152,7 +4152,8 @@ function agRenderDay(){
     var inner=tf?'<div class="ev-time-col"><div class="ev-time">'+tf.t+'</div></div>':'<div class="ev-time-col notime"><div class="ev-time">S/H</div></div>';
     var dur=ev.duration&&durMap[ev.duration]?'<div class="ev-duration">⏱ '+durMap[ev.duration]+'</div>':'';
     var gh='';if(ev.guests&&ev.guests.length){gh='<div class="ev-guests">';ev.guests.forEach(function(g){gh+='<span class="ev-guest-tag '+(g.status==='confirmed'?'confirmed':'pending')+'">'+g.name+(g.status==='confirmed'?' ✓':' ?')+'</span>';});gh+='</div>';}
-    inner+='<div class="ev-body"><div class="ev-title-row"><div class="ev-title">'+ev.title+'</div>'+(ev.author?'<span class="ev-author">'+ev.author+'</span>':'')+'</div>'+dur+(ev.desc?'<div class="ev-desc">'+ev.desc+'</div>':'')+gh+'</div>';
+    var _tipoBadge=ev.tipo_atendimento==='administrativo'?'<span style="display:inline-block;background:#F0F0F0;color:#666;border-radius:6px;padding:1px 7px;font-size:10px;font-weight:600;margin-bottom:3px">Admin</span>':ev.tipo_atendimento==='cliente'?'<span style="display:inline-block;background:#E8F5E9;color:#1A5C38;border-radius:6px;padding:1px 7px;font-size:10px;font-weight:600;margin-bottom:3px">Cliente</span>':'';
+    inner+='<div class="ev-body"><div class="ev-title-row"><div class="ev-title">'+ev.title+'</div>'+(ev.author?'<span class="ev-author">'+ev.author+'</span>':'')+'</div>'+(_tipoBadge?'<div>'+_tipoBadge+'</div>':'')+dur+(ev.desc?'<div class="ev-desc">'+ev.desc+'</div>':'')+gh+'</div>';
     if(ev.type==='retomada') card.dataset.prospId=ev.prospId||'';
     card.innerHTML=inner;
     // Retomada: add blue banner + click handler after innerHTML is set
@@ -4359,7 +4360,7 @@ function preencherRetomada(lead){
 window.agOpenEv=function(){
   window._agNewGuests=[];agRenderGuestChips('ag-m-guests',window._agNewGuests,'ag-guest-conflict-alert');
   ['ag-m-title','ag-m-time','ag-m-desc'].forEach(function(id){var e=document.getElementById(id);if(e)e.value='';});
-  var p=document.getElementById('ag-m-pri');if(p)p.value='med';var d2=document.getElementById('ag-m-dur');if(d2)d2.value='';
+  var p=document.getElementById('ag-m-pri');if(p)p.value='med';var d2=document.getElementById('ag-m-dur');if(d2)d2.value='';var ta=document.getElementById('ag-m-tipo-atend');if(ta)ta.value='cliente';
   var dt=document.getElementById('ag-m-date');if(dt)dt.value=agSel;
   var al=document.getElementById('ag-guest-conflict-alert');if(al)al.style.display='none';
   document.getElementById('ag-mf-t').classList.remove('err');document.getElementById('ag-ev-modal').classList.add('open');
@@ -4377,7 +4378,7 @@ window.agSaveEv=async function(){
   var gIds=window._agNewGuests||[],evId=Date.now().toString(36)+Math.random().toString(36).slice(2,5);
   var free=[];gIds.forEach(function(gid){free.push(gid);});
   var gObjs=TEAM_MEMBERS.filter(function(m){return free.indexOf(m.id)>=0;}).map(function(m){return{id:m.id,name:m.name,cargo:m.cargo,status:'pending'};});
-  var ev={id:evId,title:title,time:timeVal,desc:document.getElementById('ag-m-desc').value.trim(),pri:document.getElementById('ag-m-pri').value,duration:document.getElementById('ag-m-dur').value,guests:gObjs,author:agUser||'Anonimo',author_uid:CU?CU.uid:'',ts:Date.now()};
+  var ev={id:evId,title:title,time:timeVal,desc:document.getElementById('ag-m-desc').value.trim(),pri:document.getElementById('ag-m-pri').value,duration:document.getElementById('ag-m-dur').value,guests:gObjs,author:agUser||'Anonimo',author_uid:CU?CU.uid:'',ts:Date.now(),tipo_atendimento:(document.getElementById('ag-m-tipo-atend')&&document.getElementById('ag-m-tipo-atend').value)||'cliente'};
   try{var r=await fetch(DB+'/events/'+dateVal+'/'+evId+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(ev)});if(!r.ok)throw new Error('HTTP '+r.status);if(dateVal!==agSel)agSel=dateVal;agCloseEv();await agPoll();showToast('✅ Atividade criada!');}catch(e){showToast('Erro: '+e.message,false);}
   btn.disabled=false;btn.textContent='Salvar';
 };
@@ -4402,7 +4403,7 @@ window.agSaveEdit=async function(){
   btn.disabled=false;btn.textContent='Salvar';
 };
 window.agConfirmGuest=async function(evId){if(!agUser)return;var ev=agEvs[agSel]&&agEvs[agSel][evId];if(!ev||!ev.guests)return;var upd=ev.guests.map(function(g){return g.name===agUser?Object.assign({},g,{status:'confirmed'}):g;});try{await fetch(DB+'/events/'+agSel+'/'+evId+'/guests.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(upd)});await agPoll();}catch(e){showToast('Erro: '+e.message,false);}};
-window.agRegistrarResultado=async function(evId,res){var obs=res==='insucesso'?(prompt('Observacao opcional:')||''):'';try{await fetch(DB+'/events/'+agSel+'/'+evId+'/resultado.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(res)});if(obs)await fetch(DB+'/events/'+agSel+'/'+evId+'/resultado_obs.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(obs)});if(res==='sucesso'){try{await fbSet('prospections/'+CU.uid+'/interacoes/atend_'+Date.now(),{ts:Date.now(),tipo:'atendimento',autor:CU.name});}catch(e2){}try{await fbSet('prospections/'+CU.uid+'/interacoes/int_'+Date.now(),{ts:Date.now(),tipo:'interacao',autor:CU.name});}catch(e3){}}await agPoll();showToast(res==='sucesso'?'✅ Sucesso!':'Insucesso registrado');}catch(e){showToast('Erro: '+e.message,false);}};
+window.agRegistrarResultado=async function(evId,res){var obs=res==='insucesso'?(prompt('Observacao opcional:')||''):'';try{await fetch(DB+'/events/'+agSel+'/'+evId+'/resultado.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(res)});if(obs)await fetch(DB+'/events/'+agSel+'/'+evId+'/resultado_obs.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(obs)});if(res==='sucesso'){var _evReg=agEvs[agSel]&&agEvs[agSel][evId];var _tipoAt=_evReg&&_evReg.tipo_atendimento;if(!_tipoAt||_tipoAt==='cliente'){try{await fbSet('prospections/'+CU.uid+'/interacoes/atend_'+Date.now(),{ts:Date.now(),tipo:'atendimento',autor:CU.name});}catch(e2){}}try{await fbSet('prospections/'+CU.uid+'/interacoes/int_'+Date.now(),{ts:Date.now(),tipo:'interacao',autor:CU.name});}catch(e3){}}await agPoll();showToast(res==='sucesso'?'✅ Sucesso!':'Insucesso registrado');}catch(e){showToast('Erro: '+e.message,false);}};
 function agRenderGuestChips(cId,selIds,alertId,skipId){var c=document.getElementById(cId);if(!c)return;c.innerHTML='';if(!TEAM_MEMBERS||!TEAM_MEMBERS.length)return;TEAM_MEMBERS.forEach(function(m){if(m.name===agUser)return;var chip=document.createElement('div');var isSel=selIds.indexOf(m.id)>=0;chip.className='ag-guest-chip'+(isSel?' selected':'');chip.innerHTML=(isSel?'✓ ':'')+'<b>'+m.name+'</b><span style="font-size:10px;opacity:.7;margin-left:4px">'+m.cargo+'</span>';(function(mid){chip.addEventListener('click',function(){var i=selIds.indexOf(mid);if(i>=0)selIds.splice(i,1);else selIds.push(mid);agRenderGuestChips(cId,selIds,alertId,skipId);if(alertId)agCheckGuestConflicts(selIds,alertId,skipId);});})(m.id);c.appendChild(chip);});}
 function agCheckGuestConflicts(selIds,alertId,skipId){var al=document.getElementById(alertId);if(!al)return;var timeEl=document.getElementById('ag-m-time')||document.getElementById('ag-edit-time');var durEl=document.getElementById('ag-m-dur')||document.getElementById('ag-edit-dur');var dateEl=document.getElementById('ag-m-date')||document.getElementById('ag-edit-date');var dateKey=dateEl?dateEl.value:agSel;if(!timeEl||!timeEl.value){al.style.display='none';return;}var hm=timeEl.value.split(':'),ns=parseInt(hm[0])*60+parseInt(hm[1]),durVal=parseInt(durEl?durEl.value||'0':'0'),ne=ns+(durVal||0);var dayEvs=agEvs[dateKey]?Object.values(agEvs[dateKey]):[];var msgs=[];selIds.forEach(function(gid){var m=TEAM_MEMBERS.find(function(x){return x.id===gid;});if(!m)return;var c=dayEvs.find(function(ev){if(ev.id===skipId||!ev.time)return false;var inv=ev.author===m.name||(ev.guests&&ev.guests.some(function(g){return g.name===m.name;}));if(!inv)return false;var ep=ev.time.split(':'),es=parseInt(ep[0])*60+parseInt(ep[1]),ed=parseInt(ev.duration||'0'),ee=es+(ed||0);if(durVal>0&&ed>0)return ns<ee&&ne>es;return es===ns;});if(c)msgs.push('⚠️ <b>'+m.name+'</b> — conflito: <i>'+c.title+'</i> as '+c.time);});if(msgs.length){al.innerHTML=msgs.join('<br>');al.style.display='block';}else al.style.display='none';}
 window.agMoveM=function(dir){agVM+=dir;if(agVM<0){agVM=11;agVY--;}else if(agVM>11){agVM=0;agVY++;}agRenderCal();};
@@ -4541,6 +4542,7 @@ var _origInitDash=window.initDashboard||null;
     <div class="amf"><label>Horario (24h)</label><input type="time" id="ag-m-time" onchange="agCheckGuestConflicts(window._agNewGuests||[],'ag-guest-conflict-alert')"></div>
     <div class="amf"><label>Descricao</label><textarea id="ag-m-desc" placeholder="Detalhes, pauta, local..."></textarea></div>
     <div class="amf"><label>Prioridade</label><select id="ag-m-pri"><option value="med">Normal</option><option value="hi">Alta</option></select></div>
+    <div class="amf"><label>Tipo de Atendimento</label><select id="ag-m-tipo-atend"><option value="cliente">Atendimento Cliente</option><option value="administrativo">Administrativo</option></select></div>
     <div class="amf"><label>Duracao</label><select id="ag-m-dur" onchange="agCheckGuestConflicts(window._agNewGuests||[],'ag-guest-conflict-alert')"><option value="">Sem duracao</option><option value="15">15 min</option><option value="30">30 min</option><option value="45">45 min</option><option value="60">1 hora</option><option value="90">1h 30min</option><option value="120">2 horas</option><option value="180">3 horas</option><option value="240">4 horas</option><option value="480">Dia inteiro</option></select></div>
     <div class="amf"><label>Convidados</label><div class="ag-guest-list" id="ag-m-guests" style="max-height:140px;overflow-y:auto"></div></div>
     <div id="ag-guest-conflict-alert" style="display:none;background:#FEF0E8;border:1.5px solid #F5B8B8;border-radius:8px;padding:9px 12px;font-size:12px;color:#C0392B;margin-top:6px;line-height:1.7"></div>
