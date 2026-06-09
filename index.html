@@ -1009,6 +1009,7 @@ function myProsp() {
   return Object.entries(allProsp[uid])
     .filter(function(e){
       if(!e[1]) return false;
+      if(e[0]==='interacoes') return false;
       if(e[0].startsWith('aten_')) return false; // skip legacy
       if(e[1].tipo==='atendimento'&&!e[1].followups) return false;
       return true;
@@ -1017,13 +1018,14 @@ function myProsp() {
     .sort(function(a,b){return (b.ts||0)-(a.ts||0);});
 }
 function teamProsp(uid) {
-  return Object.values(allProsp[uid]||{}).sort((a,b)=>b.ts-a.ts);
+  return Object.entries(allProsp[uid]||{}).filter(function(e){return e[0]!=='interacoes'&&!!e[1];}).map(function(e){return e[1];}).sort((a,b)=>b.ts-a.ts);
 }
 function allProspList() {
   const all=[];
   Object.entries(allProsp).forEach(([uid,data])=>{
     Object.entries(data||{}).forEach(([pid,p])=>{
       if(p&&!p.followups&&p.tipo==='atendimento') return; // skip internal notes
+      if(pid==='interacoes') return;
       if(p&&pid.startsWith('aten_')) return; // skip legacy atendimento records
       if(p) all.push(Object.assign({},p,{_id:pid,_uid:uid}));
     });
@@ -1417,6 +1419,7 @@ async function saveProsp() {
 
   try {
     await fbSet('prospections/' + CU.uid + '/' + id, rec);
+    registrarInteracao();
     showToast('✅ Prospecção salva!');
     // Gatilho CRM: executivo + qualificado + visita agendada → cria deal automático
     if(CU.level==='executivo' && rec.status && rec.status.includes('Qualificado') && rec.agendado==='Sim'){
@@ -1585,6 +1588,19 @@ function renderHistorico(c) {
   c.innerHTML=html;
 }
 
+async function registrarInteracao(){
+  if(!CU||!CU.uid||(CU.level||'').toLowerCase()!=='executivo') return;
+  try{
+    var _intKey='int_'+Date.now();
+    var _entry={ts:Date.now(),tipo:'interacao',autor:CU.name};
+    await fbSet('prospections/'+CU.uid+'/interacoes/'+_intKey,_entry);
+    if(allProsp[CU.uid]){
+      if(!allProsp[CU.uid].interacoes) allProsp[CU.uid].interacoes={};
+      allProsp[CU.uid].interacoes[_intKey]=_entry;
+    }
+  }catch(e){}
+}
+
 // // METAS
 function countMeta(list,id){
   if(id==='prosp') return list.filter(function(p){return !p.tipo||p.tipo!=='atendimento';}).length;
@@ -1605,26 +1621,10 @@ function countMeta(list,id){
   if(id==='interacao'){
     var _hoje=new Date(); _hoje.setHours(0,0,0,0);
     var _amanha=new Date(_hoje); _amanha.setDate(_amanha.getDate()+1);
-    var _uid=CU&&CU.uid;
-    var _pfus=0;
-    Object.values((allProsp&&allProsp[_uid])||{}).forEach(function(lead){
-      if(!lead||!lead.followups) return;
-      Object.values(lead.followups).forEach(function(f){
-        if(!f||!f.ts) return;
-        if(f.ts>=_hoje.getTime()&&f.ts<_amanha.getTime()) _pfus++;
-      });
-    });
-    var _cfus=0;
-    Object.values(crmDeals||{}).forEach(function(d){
-      if(!d||!d.historico) return;
-      var _isOwner=d.captadorUid===_uid||d.captadorNome===CU.name||d.responsavelUid===_uid||d.responsavelNome===CU.name;
-      if(!_isOwner) return;
-      Object.values(d.historico).forEach(function(h){
-        if(!h||!h.ts||h.tipo==='edicao') return;
-        if(h.ts>=_hoje.getTime()&&h.ts<_amanha.getTime()) _cfus++;
-      });
-    });
-    return _pfus+_cfus;
+    var _interacoes=(allProsp[CU.uid]&&allProsp[CU.uid].interacoes)||{};
+    return Object.values(_interacoes).filter(function(i){
+      return i&&i.ts&&i.ts>=_hoje.getTime()&&i.ts<_amanha.getTime();
+    }).length;
   }
   if(id==='atendimentos')
     return Object.values(allEventsToday||{}).filter(function(ev){
@@ -1688,7 +1688,7 @@ function metaRow(m,real,meta){
 
 function renderMetasFor(c, targetUid, targetName, targetLevel) {
   const metas = METAS[targetLevel] || {diaria:[], mensal:[]};
-  const list  = Object.values(allProsp[targetUid]||{}).sort((a,b)=>b.ts-a.ts);
+  const list  = Object.entries(allProsp[targetUid]||{}).filter(function(e){return e[0]!=='interacoes'&&!!e[1];}).map(function(e){return e[1];}).sort((a,b)=>b.ts-a.ts);
   const hoje  = new Date(); hoje.setHours(0,0,0,0);
   const hj    = list.filter(p=>{const d=new Date(p.ts);d.setHours(0,0,0,0);return d.getTime()===hoje.getTime();});
   const mes   = list.filter(p=>{const d=new Date(p.ts);return d.getMonth()===hoje.getMonth()&&d.getFullYear()===hoje.getFullYear();});
@@ -2419,6 +2419,7 @@ window.saveEditProsp=async function(){
     var _editNote={ts:Date.now(),resultado:'em_andamento',resumo:'Lead editado por '+CU.name+(patch.status?' — Status: '+patch.status:'')+(patch.agendado==='Sim'?' — Visita agendada':''),autor:CU.name,tipo:'edicao'};
     await fbSet('prospections/'+overlay._uid+'/'+overlay._pid+'/followups/'+_editNoteKey, _editNote);
     window.closeEditModal();
+    registrarInteracao();
     showToast('✅ Prospecção atualizada!');
     await loadAllData();
     renderHistorico(document.getElementById('content'));
@@ -3286,6 +3287,7 @@ async function crmMoveDeal(id,novaEtapa){
     await fbSet('crm/deals/'+id+'/historico/'+histKey,hist);
     crmDeals[id]=Object.assign({},d,{etapa:novaEtapa,etapaTs:Date.now()});
     crmDeals[id].historico=Object.assign({},d.historico||{},(function(){var o={};o[histKey]=hist;return o;})());
+    registrarInteracao();
     showToast('Deal movido para "'+novaEtapa+'"');
     crmRenderView();
   }catch(e){ showToast('Erro ao mover deal: '+e.message,false); }
@@ -3637,6 +3639,7 @@ window.crmSaveDeal=async function(){
       await fbSet('crm/deals/'+id2+'/historico/edit_'+Date.now(),editEntry);
       await fbPatch('crm/deals/'+id2,patch);
       crmDeals[id2]=Object.assign({},existing,patch);
+      registrarInteracao();
       showToast('Deal atualizado com sucesso!');
     }
     closeModal('modal-crm-deal');
@@ -3714,6 +3717,7 @@ window.crmSaveFollowUp=async function(){
       crmDeals[id].historico[fuKey]=entry;
     }
     closeModal('modal-crm-fu');
+    registrarInteracao();
     showToast('Follow-up registrado com sucesso!');
     crmRenderView();
   }catch(e){
@@ -4078,6 +4082,7 @@ window.saveLeadFollowup=async function(){
     }
     if(saveBtn){saveBtn.disabled=false;saveBtn.textContent='Salvar follow-up';}
     closeModal('modal-lead-panel');
+    registrarInteracao();
     showToast('\xe2\x9c\x85 Follow-up salvo!');
     try{await loadAllData();}catch(e2){}
     var c=document.getElementById('content');
