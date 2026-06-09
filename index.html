@@ -10,6 +10,8 @@
 <title>ESA — Dashboard Comercial</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -464,6 +466,17 @@ body{font-family:DM Sans,sans-serif;background:var(--bg);color:var(--bk);min-hei
 .crm-funnel-tab.active{background:var(--g);color:#fff;border-color:var(--g)}
 .crm-import-drop{border:1.5px dashed var(--bd);border-radius:10px;padding:22px;text-align:center;color:var(--gr);font-size:12px;cursor:pointer;transition:border-color .15s}
 .crm-import-drop:hover{border-color:var(--go)}
+.arq-item{display:flex;align-items:center;gap:10px;padding:9px 12px;background:#F7F5F0;border-radius:8px;margin-bottom:6px}
+.arq-icon{font-size:20px;flex-shrink:0}
+.arq-info{flex:1;min-width:0}
+.arq-name{font-size:12px;font-weight:600;color:var(--g);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.arq-meta{font-size:10px;color:var(--gr);font-family:DM Mono,monospace;margin-top:2px}
+.arq-actions{display:flex;gap:6px;flex-shrink:0;align-items:center}
+.arq-upload-area{border-top:1px solid var(--bd);padding-top:12px;margin-top:8px}
+.arq-prog-wrap{background:var(--bd);border-radius:6px;height:8px;overflow:hidden;margin-top:4px}
+.arq-prog-bar{background:var(--go);height:100%;width:0;transition:width .15s;border-radius:6px}
+.btn-arq{font-size:10px;font-weight:600;color:#1565C0;background:rgba(21,101,192,.1);border:1px solid rgba(21,101,192,.3);border-radius:6px;padding:3px 8px;cursor:pointer;transition:background .15s;white-space:nowrap;font-family:DM Sans,sans-serif}
+.btn-arq:hover{background:rgba(21,101,192,.18)}
 .crm-card-fu-footer{display:flex;align-items:center;justify-content:space-between;margin-top:9px;padding-top:8px;border-top:1px solid var(--bd)}
 .crm-fu-info{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--gr);font-family:DM Mono,monospace}
 .crm-fu-badge{background:rgba(13,36,24,.08);color:var(--g);font-size:9px;font-weight:600;font-family:DM Mono,monospace;border-radius:10px;padding:2px 7px}
@@ -625,6 +638,16 @@ body{font-family:DM Sans,sans-serif;background:var(--bg);color:var(--bk);min-hei
 <script>
 // // CONFIG
 const DB = 'https://agenda-executiva-esa-default-rtdb.firebaseio.com';
+// Firebase Storage — preencha a apiKey com a chave do seu projeto no Firebase Console
+if(!firebase.apps.length){
+  firebase.initializeApp({
+    apiKey: 'COLE_SUA_API_KEY_FIREBASE_AQUI',
+    databaseURL: DB,
+    projectId: 'agenda-executiva-esa',
+    storageBucket: 'agenda-executiva-esa.firebasestorage.app',
+  });
+}
+const storage = firebase.storage();
 
 // Lista de membros do time — atualizada com usuários reais após login (buildTeamMembers)
 let TEAM_MEMBERS = [
@@ -3139,7 +3162,10 @@ function crmCardHtml(d){
       +'<div class="crm-fu-info">'
         +(fuCount?'<span class="crm-fu-badge">'+fuCount+' fu</span><span>'+fuLastStr+'</span>':'<span>Sem follow-ups</span>')
       +'</div>'
-      +'<button class="btn-fu" onclick="event.stopPropagation();crmOpenFollowUp(\''+d._id+'\')">＋ Follow-up</button>'
+      +'<div style="display:flex;gap:4px">'
+        +'<button class="btn-fu" onclick="event.stopPropagation();crmOpenFollowUp(\''+d._id+'\')">＋ Follow-up</button>'
+        +'<button class="btn-arq" onclick="event.stopPropagation();crmOpenArquivos(\''+d._id+'\')" title="Arquivos">📎'+(Object.keys(d.arquivos||{}).length?' '+Object.keys(d.arquivos||{}).length:'')+'</button>'
+      +'</div>'
     +'</div>'
     +'</div>';
 }
@@ -3230,6 +3256,109 @@ async function crmMoveDeal(id,novaEtapa){
 }
 
 // Modal: novo/editar deal
+// Arquivos
+function arqIcon(s){
+  var t=String(s).toLowerCase();
+  if(t.includes('pdf')||t.endsWith('.pdf')) return '📄';
+  if(t.includes('image')||t.match(/\.(png|jpg|jpeg|gif|webp)$/)) return '🖼';
+  if(t.includes('word')||t.match(/\.(doc|docx)$/)) return '📝';
+  if(t.includes('excel')||t.includes('spreadsheet')||t.match(/\.(xls|xlsx)$/)) return '📊';
+  return '📎';
+}
+function arqFmtSize(b){
+  b=Number(b)||0;
+  if(b<1024) return b+'B';
+  if(b<1048576) return Math.round(b/1024)+'KB';
+  return (b/1048576).toFixed(1)+'MB';
+}
+function crmRenderArquivos(dealId){
+  var d=crmDeals[dealId]||{};
+  var arquivos=Object.entries(d.arquivos||{}).sort(function(a,b){return (b[1].uploadedAt||0)-(a[1].uploadedAt||0);});
+  var box=document.getElementById('arq-list');
+  if(!box) return;
+  if(!arquivos.length){box.innerHTML='<div style="text-align:center;color:var(--gr);font-size:12px;padding:16px 0">Nenhum arquivo anexado.</div>';return;}
+  box.innerHTML=arquivos.map(function(e){
+    var id=e[0],a=e[1];
+    var icon=arqIcon(a.tipo||a.nome||'');
+    var dt=a.uploadedAt?new Date(a.uploadedAt).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit'}):'—';
+    var canDel=a.uploadedBy===CU.name||crmIsAdmin();
+    var delBtn=canDel?'<button class="btn btn-sm" style="background:#FEF0E8;color:#C0392B;border:1px solid rgba(192,57,43,.3);border-radius:6px;padding:3px 8px;cursor:pointer;font-size:11px" onclick="crmDeleteArquivo(\''+dealId+'\',\''+id+'\',\''+crmEsc(a.path||'')+'\')">✕</button>':'';
+    return '<div class="arq-item"><span class="arq-icon">'+icon+'</span>'
+      +'<div class="arq-info"><div class="arq-name">'+crmEsc(a.nome||'—')+'</div>'
+      +'<div class="arq-meta">'+dt+' · '+crmEsc(a.uploadedBy||'—')+(a.tamanho?' · '+arqFmtSize(a.tamanho):'')+'</div></div>'
+      +'<div class="arq-actions"><a href="'+crmEsc(a.url)+'" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">⬇ Download</a>'+delBtn+'</div>'
+      +'</div>';
+  }).join('');
+}
+window.crmOpenArquivos=function(dealId){
+  document.getElementById('arq-deal-id').value=dealId;
+  document.getElementById('arq-file').value='';
+  document.getElementById('arq-err').textContent='';
+  document.getElementById('arq-progress-wrap').style.display='none';
+  crmRenderArquivos(dealId);
+  openModal('modal-crm-arq');
+};
+window.crmUploadArquivo=async function(){
+  var dealId=document.getElementById('arq-deal-id').value;
+  var fileInput=document.getElementById('arq-file');
+  var file=fileInput.files[0];
+  var errEl=document.getElementById('arq-err');
+  errEl.textContent='';
+  if(!file){errEl.textContent='Selecione um arquivo.';return;}
+  if(file.size>10*1024*1024){errEl.textContent='Arquivo muito grande. Máximo 10MB.';return;}
+  var btn=document.getElementById('arq-send-btn');
+  btn.disabled=true; btn.textContent='Enviando...';
+  var pw=document.getElementById('arq-progress-wrap');
+  var pb=document.getElementById('arq-progress-bar');
+  var pl=document.getElementById('arq-progress-label');
+  pw.style.display=''; pb.style.width='0%'; pl.textContent='0%';
+  try{
+    var ts=Date.now();
+    var safeNome=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+    var path='crm/'+dealId+'/'+ts+'_'+safeNome;
+    var ref=storage.ref(path);
+    var uploadTask=ref.put(file);
+    var url=await new Promise(function(resolve,reject){
+      uploadTask.on('state_changed',
+        function(snap){
+          var pct=Math.round(snap.bytesTransferred/snap.totalBytes*100);
+          pb.style.width=pct+'%'; pl.textContent=pct+'%';
+        },
+        function(err){reject(err);},
+        async function(){
+          var dlUrl=await uploadTask.snapshot.ref.getDownloadURL();
+          resolve(dlUrl);
+        }
+      );
+    });
+    var arqId='arq_'+ts;
+    var arqData={nome:file.name,url:url,tipo:file.type,tamanho:file.size,uploadedBy:CU.name,uploadedAt:ts,path:path};
+    await fbSet('crm/deals/'+dealId+'/arquivos/'+arqId,arqData);
+    if(!crmDeals[dealId]) crmDeals[dealId]={};
+    if(!crmDeals[dealId].arquivos) crmDeals[dealId].arquivos={};
+    crmDeals[dealId].arquivos[arqId]=arqData;
+    fileInput.value='';
+    crmRenderArquivos(dealId);
+    crmRenderView();
+    showToast('Arquivo enviado com sucesso!');
+  }catch(e){
+    errEl.textContent='Erro no upload: '+e.message;
+  }finally{
+    btn.disabled=false; btn.textContent='Enviar arquivo';
+    pw.style.display='none';
+  }
+};
+window.crmDeleteArquivo=async function(dealId,arqId,path){
+  if(!confirm('Excluir este arquivo permanentemente?')) return;
+  try{
+    if(path){try{await storage.ref(path).delete();}catch(e){}}
+    await fbDelete('crm/deals/'+dealId+'/arquivos/'+arqId);
+    if(crmDeals[dealId]&&crmDeals[dealId].arquivos) delete crmDeals[dealId].arquivos[arqId];
+    crmRenderArquivos(dealId);
+    crmRenderView();
+    showToast('Arquivo excluído.');
+  }catch(e){showToast('Erro ao excluir: '+e.message,false);}
+};
 function crmEtapaEditStart(funilKey, idx, btnEl) {
   var head = btnEl.closest('.crm-col-head');
   var label = head.querySelector('.crm-col-head-label');
@@ -4316,6 +4445,30 @@ var _origInitDash=window.initDashboard||null;
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal('modal-crm-fu')">Cancelar</button>
       <button class="btn btn-primary" id="fu-save-btn" onclick="crmSaveFollowUp()">Salvar follow-up</button>
+    </div>
+  </div>
+</div>
+
+<!-- CRM: ARQUIVOS -->
+<div class="modal-bg" id="modal-crm-arq">
+  <div class="modal" style="width:520px">
+    <div class="modal-title"><span>Arquivos do Deal</span><button class="modal-close" onclick="closeModal('modal-crm-arq')">×</button></div>
+    <input type="hidden" id="arq-deal-id">
+    <div id="arq-list" style="max-height:280px;overflow-y:auto;margin-bottom:4px"></div>
+    <div class="arq-upload-area">
+      <div class="ff" style="margin-bottom:8px">
+        <label>Anexar arquivo (PDF, imagem, Word, Excel — máx 10MB)</label>
+        <input type="file" id="arq-file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.doc,.docx,.xls,.xlsx">
+      </div>
+      <div id="arq-progress-wrap" style="display:none;margin-bottom:8px">
+        <div class="arq-prog-wrap"><div class="arq-prog-bar" id="arq-progress-bar"></div></div>
+        <div id="arq-progress-label" style="font-size:11px;color:var(--gr);margin-top:4px;font-family:DM Mono,monospace">0%</div>
+      </div>
+      <div class="auth-err" id="arq-err"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-crm-arq')">Fechar</button>
+      <button class="btn btn-primary" id="arq-send-btn" onclick="crmUploadArquivo()">Enviar arquivo</button>
     </div>
   </div>
 </div>
