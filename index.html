@@ -460,6 +460,14 @@ body{font-family:DM Sans,sans-serif;background:var(--bg);color:var(--bk);min-hei
 .crm-funnel-tab.active{background:var(--g);color:#fff;border-color:var(--g)}
 .crm-import-drop{border:1.5px dashed var(--bd);border-radius:10px;padding:22px;text-align:center;color:var(--gr);font-size:12px;cursor:pointer;transition:border-color .15s}
 .crm-import-drop:hover{border-color:var(--go)}
+.crm-card-fu-footer{display:flex;align-items:center;justify-content:space-between;margin-top:9px;padding-top:8px;border-top:1px solid var(--bd)}
+.crm-fu-info{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--gr);font-family:DM Mono,monospace}
+.crm-fu-badge{background:rgba(13,36,24,.08);color:var(--g);font-size:9px;font-weight:600;font-family:DM Mono,monospace;border-radius:10px;padding:2px 7px}
+.btn-fu{font-size:10px;font-weight:600;color:var(--go);background:rgba(201,148,10,.1);border:1px solid rgba(201,148,10,.3);border-radius:6px;padding:3px 9px;cursor:pointer;transition:background .15s;white-space:nowrap;font-family:DM Sans,sans-serif}
+.btn-fu:hover{background:rgba(201,148,10,.2)}
+.fu-voice-btn{display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:8px;border:1.5px solid var(--bd);background:var(--wh);cursor:pointer;font-size:12px;font-weight:500;color:var(--g);transition:all .15s;font-family:DM Sans,sans-serif}
+.fu-voice-btn.recording{border-color:#C0392B;background:rgba(192,57,43,.08);color:#C0392B;animation:fu-pulse 1.2s infinite}
+@keyframes fu-pulse{0%,100%{opacity:1}50%{opacity:.6}}
 /* iOS safe area */
 @supports(padding: max(0px)) {
   .content {
@@ -710,6 +718,7 @@ let indTab = 'geral';
 // // CRM
 const CRM_FUNIS = {
   venda_ufv: {nome:'Venda UFV', etapas:['Lead','Visita Técnica','Orçamento Bruto','Orçamento Econômico','Apresentação','Negociação','Elaboração do contrato','Contrato enviado','Contrato assinado']},
+  copel: {nome:'Análise Copel', etapas:['Lead','Recebimento de documentos','Protocolo em análise','Protocolo finalizado','Apresentação ao cliente','Válido','Inválido']},
   assinatura_energia: {nome:'Assinatura de Energia', etapas:['Lead','Lead Triado','Lead Quarto','Pedido de Documento','Diagnóstico e Cálculo','Envio de Proposta','Termo de Adesão','Conclusão da GD','Início do faturamento']},
   pre_vendas: {nome:'Pré-vendas', etapas:['Lead Desqualificado','Lead Frio','Lead Passando','Lead Quarto','Maduro Aguardando','Maduro Real Validado']},
   om: {nome:'Funil O&M', etapas:['Lead','Visita Técnica','Elaboração de Proposta','Negociação','Assinatura GD','Conclusão GD','Início do faturamento']},
@@ -2979,12 +2988,22 @@ function crmRenderView(){
 
 function crmCardHtml(d){
   var dias=crmDiasNaEtapa(d);
+  var fuList=Object.values(d.historico||{}).filter(function(h){return h.tipo==='followup';});
+  var fuCount=fuList.length;
+  var fuLast=fuCount?fuList.sort(function(a,b){return (b.ts||0)-(a.ts||0);})[0]:null;
+  var fuLastStr=fuLast?new Date(fuLast.ts).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):'';
   return '<div class="crm-card" draggable="true" data-id="'+d._id+'" onclick="crmOpenEdit(\''+d._id+'\')">'
     +'<div class="crm-card-name">'+crmEsc(d.nome)+'</div>'
     +(d.empresa?'<div class="crm-card-co">'+crmEsc(d.empresa)+'</div>':'')
     +(d.valor?'<div class="crm-card-val">'+crmFmtBRL(d.valor)+'</div>':'')
     +'<div class="crm-card-meta"><span>'+crmEsc(d.responsavelNome||'—')+'</span><span>'+dias+'d na etapa</span></div>'
     +'<div style="margin-top:6px">'+crmStatusBadge(d.status)+'</div>'
+    +'<div class="crm-card-fu-footer">'
+      +'<div class="crm-fu-info">'
+        +(fuCount?'<span class="crm-fu-badge">'+fuCount+' fu</span><span>'+fuLastStr+'</span>':'<span>Sem follow-ups</span>')
+      +'</div>'
+      +'<button class="btn-fu" onclick="event.stopPropagation();crmOpenFollowUp(\''+d._id+'\')">＋ Follow-up</button>'
+    +'</div>'
     +'</div>';
 }
 function crmKanbanHtml(list){
@@ -3213,6 +3232,81 @@ window.crmSaveDeal=async function(){
     errEl.textContent='Erro ao salvar: '+e.message;
   }finally{
     btn.disabled=false; btn.textContent=origTxt;
+  }
+};
+
+// Follow-up
+var fuRecognition=null, fuRecording=false;
+window.crmOpenFollowUp=function(id){
+  document.getElementById('fu-deal-id').value=id;
+  document.getElementById('fu-texto').value='';
+  document.getElementById('fu-resultado').value='Em andamento';
+  document.getElementById('fu-err').textContent='';
+  document.getElementById('fu-voice-label').textContent='Gravar voz';
+  document.getElementById('fu-voice-btn').classList.remove('recording');
+  if(fuRecognition){try{fuRecognition.abort();}catch(e){} fuRecognition=null;}
+  fuRecording=false;
+  openModal('modal-crm-fu');
+};
+function fuVoiceToggle(){
+  var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){showToast('Seu navegador não suporta reconhecimento de voz',false);return;}
+  if(fuRecording){if(fuRecognition){try{fuRecognition.stop();}catch(e){}} return;}
+  fuRecognition=new SR();
+  fuRecognition.lang='pt-BR';
+  fuRecognition.interimResults=false;
+  fuRecognition.maxAlternatives=1;
+  fuRecognition.onstart=function(){
+    fuRecording=true;
+    document.getElementById('fu-voice-btn').classList.add('recording');
+    document.getElementById('fu-voice-label').textContent='Gravando… (clique para parar)';
+  };
+  fuRecognition.onresult=function(e){
+    var t=e.results[0][0].transcript;
+    var ta=document.getElementById('fu-texto');
+    ta.value=(ta.value?ta.value+' ':'')+t;
+  };
+  fuRecognition.onend=function(){
+    fuRecording=false;
+    document.getElementById('fu-voice-btn').classList.remove('recording');
+    document.getElementById('fu-voice-label').textContent='Gravar voz';
+    fuRecognition=null;
+  };
+  fuRecognition.onerror=function(e){
+    fuRecording=false;
+    document.getElementById('fu-voice-btn').classList.remove('recording');
+    document.getElementById('fu-voice-label').textContent='Gravar voz';
+    fuRecognition=null;
+    if(e.error!=='no-speech') showToast('Erro no reconhecimento: '+e.error,false);
+  };
+  fuRecognition.start();
+}
+window.crmSaveFollowUp=async function(){
+  var id=document.getElementById('fu-deal-id').value;
+  var texto=document.getElementById('fu-texto').value.trim();
+  var resultado=document.getElementById('fu-resultado').value;
+  var errEl=document.getElementById('fu-err');
+  errEl.textContent='';
+  if(!texto){errEl.textContent='A anotação é obrigatória.';return;}
+  var btn=document.getElementById('fu-save-btn');
+  if(btn.disabled) return;
+  btn.disabled=true; btn.textContent='Salvando...';
+  try{
+    var ts=Date.now();
+    var fuKey='fu_'+ts;
+    var entry={ts:ts,autor:CU.name,texto:texto,resultado:resultado,tipo:'followup'};
+    await fbSet('crm/deals/'+id+'/historico/'+fuKey,entry);
+    if(crmDeals[id]){
+      crmDeals[id].historico=Object.assign({},crmDeals[id].historico||{});
+      crmDeals[id].historico[fuKey]=entry;
+    }
+    closeModal('modal-crm-fu');
+    showToast('Follow-up registrado com sucesso!');
+    crmRenderView();
+  }catch(e){
+    errEl.textContent='Erro ao salvar: '+e.message;
+  }finally{
+    btn.disabled=false; btn.textContent='Salvar follow-up';
   }
 };
 
@@ -3995,6 +4089,41 @@ var _origInitDash=window.initDashboard||null;
     </div>
     <div class="auth-err" id="cd-err"></div>
     <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-crm-deal')">Cancelar</button><button class="btn btn-primary" id="cd-save-btn" onclick="crmSaveDeal()">Salvar</button></div>
+  </div>
+</div>
+
+<!-- CRM: FOLLOW-UP MODAL -->
+<div class="modal-bg" id="modal-crm-fu">
+  <div class="modal" style="width:460px">
+    <div class="modal-title"><span>Registrar Follow-up</span><button class="modal-close" onclick="closeModal('modal-crm-fu')">×</button></div>
+    <input type="hidden" id="fu-deal-id">
+    <div class="fg">
+      <div class="ff s2">
+        <label>Anotação *</label>
+        <textarea id="fu-texto" rows="4" style="resize:vertical" placeholder="Descreva o contato realizado..."></textarea>
+        <button class="fu-voice-btn" id="fu-voice-btn" onclick="fuVoiceToggle()" type="button" style="margin-top:6px;width:fit-content">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          <span id="fu-voice-label">Gravar voz</span>
+        </button>
+      </div>
+      <div class="ff s2">
+        <label>Resultado</label>
+        <select id="fu-resultado">
+          <option value="Em andamento">Em andamento</option>
+          <option value="Reunião agendada">Reunião agendada</option>
+          <option value="Proposta enviada">Proposta enviada</option>
+          <option value="Negociando">Negociando</option>
+          <option value="Ganho">Ganho</option>
+          <option value="Perdido">Perdido</option>
+          <option value="Sem resposta">Sem resposta</option>
+        </select>
+      </div>
+    </div>
+    <div class="auth-err" id="fu-err"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-crm-fu')">Cancelar</button>
+      <button class="btn btn-primary" id="fu-save-btn" onclick="crmSaveFollowUp()">Salvar follow-up</button>
+    </div>
   </div>
 </div>
 
