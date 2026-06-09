@@ -670,15 +670,16 @@ const ROLE_LABELS = {
 const METAS = {
   executivo:{
     diaria:[
-      {id:'prosp',   label:'Prospecções',        meta:10},
-      {id:'sucesso', label:'Sucessos',            meta:3},
-      {id:'visitas', label:'Visitas agendadas',   meta:2},
+      {id:'novos_clientes', label:'Novos Clientes',           meta:5},
+      {id:'interacao',      label:'Interação Comercial',      meta:5},
+      {id:'atendimentos',   label:'Atendimentos Realizados',  meta:2},
     ],
     mensal:[
-      {id:'prosp',       label:'Prospecções',     meta:220},
-      {id:'sucesso',     label:'Qualificados',    meta:66},
-      {id:'visitas',     label:'Visitas',         meta:44},
-      {id:'fechamentos', label:'Fechamentos',     meta:6},
+      {id:'prosp_mensal',       label:'Prospecções',          meta:100},
+      {id:'leads_qualificados', label:'Leads Qualificados',   meta:10},
+      {id:'atend_mensal',       label:'Atendimentos',         meta:40},
+      {id:'contratos',          label:'Contratos Fechados',   meta:0},
+      {id:'vendas',             label:'Vendas (R$)',          meta:0},
     ]
   },
   sdr:{
@@ -733,6 +734,7 @@ const CRM_FUNIS = {
 const CRM_STATUSES = ['Em andamento','Vendido','Perdido','Pausado'];
 let crmDeals = {};
 let crmEtapasCustom = {};
+let allEventsToday = {};
 let crmView = 'kanban';
 let crmFunilAtual = 'venda_ufv';
 let crmFiltResp = '', crmFiltStatus = '', crmFiltProduto = '';
@@ -908,6 +910,7 @@ function buildNav() {
     <div class="sb-section">Prospecção</div>
     ${!isTop||true ? navItem('prosp','<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>','Registrar') : ''}
     ${navItem('historico','<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>','Histórico')}
+    ${navItem('crm','<path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/>','CRM')}
     <div class="sb-section">Desempenho</div>
     ${navItem('metas','<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>','Minhas Metas')}
     ${navItem('indicadores','<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>','Indicadores')}
@@ -916,7 +919,6 @@ function buildNav() {
     ${(isTop||CU.level==='marketing') ? mkgNavSection(mkgPending) : ''}
     ${isTop ? `
     <div class="sb-section">Gestão</div>
-    ${navItem('crm','<path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/>','CRM')}
     ${navItem('time','<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>','Visão do Time')}
     ${navItem('relatorios','<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="3"/>','Relatórios')}
     ${navItem('usuarios','<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>','Usuários')}
@@ -958,7 +960,13 @@ async function loadAllData() {
         crmEtapasCustom = {};
         Object.keys(_funis).forEach(function(k){ crmEtapasCustom[k] = (_funis[k]&&_funis[k].etapas)||{}; });
       } catch(e){ crmEtapasCustom = {}; }
+    } else if(_lvlCrm==='executivo'){
+      crmDeals = await fbGet('crm/deals') || {};
     }
+    try {
+      var _todayStr=new Date().toISOString().slice(0,10);
+      allEventsToday = await fbGet('events/'+_todayStr) || {};
+    } catch(e){ allEventsToday={}; }
     setPill('ok','Conectado');
   } catch(e){ setPill('err','Erro: '+e.message); }
 }
@@ -1139,13 +1147,20 @@ function formExecutivo() {
   <div class="ff s2"><label>Observações / objeções</label><textarea id="f-obs"></textarea></div></div></div>
   <div class="card"><div class="card-title"><svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/></svg>Resultado</div>
   <div class="fg"><div class="ff"><label>Status *</label><select id="f-status" onchange="execStatusChange()"><option value="">Selecione</option><option value="Qualificado">✅ Qualificado</option><option value="Qualificado — aguardando">🔄 Qualificado — aguardando</option><option value="Reaquecimento">♻️ Reaquecimento</option><option value="Sem interesse">❌ Sem interesse</option><option value="Inválido">⚠️ Inválido</option></select></div>
-  <div class="ff"><label>Visita agendada?</label><select id="f-agendado"><option value="Não">Não</option><option value="Sim">Sim</option></select></div>
+  <div class="ff"><label>Visita agendada?</label><select id="f-agendado" onchange="execAgendadoChange()"><option value="Não">Não</option><option value="Sim">Sim</option></select></div>
+  <div class="ff" id="exec-tipo-reuniao-wrap" style="display:none"><label>Tipo de reunião</label><select id="f-tipo-reuniao"><option value="Online">Online</option><option value="Presencial">Presencial</option></select></div>
   <div class="ff"><label>Data / hora da visita</label><input type="datetime-local" id="f-data-visita"></div>
   <div class="ff"><label>Próximo passo</label><input type="text" id="f-proximo"></div>
   <div class="ff" id="exec-retomada-wrap" style="display:none"><label id="exec-retomada-lbl">Data / hora para retomada <span style="font-size:10px;color:var(--gr)">(vazio = automático)</span></label><input type="datetime-local" id="f-exec-retomada"></div></div></div>
   <div class="form-actions"><button class="btn btn-primary" onclick="saveProsp()" id="submit-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>Salvar</button><button class="btn btn-secondary" onclick="goPage('prosp')">Limpar</button></div>`;
 }
 
+function execAgendadoChange(){
+  var ag=document.getElementById('f-agendado');
+  var wrap=document.getElementById('exec-tipo-reuniao-wrap');
+  if(!ag||!wrap) return;
+  wrap.style.display=ag.value==='Sim'?'':'none';
+}
 // Executivo — status change shows retomada date field
 function execStatusChange(){
   var st=document.getElementById('f-status');
@@ -1351,9 +1366,10 @@ async function saveProsp() {
     proprio:  getVal('f-proprio')  || '',
     obs:      getVal('f-obs')      || '',
     status,
-    agendado:    getVal('f-agendado')    || 'Não',
-    data_visita: getVal('f-data-visita') || '',
-    proximo:     getVal('f-proximo')     || '',
+    agendado:     getVal('f-agendado')    || 'Não',
+    tipo_reuniao: getVal('f-tipo-reuniao') || '',
+    data_visita:  getVal('f-data-visita') || '',
+    proximo:      getVal('f-proximo')     || '',
     guests_ids:  window._prospGuests   || [],
     repassado_por: CU.name,
     repassado_funcao: ROLE_LABELS[CU.level]||CU.level,
@@ -1370,6 +1386,32 @@ async function saveProsp() {
   try {
     await fbSet('prospections/' + CU.uid + '/' + id, rec);
     showToast('✅ Prospecção salva!');
+    // Gatilho CRM: executivo + qualificado + visita agendada → cria deal automático
+    if(CU.level==='executivo' && rec.status && rec.status.includes('Qualificado') && rec.agendado==='Sim'){
+      var dealId='deal_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+      var _respNome=rec.proximo||CU.name;
+      var _respUser=Object.values(allUsers).find(function(u){
+        return u.name===_respNome||((u.name+' — '+(u.cargo||ROLE_LABELS[u.level]||u.level))===_respNome);
+      });
+      var _respUid=_respUser?_respUser.uid:CU.uid;
+      var _dealHist={};
+      if(rec.followups){Object.entries(rec.followups).forEach(function(e){_dealHist[e[0]]=e[1];});}
+      var _initKey='fu_'+Date.now();
+      _dealHist[_initKey]={ts:Date.now(),autor:CU.name,de:'',para:'Lead',nota:'Lead qualificado e visita agendada — '+(rec.tipo_reuniao||''),tipo:'followup'};
+      var _dealData={
+        nome:rec.nome, empresa:rec.empresa||'', telefone:rec.tel||'', email:rec.email||'',
+        valor:0, produto:rec.produto||'', funil:'venda_ufv', etapa:'Lead', status:'Em andamento',
+        responsavelUid:_respUid, responsavelNome:_respUser?_respUser.name:CU.name,
+        captadorUid:CU.uid, captadorNome:CU.name,
+        tipo_reuniao:rec.tipo_reuniao||'',
+        ts:Date.now(), createdAt:Date.now(), createdBy:CU.uid, etapaTs:Date.now(),
+        origem:'Prospecção '+CU.name,
+        historico:_dealHist
+      };
+      await fbSet('crm/deals/'+dealId, _dealData);
+      crmDeals[dealId]=_dealData;
+      showToast('✅ Deal criado no CRM automaticamente!');
+    }
     // Agenda: visita agendada (agendado=Sim)
     if(rec.agendado === 'Sim' && rec.data_visita) {
       var evId='prosp_'+id;
@@ -1525,17 +1567,70 @@ function countMeta(list,id){
   if(id==='contatos') return list.length;
   if(id==='eventos') return list.length;
   if(id==='indicacoes') return list.filter(p=>p.produto&&p.produto.includes('Embaixador')).length;
+  // Executivo — novas métricas
+  if(id==='novos_clientes'||id==='prosp_mensal')
+    return list.filter(function(p){return !p.tipo||p.tipo!=='atendimento';}).length;
+  if(id==='interacao'){
+    var _hoje=new Date(); _hoje.setHours(0,0,0,0);
+    var _uid=CU&&CU.uid;
+    var _pfus=list.filter(function(p){return p.tipo==='followup'||(p.id&&p.id.startsWith('fu_'));}).length;
+    var _cfus=0;
+    Object.values(crmDeals||{}).forEach(function(d){
+      if(!d||!d.historico) return;
+      if(d.captadorUid!==_uid&&d.responsavelUid!==_uid) return;
+      Object.entries(d.historico).forEach(function(e){
+        var k=e[0],h=e[1];
+        if(!k.startsWith('fu_')||!h||!h.ts) return;
+        var _hd=new Date(h.ts); _hd.setHours(0,0,0,0);
+        if(_hd.getTime()===_hoje.getTime()) _cfus++;
+      });
+    });
+    return _pfus+_cfus;
+  }
+  if(id==='atendimentos')
+    return Object.values(allEventsToday||{}).filter(function(ev){
+      return ev&&ev.author===CU.name&&ev.type==='visita'&&ev.resultado==='sucesso';
+    }).length;
+  if(id==='atend_mensal') return list.filter(function(p){return p.agendado==='Sim';}).length;
+  if(id==='leads_qualificados'){
+    var _now1=new Date();
+    return Object.values(crmDeals||{}).filter(function(d){
+      if(!d||d.captadorUid!==CU.uid||d.funil!=='venda_ufv') return false;
+      var _dt=new Date(d.createdAt||d.ts||0);
+      return _dt.getMonth()===_now1.getMonth()&&_dt.getFullYear()===_now1.getFullYear();
+    }).length;
+  }
+  if(id==='contratos'){
+    var _now2=new Date();
+    return Object.values(crmDeals||{}).filter(function(d){
+      if(!d||d.captadorUid!==CU.uid||d.etapa!=='Contrato assinado') return false;
+      var _dt=new Date(d.etapaTs||d.createdAt||d.ts||0);
+      return _dt.getMonth()===_now2.getMonth()&&_dt.getFullYear()===_now2.getFullYear();
+    }).length;
+  }
+  if(id==='vendas'){
+    var _now3=new Date(), _sum=0;
+    Object.values(crmDeals||{}).forEach(function(d){
+      if(!d||d.captadorUid!==CU.uid||d.etapa!=='Contrato assinado') return;
+      var _dt=new Date(d.etapaTs||d.createdAt||d.ts||0);
+      if(_dt.getMonth()!==_now3.getMonth()||_dt.getFullYear()!==_now3.getFullYear()) return;
+      _sum+=Number(d.valor)||0;
+    });
+    return _sum;
+  }
   return 0;
 }
 function metaRow(m,real,meta){
-  const pct=Math.min(100,Math.round(real/meta*100));
+  const pct=meta===0?(real>0?100:0):Math.min(100,Math.round(real/meta*100));
   const cls=pct>=100?'prog-ok':pct>=60?'prog-warn':'prog-bad';
   const badge=pct>=100?'badge-green':pct>=60?'badge-yellow':'badge-red';
   const lbl=pct>=100?'✓ Meta atingida':pct>=60?'Em andamento':'Abaixo da meta';
+  const displayReal=m.id==='vendas'?Number(real).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:0}):real;
+  const displayMeta=m.id==='vendas'?(meta>0?Number(meta).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:0}):'—'):meta;
   return `<tr><td style="font-weight:500">${m.label}</td>
-  <td style="font-family:DM Mono,monospace;font-weight:600">${real}</td>
-  <td style="font-family:DM Mono,monospace;color:var(--gr)">${meta}</td>
-  <td><div class="prog-bar"><div class="prog-fill ${cls}" style="width:${pct}%"></div></div><div style="font-size:10px;color:var(--gr);margin-top:2px">${pct}%</div></td>
+  <td style="font-family:DM Mono,monospace;font-weight:600">${displayReal}</td>
+  <td style="font-family:DM Mono,monospace;color:var(--gr)">${displayMeta}</td>
+  <td><div class="prog-bar"><div class="prog-fill ${cls}" style="width:${pct}%"></div></div><div style="font-size:10px;color:var(--gr);margin-top:2px">${pct>0?pct+'%':'—'}</div></td>
   <td><span class="badge ${badge}">${lbl}</span></td></tr>`;
 }
 
@@ -2936,7 +3031,7 @@ function crmFmtBRL(v){
 }
 function crmCanManage(){
   var l=(CU.level||'').toLowerCase().trim();
-  return l==='diretor'||l==='trafego'||l==='gestor';
+  return l==='diretor'||l==='trafego'||l==='gestor'||l==='executivo';
 }
 function crmDealsList(){
   return Object.entries(crmDeals||{}).filter(function(e){return !!e[1];})
@@ -2957,6 +3052,7 @@ function crmProdutosUnicos(){
 }
 function crmFilteredDeals(){
   var list=crmDealsList().filter(function(d){return d.funil===crmFunilAtual;});
+  if(CU.level==='executivo') list=list.filter(function(d){return d.captadorUid===CU.uid||d.responsavelUid===CU.uid;});
   if(crmFiltResp) list=list.filter(function(d){return d.responsavelUid===crmFiltResp;});
   if(crmFiltStatus) list=list.filter(function(d){return (d.status||'Em andamento')===crmFiltStatus;});
   if(crmFiltProduto) list=list.filter(function(d){return d.produto===crmFiltProduto;});
