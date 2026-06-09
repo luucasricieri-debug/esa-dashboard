@@ -710,6 +710,7 @@ const METAS = {
       {id:'atend_mensal',       label:'Atendimentos',         meta:40},
       {id:'contratos',          label:'Contratos Fechados',   meta:0},
       {id:'vendas',             label:'Vendas (R$)',          meta:0},
+      {id:'vendas_mensal',      label:'Meta de Vendas (R$)',  meta:200000},
     ]
   },
   sdr:{
@@ -1649,6 +1650,18 @@ function countMeta(list,id){
     });
     return _sum;
   }
+  if(id==='vendas_mensal'){
+    var _now4=new Date(), _sum2=0;
+    Object.values(crmDeals||{}).forEach(function(d){
+      if(!d||d.etapa!=='Contrato assinado') return;
+      var _isOwner=d.captadorUid===CU.uid||d.captadorNome===CU.name||d.responsavelUid===CU.uid||d.responsavelNome===CU.name;
+      if(!_isOwner) return;
+      var _dt=new Date(d.etapaTs||d.createdAt||d.ts||0);
+      if(_dt.getMonth()!==_now4.getMonth()||_dt.getFullYear()!==_now4.getFullYear()) return;
+      _sum2+=Number(d.valor)||0;
+    });
+    return _sum2;
+  }
   return 0;
 }
 function metaRow(m,real,meta){
@@ -1656,8 +1669,9 @@ function metaRow(m,real,meta){
   const cls=pct>=100?'prog-ok':pct>=60?'prog-warn':'prog-bad';
   const badge=pct>=100?'badge-green':pct>=60?'badge-yellow':'badge-red';
   const lbl=pct>=100?'✓ Meta atingida':pct>=60?'Em andamento':'Abaixo da meta';
-  const displayReal=m.id==='vendas'?Number(real).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:0}):real;
-  const displayMeta=m.id==='vendas'?(meta>0?Number(meta).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:0}):'—'):meta;
+  const _isBRL=m.id==='vendas'||m.id==='vendas_mensal';
+  const displayReal=_isBRL?Number(real).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:0}):real;
+  const displayMeta=_isBRL?(meta>0?Number(meta).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:0}):'—'):meta;
   return `<tr><td style="font-weight:500">${m.label}</td>
   <td style="font-family:DM Mono,monospace;font-weight:600">${displayReal}</td>
   <td style="font-family:DM Mono,monospace;color:var(--gr)">${displayMeta}</td>
