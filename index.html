@@ -4055,18 +4055,23 @@ window.openLeadPanel=function(leadId,uid){
 };
 window.saveLeadFollowup=async function(){
   var uid=document.getElementById('lp-uid').value,id=document.getElementById('lp-id').value;
-  var resultado=document.getElementById('lp-resultado').value,resumo=document.getElementById('lp-resumo').value.trim();
+  var resultado=document.getElementById('lp-resultado').value,resumo=(document.getElementById('lp-resumo').value||'').trim();
   if(!resultado){showToast('Selecione o resultado',false);return;}
   if(!resumo){showToast('Preencha o resumo',false);return;}
-  // Disable button to prevent double-submit
   var saveBtn=document.querySelector('#modal-lead-panel .btn-primary');
-  if(saveBtn){if(saveBtn.disabled)return;saveBtn.disabled=true;saveBtn.textContent='Salvando...';}
+  if(saveBtn){saveBtn.disabled=true;saveBtn.textContent='Salvando...';}
   try{
-    await fbPatch('prospections/'+uid+'/'+id,{resultado_lead:resultado});
-    // Use unique key (timestamp) instead of array to avoid duplication
-    var fuKey='fu_'+Date.now();
-    await fbSet('prospections/'+uid+'/'+id+'/followups/'+fuKey,{ts:Date.now(),resultado:resultado,resumo:resumo,autor:CU.name});
-    showToast('Follow-up salvo!');closeModal('modal-lead-panel');await loadAllData();renderHistorico(document.getElementById('content'));
+    if(uid&&id){
+      await fbPatch('prospections/'+uid+'/'+id,{resultado_lead:resultado});
+      var fuKey='fu_'+Date.now();
+      await fbSet('prospections/'+uid+'/'+id+'/followups/'+fuKey,{ts:Date.now(),resultado:resultado,resumo:resumo,autor:CU.name});
+    }
+    if(saveBtn){saveBtn.disabled=false;saveBtn.textContent='Salvar follow-up';}
+    closeModal('modal-lead-panel');
+    showToast('\xe2\x9c\x85 Follow-up salvo!');
+    try{await loadAllData();}catch(e2){}
+    var c=document.getElementById('content');
+    if(c&&typeof renderHistorico==='function') renderHistorico(c);
   }catch(e){
     if(saveBtn){saveBtn.disabled=false;saveBtn.textContent='Salvar follow-up';}
     showToast('Erro: '+e.message,false);
