@@ -1604,17 +1604,24 @@ function countMeta(list,id){
     return list.filter(function(p){return !p.tipo||p.tipo!=='atendimento';}).length;
   if(id==='interacao'){
     var _hoje=new Date(); _hoje.setHours(0,0,0,0);
+    var _amanha=new Date(_hoje); _amanha.setDate(_amanha.getDate()+1);
     var _uid=CU&&CU.uid;
-    var _pfus=list.filter(function(p){return p.tipo==='followup'||(p.id&&p.id.startsWith('fu_'));}).length;
+    var _pfus=0;
+    Object.values((allProsp&&allProsp[_uid])||{}).forEach(function(lead){
+      if(!lead||!lead.followups) return;
+      Object.values(lead.followups).forEach(function(f){
+        if(!f||!f.ts) return;
+        if(f.ts>=_hoje.getTime()&&f.ts<_amanha.getTime()) _pfus++;
+      });
+    });
     var _cfus=0;
     Object.values(crmDeals||{}).forEach(function(d){
       if(!d||!d.historico) return;
-      if(d.captadorUid!==_uid&&d.responsavelUid!==_uid) return;
-      Object.entries(d.historico).forEach(function(e){
-        var k=e[0],h=e[1];
-        if(!k.startsWith('fu_')||!h||!h.ts) return;
-        var _hd=new Date(h.ts); _hd.setHours(0,0,0,0);
-        if(_hd.getTime()===_hoje.getTime()) _cfus++;
+      var _isOwner=d.captadorUid===_uid||d.captadorNome===CU.name||d.responsavelUid===_uid||d.responsavelNome===CU.name;
+      if(!_isOwner) return;
+      Object.values(d.historico).forEach(function(h){
+        if(!h||!h.ts||h.tipo==='edicao') return;
+        if(h.ts>=_hoje.getTime()&&h.ts<_amanha.getTime()) _cfus++;
       });
     });
     return _pfus+_cfus;
