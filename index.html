@@ -3060,18 +3060,12 @@ function crmFmtBRL(v){
   v=Number(v)||0;
   return v.toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:0});
 }
-function crmCanManage(){
-  var l=(CU.level||'').toLowerCase().trim();
-  return l==='diretor'||l==='trafego'||l==='gestor'||l==='executivo'||l==='sdr'||l==='jackeline';
-}
+function crmCanManage(){return true;}
 function crmIsAdmin(){
   var l=(CU.level||'').toLowerCase().trim();
   return l==='diretor'||l==='trafego'||l==='gestor';
 }
-function crmCanEditDeal(d){
-  if(crmIsAdmin()) return true;
-  return d.responsavelUid===CU.uid||d.responsavelNome===CU.name;
-}
+function crmCanEditDeal(d){return true;}
 function crmDealsList(){
   return Object.entries(crmDeals||{}).filter(function(e){return !!e[1];})
     .map(function(e){return Object.assign({},e[1],{_id:e[0]});});
@@ -3091,21 +3085,6 @@ function crmProdutosUnicos(){
 }
 function crmFilteredDeals(){
   var list=crmDealsList().filter(function(d){return d.funil===crmFunilAtual;});
-  var l=CU.level||'';
-  if(l==='diretor'||l==='gestor'||l==='trafego'){
-    // vê todos
-  } else if(l==='executivo'){
-    list=list.filter(function(d){
-      return d.responsavelNome===CU.name||d.captadorNome===CU.name||
-             d.responsavelUid===CU.uid||d.captadorUid===CU.uid;
-    });
-  } else if(l==='sdr'||l==='jackeline'){
-    list=list.filter(function(d){
-      return d.captadorNome===CU.name||d.captadorUid===CU.uid;
-    });
-  } else {
-    list=[];
-  }
   if(crmFiltResp) list=list.filter(function(d){return d.responsavelUid===crmFiltResp;});
   if(crmFiltStatus) list=list.filter(function(d){return (d.status||'Em andamento')===crmFiltStatus;});
   if(crmFiltProduto) list=list.filter(function(d){return d.produto===crmFiltProduto;});
@@ -3632,6 +3611,9 @@ window.crmSaveDeal=async function(){
         await fbSet('crm/deals/'+id2+'/historico/'+histKey,hist);
         existing.historico=Object.assign({},existing.historico||{},(function(){var o={};o[histKey]=hist;return o;})());
       }
+      var editNota=etapa!==existing.etapa?'Etapa: '+(existing.etapa||'—')+' → '+etapa:'Deal atualizado';
+      var editEntry={ts:Date.now(),autor:CU.name,tipo:'edicao',nota:editNota};
+      await fbSet('crm/deals/'+id2+'/historico/edit_'+Date.now(),editEntry);
       await fbPatch('crm/deals/'+id2,patch);
       crmDeals[id2]=Object.assign({},existing,patch);
       showToast('Deal atualizado com sucesso!');
@@ -4014,7 +3996,7 @@ async function saveChangePass(){
 }
 
 // LEAD PANEL
-window.openLeadPanel=function(leadId,uid){
+window.openLeadPanel=async function(leadId,uid){
   var uKey=uid||CU.uid;
   var pEntry=Object.entries(allProsp[uKey]||{}).find(function(e){return e[0]===leadId||(e[1]&&(e[1].id===leadId||e[1]._id===leadId));});
   var p=pEntry?pEntry[1]:null;
@@ -4027,13 +4009,7 @@ window.openLeadPanel=function(leadId,uid){
     +'<br><small style="color:var(--gr)">Tel: '+p.tel+(p.produto?' | '+p.produto:'')+'</small>'
     +(p.status?'<br><small>Status: '+p.status+'</small>':'');
   document.getElementById('lp-resultado').value=p.resultado_lead||'';
-  var hist=p.followups||[];
-  document.getElementById('lp-historico').innerHTML=hist.length?hist.map(function(f){
-    return '<div style="background:#F7F5F0;border-radius:8px;padding:10px;margin-bottom:8px">'
-      +'<div style="font-size:10px;color:var(--gr)">'+(f.autor||'')+(f.ts?' — '+new Date(f.ts).toLocaleDateString('pt-BR'):'')+'</div>'
-      +'<div style="font-size:12px;font-weight:600;color:'+(f.resultado==='sucesso'?'#1A5C38':'#C0392B')+'">'+f.resultado+'</div>'
-      +'<div style="font-size:13px;margin-top:2px">'+f.resumo+'</div></div>';
-  }).join(''):'<div style="color:var(--gr);font-size:12px;padding:12px;text-align:center">Nenhum follow-up ainda.</div>';
+  document.getElementById('lp-historico').innerHTML='<div style="color:var(--gr);font-size:12px;padding:12px;text-align:center">Carregando...</div>';
   document.getElementById('lp-resumo').value='';
   (function(){
     if(document.getElementById('lp-voice-area')) return;
@@ -4052,6 +4028,19 @@ window.openLeadPanel=function(leadId,uid){
     ta.parentNode.appendChild(va);
   })();
   modal.classList.add('open');
+  try{
+    var fus=await fbGet('prospections/'+uKey+'/'+realKey+'/followups');
+    var fuArr=fus?Object.values(fus).sort(function(a,b){return (a.ts||0)-(b.ts||0);}):[];
+    document.getElementById('lp-historico').innerHTML=fuArr.length?fuArr.map(function(f){
+      var dt=f.ts?new Date(f.ts).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+      return '<div style="background:#F7F5F0;border-radius:8px;padding:10px;margin-bottom:8px">'
+        +'<div style="font-size:10px;color:var(--gr)">'+(f.autor||'')+(dt?' — '+dt:'')+'</div>'
+        +'<div style="font-size:12px;font-weight:600;color:'+(f.resultado==='sucesso'?'#1A5C38':'#C0392B')+'">'+crmEsc(f.resultado||'')+'</div>'
+        +'<div style="font-size:13px;margin-top:2px">'+crmEsc(f.resumo||'')+'</div></div>';
+    }).join(''):'<div style="color:var(--gr);font-size:12px;padding:12px;text-align:center">Nenhum follow-up ainda.</div>';
+  }catch(e){
+    document.getElementById('lp-historico').innerHTML='<div style="color:#C0392B;font-size:12px;padding:12px;text-align:center">Erro ao carregar follow-ups.</div>';
+  }
 };
 window.saveLeadFollowup=async function(){
   var uid=document.getElementById('lp-uid').value,id=document.getElementById('lp-id').value;
