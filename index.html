@@ -1419,7 +1419,8 @@ async function saveProsp() {
 
   try {
     await fbSet('prospections/' + CU.uid + '/' + id, rec);
-    registrarInteracao();
+    var intKey='int_'+Date.now();
+    try{await fbSet('prospections/'+CU.uid+'/interacoes/'+intKey,{ts:Date.now(),tipo:'interacao',autor:CU.name});}catch(e){}
     showToast('✅ Prospecção salva!');
     // Gatilho CRM: executivo + qualificado + visita agendada → cria deal automático
     if(CU.level==='executivo' && rec.status && rec.status.includes('Qualificado') && rec.agendado==='Sim'){
@@ -1619,12 +1620,12 @@ function countMeta(list,id){
   if(id==='novos_clientes'||id==='prosp_mensal')
     return list.filter(function(p){return !p.tipo||p.tipo!=='atendimento';}).length;
   if(id==='interacao'){
-    var _hoje=new Date(); _hoje.setHours(0,0,0,0);
-    var _amanha=new Date(_hoje); _amanha.setDate(_amanha.getDate()+1);
-    var _interacoes=(allProsp[CU.uid]&&allProsp[CU.uid].interacoes)||{};
-    return Object.values(_interacoes).filter(function(i){
-      return i&&i.ts&&i.ts>=_hoje.getTime()&&i.ts<_amanha.getTime();
-    }).length;
+    var todayStart=new Date(); todayStart.setHours(0,0,0,0); var todayTs=todayStart.getTime();
+    var count=0;
+    var userData=allProsp[CU.uid]||{};
+    var interacoes=userData.interacoes||{};
+    Object.values(interacoes).forEach(function(i){if(i&&i.ts>=todayTs) count++;});
+    return count;
   }
   if(id==='atendimentos')
     return Object.values(allEventsToday||{}).filter(function(ev){
@@ -2419,7 +2420,8 @@ window.saveEditProsp=async function(){
     var _editNote={ts:Date.now(),resultado:'em_andamento',resumo:'Lead editado por '+CU.name+(patch.status?' — Status: '+patch.status:'')+(patch.agendado==='Sim'?' — Visita agendada':''),autor:CU.name,tipo:'edicao'};
     await fbSet('prospections/'+overlay._uid+'/'+overlay._pid+'/followups/'+_editNoteKey, _editNote);
     window.closeEditModal();
-    registrarInteracao();
+    var intKey='int_'+Date.now();
+    try{await fbSet('prospections/'+CU.uid+'/interacoes/'+intKey,{ts:Date.now(),tipo:'interacao',autor:CU.name});}catch(e){}
     showToast('✅ Prospecção atualizada!');
     await loadAllData();
     renderHistorico(document.getElementById('content'));
@@ -4082,7 +4084,8 @@ window.saveLeadFollowup=async function(){
     }
     if(saveBtn){saveBtn.disabled=false;saveBtn.textContent='Salvar follow-up';}
     closeModal('modal-lead-panel');
-    registrarInteracao();
+    var intKey='int_'+Date.now();
+    try{await fbSet('prospections/'+CU.uid+'/interacoes/'+intKey,{ts:Date.now(),tipo:'interacao',autor:CU.name});}catch(e){}
     showToast('\xe2\x9c\x85 Follow-up salvo!');
     try{await loadAllData();}catch(e2){}
     var c=document.getElementById('content');
