@@ -482,6 +482,10 @@ body{font-family:DM Sans,sans-serif;background:var(--bg);color:var(--bk);min-hei
 .crm-fu-badge{background:rgba(13,36,24,.08);color:var(--g);font-size:9px;font-weight:600;font-family:DM Mono,monospace;border-radius:10px;padding:2px 7px}
 .btn-fu{font-size:10px;font-weight:600;color:var(--go);background:rgba(201,148,10,.1);border:1px solid rgba(201,148,10,.3);border-radius:6px;padding:3px 9px;cursor:pointer;transition:background .15s;white-space:nowrap;font-family:DM Sans,sans-serif}
 .btn-fu:hover{background:rgba(201,148,10,.2)}
+.btn-at{font-size:10px;font-weight:600;color:#1A5C38;background:rgba(26,92,56,.1);border:1px solid rgba(26,92,56,.3);border-radius:6px;padding:3px 8px;cursor:pointer;transition:background .15s;white-space:nowrap;font-family:DM Sans,sans-serif}
+.btn-at:hover{background:rgba(26,92,56,.18)}
+.crm-card-resp{font-size:10px;color:var(--gr);margin-top:4px;font-family:DM Sans,sans-serif}
+.crm-fu-text{font-size:10px;color:var(--g);margin-top:4px;font-style:italic;line-height:1.35;font-family:DM Sans,sans-serif;opacity:.8}
 .fu-voice-btn{display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:8px;border:1.5px solid var(--bd);background:var(--wh);cursor:pointer;font-size:12px;font-weight:500;color:var(--g);transition:all .15s;font-family:DM Sans,sans-serif}
 .fu-voice-btn.recording{border-color:#C0392B;background:rgba(192,57,43,.08);color:#C0392B;animation:fu-pulse 1.2s infinite}
 @keyframes fu-pulse{0%,100%{opacity:1}50%{opacity:.6}}
@@ -3181,20 +3185,24 @@ function crmCardHtml(d){
   var fuCount=fuList.length;
   var fuLast=fuCount?fuList.sort(function(a,b){return (b.ts||0)-(a.ts||0);})[0]:null;
   var fuLastStr=fuLast?new Date(fuLast.ts).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):'';
+  var fuLastTxt=fuLast&&fuLast.texto?(fuLast.texto.slice(0,60)+(fuLast.texto.length>60?'…':'')):'';
   var _srch=crmEsc([d.nome,d.empresa,d.telefone,d.email,d.cidade].join(' '));
   return '<div class="crm-card" draggable="true" data-id="'+d._id+'" data-search="'+_srch+'" onclick="crmOpenEdit(\''+d._id+'\')">'
     +'<div class="crm-card-name">'+crmEsc(d.nome)+'</div>'
     +(d.empresa?'<div class="crm-card-co">'+crmEsc(d.empresa)+'</div>':'')
+    +'<div class="crm-card-resp">👤 '+(d.responsavelNome?crmEsc(d.responsavelNome):'<span style="color:var(--gr)">Sem responsável</span>')+'</div>'
     +(d.valor?'<div class="crm-card-val">'+crmFmtBRL(d.valor)+'</div>':'')
-    +'<div class="crm-card-meta"><span>'+crmEsc(d.responsavelNome||'—')+'</span><span>'+dias+'d na etapa</span></div>'
+    +'<div class="crm-card-meta"><span>'+dias+'d na etapa</span></div>'
     +'<div style="margin-top:6px">'+crmStatusBadge(d.status)+'</div>'
+    +(fuLastTxt?'<div class="crm-fu-text">'+crmEsc(fuLastTxt)+'</div>':'')
     +'<div class="crm-card-fu-footer">'
       +'<div class="crm-fu-info">'
-        +(fuCount?'<span class="crm-fu-badge">'+fuCount+' fu</span><span>'+fuLastStr+'</span>':'<span>Sem follow-ups</span>')
+        +(fuCount?'<span class="crm-fu-badge">'+fuCount+' fu</span><span>'+fuLastStr+'</span>':'<span>Sem anotações</span>')
       +'</div>'
       +'<div style="display:flex;gap:4px">'
         +'<button class="btn-fu" onclick="event.stopPropagation();crmOpenFollowUp(\''+d._id+'\')">＋ Follow-up</button>'
         +'<button class="btn-arq" onclick="event.stopPropagation();crmOpenArquivos(\''+d._id+'\')" title="Arquivos">📎'+(Object.keys(d.arquivos||{}).length?' '+Object.keys(d.arquivos||{}).length:'')+'</button>'
+        +'<button class="btn-at" onclick="event.stopPropagation();crmOpenAtividade(\''+d._id+'\')" title="Criar atividade na agenda">📅</button>'
       +'</div>'
     +'</div>'
     +'</div>';
@@ -3662,6 +3670,76 @@ window.crmSaveFollowUp=async function(){
   }
 };
 
+// Atividade CRM → Agenda Executiva
+window.crmOpenAtividade=function(dealId){
+  var d=crmDeals[dealId];
+  if(!d) return;
+  document.getElementById('ca-deal-id').value=dealId;
+  document.getElementById('ca-deal-nome').value=d.nome||'';
+  document.getElementById('ca-title').value='Reunião — '+(d.nome||'');
+  document.getElementById('ca-datetime').value='';
+  document.getElementById('ca-tipo').value='reuniao_online';
+  document.getElementById('ca-duracao').value='60';
+  document.getElementById('ca-desc').value='';
+  document.getElementById('ca-err').textContent='';
+  var sel=document.getElementById('ca-guests');
+  sel.innerHTML='';
+  Object.values(allUsers||{}).forEach(function(u){
+    if(!u||!u.uid) return;
+    var opt=document.createElement('option');
+    opt.value=u.uid;
+    opt.textContent=u.name||(u.login||u.uid);
+    if(d.responsavelUid&&u.uid===d.responsavelUid) opt.selected=true;
+    sel.appendChild(opt);
+  });
+  openModal('modal-crm-atividade');
+};
+window.crmSaveAtividade=async function(){
+  var dealId=document.getElementById('ca-deal-id').value;
+  var dealNome=document.getElementById('ca-deal-nome').value;
+  var title=document.getElementById('ca-title').value.trim();
+  var dt=document.getElementById('ca-datetime').value;
+  var tipo=document.getElementById('ca-tipo').value;
+  var duracao=document.getElementById('ca-duracao').value;
+  var desc=document.getElementById('ca-desc').value.trim();
+  var errEl=document.getElementById('ca-err');
+  errEl.textContent='';
+  if(!dt){errEl.textContent='A data/hora é obrigatória.';return;}
+  if(!title){errEl.textContent='O título é obrigatório.';return;}
+  var btn=document.getElementById('ca-save-btn');
+  if(btn.disabled) return;
+  btn.disabled=true; btn.textContent='Salvando...';
+  try{
+    var dtObj=new Date(dt);
+    var date=dtObj.getFullYear()+'-'
+      +String(dtObj.getMonth()+1).padStart(2,'0')+'-'
+      +String(dtObj.getDate()).padStart(2,'0');
+    var time=String(dtObj.getHours()).padStart(2,'0')+':'+String(dtObj.getMinutes()).padStart(2,'0');
+    var evId='crm_'+Date.now();
+    var sel=document.getElementById('ca-guests');
+    var guests=[];
+    for(var i=0;i<sel.options.length;i++){
+      if(sel.options[i].selected){
+        guests.push({uid:sel.options[i].value,name:sel.options[i].textContent,status:'pending'});
+      }
+    }
+    var ev={id:evId,title:title,time:time,duration:duracao,date:date,author:CU.name,guests:guests,type:'crm',dealId:dealId,dealNome:dealNome,tipoAtividade:tipo};
+    if(desc) ev.desc=desc;
+    await fbSet('events/'+date+'/'+evId,ev);
+    if(typeof agEvs!=='undefined'&&agEvs){
+      if(!agEvs[date]) agEvs[date]={};
+      agEvs[date][evId]=ev;
+      if(typeof agRenderAll==='function') agRenderAll();
+    }
+    closeModal('modal-crm-atividade');
+    showToast('✅ Atividade criada na Agenda Executiva!');
+  }catch(e){
+    errEl.textContent='Erro ao salvar: '+e.message;
+  }finally{
+    btn.disabled=false; btn.textContent='Criar atividade';
+  }
+};
+
 // Importação CSV
 function crmOpenImport(){
   document.getElementById('ci-err').textContent='';
@@ -4011,6 +4089,15 @@ function agRenderDay(){
       retBadge.textContent='▶ Abrir lead para atendimento';
       card.querySelector('.ev-body').appendChild(retBadge);
       (function(pid,eid){card.addEventListener('click',function(e){e.stopPropagation();agOpenRetomada(pid,eid);});})(ev.prospId,ev.id);
+    }
+    if(ev.type==='crm'){
+      card.style.cssText+='border-left:3px solid #1565C0;background:#EFF6FF';
+      if(ev.dealNome){
+        var crmBadge=document.createElement('div');
+        crmBadge.style.cssText='margin-top:6px;display:inline-flex;align-items:center;gap:5px;background:#1565C0;color:#fff;border-radius:8px;padding:3px 10px;font-size:10px;font-weight:600';
+        crmBadge.textContent='🔗 CRM — '+ev.dealNome;
+        card.querySelector('.ev-body').appendChild(crmBadge);
+      }
     }
     var _agMe=CU&&CU.name||agUser;
     var isC=ev.author===_agMe||ev.author===agUser,isCo=ev.guests&&ev.guests.some(function(g){return (g.name===_agMe||g.name===agUser)&&g.status==='confirmed';}),isM=CU&&(CU.level==='diretor'||CU.level==='gestor'||CU.level==='trafego'||CU.level==='jackeline'||CU.level==='executivo');
@@ -4441,6 +4528,28 @@ var _origInitDash=window.initDashboard||null;
     </div>
     <div class="auth-err" id="cd-err"></div>
     <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-crm-deal')">Cancelar</button><button class="btn btn-primary" id="cd-save-btn" onclick="crmSaveDeal()">Salvar</button></div>
+  </div>
+</div>
+
+<!-- CRM: CRIAR ATIVIDADE -->
+<div class="modal-bg" id="modal-crm-atividade">
+  <div class="modal" style="width:480px">
+    <div class="modal-title"><span>Criar Atividade na Agenda</span><button class="modal-close" onclick="closeModal('modal-crm-atividade')">×</button></div>
+    <input type="hidden" id="ca-deal-id">
+    <input type="hidden" id="ca-deal-nome">
+    <div class="fg">
+      <div class="ff s2"><label>Título *</label><input type="text" id="ca-title" placeholder="Ex.: Reunião — Nome do Cliente"></div>
+      <div class="ff"><label>Data e Hora *</label><input type="datetime-local" id="ca-datetime"></div>
+      <div class="ff"><label>Duração</label><select id="ca-duracao"><option value="30">30 minutos</option><option value="60" selected>1 hora</option><option value="90">1h30</option><option value="120">2 horas</option></select></div>
+      <div class="ff"><label>Tipo</label><select id="ca-tipo"><option value="reuniao_online">Reunião Online</option><option value="visita">Visita Presencial</option><option value="ligacao">Ligação</option><option value="followup">Follow-up</option><option value="outro">Outro</option></select></div>
+      <div class="ff"><label>Convidados</label><select id="ca-guests" multiple style="height:90px"></select><div style="font-size:10px;color:var(--gr);margin-top:4px">Segure Ctrl/Cmd para selecionar múltiplos</div></div>
+      <div class="ff s2"><label>Descrição (opcional)</label><textarea id="ca-desc" rows="3" style="resize:vertical" placeholder="Detalhes da atividade..."></textarea></div>
+    </div>
+    <div class="auth-err" id="ca-err"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-crm-atividade')">Cancelar</button>
+      <button class="btn btn-primary" id="ca-save-btn" onclick="crmSaveAtividade()">Criar atividade</button>
+    </div>
   </div>
 </div>
 
