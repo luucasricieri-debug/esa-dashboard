@@ -3014,6 +3014,16 @@ function renderTime(c) {
 
 // HISTORICO
 function reRenderHist(){renderHistorico(document.getElementById('content'));}
+function histSearch(v){
+  var norm=function(s){return (s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();};
+  var q=norm(v);var n=0;
+  document.querySelectorAll('#hist-tbody tr[data-search]').forEach(function(tr){
+    if(!q||norm(tr.dataset.search).includes(q)){tr.style.display='';n++;}
+    else tr.style.display='none';
+  });
+  var el=document.getElementById('hist-count');
+  if(el)el.textContent=n+' registro'+(n!==1?'s':'')+' encontrado'+(n!==1?'s':'');
+}
 function renderHistorico(c) {
   var isTop=CU.level==='diretor'||CU.level==='gestor'||CU.level==='trafego'||CU.level==='trafego';
   var selUid=document.getElementById('filt-user')&&document.getElementById('filt-user').value||'';
@@ -3029,6 +3039,7 @@ function renderHistorico(c) {
   var list=baseList;
   if(fp) list=list.filter(function(p){return p.produto&&p.produto.includes(fp);});
   if(fs) list=list.filter(function(p){return p.status&&p.status.includes(fs);});
+  var prevSearch=document.getElementById('hist-search')&&document.getElementById('hist-search').value||'';
   var userSelHtml='';
   if(isTop){
     var opUsers=Object.values(allUsers).filter(function(u){
@@ -3045,10 +3056,11 @@ function renderHistorico(c) {
     +'<div class="filter-bar">'+userSelHtml
     +'<select class="filter-select" id="filt-prod" onchange="reRenderHist()"><option value="">Todos os produtos</option><option>Varejo Solar</option><option>Eletromobilidade</option><option>Usinas Investimento</option><option>Energia Assinatura GD2</option></select>'
     +'<select class="filter-select" id="filt-status" onchange="reRenderHist()"><option value="">Todos os status</option><option>Qualificado</option><option>Não qualificado</option><option>Sem interesse</option></select>'
-    +'<span style="margin-left:auto;font-size:12px;color:var(--gr);align-self:center">'+totalLabel+'</span></div>'
+    +'<input class="filter-select" id="hist-search" type="text" placeholder="🔍 Buscar por nome, empresa, telefone, cidade..." style="min-width:220px" oninput="histSearch(this.value)">'
+    +'<span id="hist-count" style="margin-left:auto;font-size:12px;color:var(--gr);align-self:center">'+totalLabel+'</span></div>'
     +'<div class="card" style="padding:0;overflow:hidden"><table class="tbl"><thead><tr>'
     +(isTop?'<th>Colaborador</th>':'')
-    +'<th>Lead</th><th>Produto</th><th>Status</th><th>Data</th><th>Resultado</th><th></th></tr></thead><tbody>';
+    +'<th>Lead</th><th>Produto</th><th>Status</th><th>Data</th><th>Resultado</th><th></th></tr></thead><tbody id="hist-tbody">';
   if(!list.length) html+='<tr><td colspan="7"><div class="empty"><div class="empty-text">Nenhuma prospecção</div></div></td></tr>';
   list.slice(0,200).forEach(function(p){
     var sc=p.status&&p.status.includes('Qualificado')?'badge-green':p.status&&p.status.includes('interesse')?'badge-red':'badge-yellow';
@@ -3062,7 +3074,8 @@ function renderHistorico(c) {
     var viewBtn2=pid2?'<button class="btn btn-secondary btn-sm" data-lid="'+pid2+'" data-uid="'+puid2+'" onclick="openLeadPanel(this.dataset.lid,this.dataset.uid)">Ver</button>':'' ;
     var stText=(p.status||'--');
     var encBadge=p.origem_encaminhamento?'<span style="font-size:10px;background:#EFF6FF;color:#1565C0;border-radius:5px;padding:1px 6px;margin-left:4px;font-weight:600">➡ '+p.encaminhado_por_nome+'</span>':'';
-    html+='<tr>'+(isTop?'<td style="font-size:12px">'+(allUsers[puid2]&&allUsers[puid2].name||'--')+'</td>':'')
+    var _ds=[p.nome,p.empresa,p.tel,p.cidade,p.status].join(' ').replace(/"/g,'&quot;');
+    html+='<tr data-search="'+_ds+'">'+(isTop?'<td style="font-size:12px">'+(allUsers[puid2]&&allUsers[puid2].name||'--')+'</td>':'')
       +'<td><div style="font-weight:500">'+(p.nome||'--')+encBadge+'</div><div style="font-size:11px;color:var(--gr)">'+(p.empresa||p.cidade||'')+'</div></td>'
       +'<td style="font-size:12px">'+(p.produto||'--').split(',')[0]+'</td>'
       +'<td><span class="badge '+sc+'">'+ stText+'</span></td>'
@@ -3073,6 +3086,7 @@ function renderHistorico(c) {
   });
   html+='</tbody></table></div>';
   c.innerHTML=html;
+  if(prevSearch){var _si=document.getElementById('hist-search');if(_si)_si.value=prevSearch;histSearch(prevSearch);}
 }
 
 // // CRM ────────────────────────────────────────────────────────────────
