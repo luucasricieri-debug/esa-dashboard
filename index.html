@@ -446,6 +446,10 @@ body{font-family:DM Sans,sans-serif;background:var(--bg);color:var(--bk);min-hei
 .crm-col{background:#F2F0EA;border:1px solid var(--bd);border-radius:10px;min-width:250px;max-width:250px;display:flex;flex-direction:column;max-height:calc(100vh - 320px)}
 .crm-col-head{padding:11px 13px;border-bottom:1px solid var(--bd);font-size:11px;font-weight:600;color:var(--g);display:flex;justify-content:space-between;align-items:center;gap:6px}
 .crm-col-head .n{font-size:9px;font-family:DM Mono,monospace;color:var(--gr);background:var(--wh);border-radius:8px;padding:2px 7px}
+.crm-col-head-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.crm-col-edit-btn{opacity:0;background:none;border:none;color:var(--gr);cursor:pointer;font-size:11px;padding:2px 3px;line-height:1;transition:opacity .15s;flex-shrink:0}
+.crm-col-head:hover .crm-col-edit-btn{opacity:1}
+.crm-col-edit-inp{flex:1;background:#fff;border:1.5px solid var(--go);border-radius:6px;font-size:11px;font-weight:600;color:var(--g);padding:3px 7px;font-family:DM Sans,sans-serif;outline:none;min-width:0;width:100%}
 .crm-col-body{padding:9px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px;min-height:60px}
 .crm-col-body.drag-over{background:rgba(201,148,10,.12)}
 .crm-card{background:var(--wh);border:1px solid var(--bd);border-radius:10px;padding:11px 13px;cursor:grab;transition:box-shadow .15s,opacity .15s}
@@ -559,6 +563,7 @@ body{font-family:DM Sans,sans-serif;background:var(--bg);color:var(--bk);min-hei
         <option value="executivo">Executivo de Vendas</option>
         <option value="sdr">SDR</option>
         <option value="jackeline">Relações Públicas</option>
+        <option value="engenharia">Engenharia</option>
       </select>
     </div>
     <div class="af" id="cu-gestores-wrap" style="display:none">
@@ -586,6 +591,7 @@ body{font-family:DM Sans,sans-serif;background:var(--bg);color:var(--bk);min-hei
       <option value="executivo">Executivo de Vendas</option>
       <option value="sdr">SDR</option>
       <option value="jackeline">Relações Públicas</option>
+      <option value="engenharia">Engenharia</option>
     </select></div>
     <div class="af"><label>Cargo / Título (opcional — ex: Diretor Administrativo)</label><input type="text" id="eu-cargo" placeholder="Deixe em branco para usar o padrão do nível"></div>
     <input type="hidden" id="eu-uid">
@@ -649,14 +655,15 @@ const LEVELS = {
   gestor:   {label:'Gerente',             rank:1},
   executivo:{label:'Executivo de Vendas', rank:2},
   sdr:      {label:'SDR',                 rank:2},
-  jackeline:{label:'Relações Públicas',   rank:2},
-  marketing:{label:'Marketing',           rank:2},
+  jackeline:  {label:'Relações Públicas',   rank:2},
+  engenharia: {label:'Engenharia',          rank:2},
+  marketing:  {label:'Marketing',           rank:2},
   trafego:  {label:'Gerente de Tráfego', rank:1},
 };
 
 const ROLE_LABELS = {
   diretor:'Diretor Comercial',gestor:'Gerente',
-  executivo:'Executivo de Vendas',sdr:'SDR',jackeline:'Relações Públicas',marketing:'Marketing',trafego:'Gerente de Tráfego'
+  executivo:'Executivo de Vendas',sdr:'SDR',jackeline:'Relações Públicas',engenharia:'Engenharia',marketing:'Marketing',trafego:'Gerente de Tráfego'
 };
 
 // Metas por cargo
@@ -718,13 +725,14 @@ let indTab = 'geral';
 // // CRM
 const CRM_FUNIS = {
   venda_ufv: {nome:'Venda UFV', etapas:['Lead','Visita Técnica','Orçamento Bruto','Orçamento Econômico','Apresentação','Negociação','Elaboração do contrato','Contrato enviado','Contrato assinado']},
-  copel: {nome:'Análise Copel', etapas:['Lead','Recebimento de documentos','Protocolo em análise','Protocolo finalizado','Apresentação ao cliente','Válido','Inválido']},
+  copel: {nome:'Análise Copel', etapas:['Lead','Recebimento de documentos','Elaboração de proposta','Prospecção enviada','Prospecção assinada','Protocolo Copel protocolado','Protocolo em análise','Protocolo finalizado','Apresentação ao cliente','Válido','Inválido']},
   assinatura_energia: {nome:'Assinatura de Energia', etapas:['Lead','Lead Triado','Lead Quarto','Pedido de Documento','Diagnóstico e Cálculo','Envio de Proposta','Termo de Adesão','Conclusão da GD','Início do faturamento']},
   pre_vendas: {nome:'Pré-vendas', etapas:['Lead Desqualificado','Lead Frio','Lead Passando','Lead Quarto','Maduro Aguardando','Maduro Real Validado']},
   om: {nome:'Funil O&M', etapas:['Lead','Visita Técnica','Elaboração de Proposta','Negociação','Assinatura GD','Conclusão GD','Início do faturamento']},
 };
 const CRM_STATUSES = ['Em andamento','Vendido','Perdido','Pausado'];
 let crmDeals = {};
+let crmEtapasCustom = {};
 let crmView = 'kanban';
 let crmFunilAtual = 'venda_ufv';
 let crmFiltResp = '', crmFiltStatus = '', crmFiltProduto = '';
@@ -781,6 +789,12 @@ async function boot() {
       createdAt: 1748000000000,
       createdBy: 'system'
     });
+    // Migração: jaqueline.demarchi jackeline → executivo
+    try {
+      const allU = await fbGet('users') || {};
+      const jakUser = Object.values(allU).find(function(u){ return u.login === 'jaqueline.demarchi' && u.level === 'jackeline'; });
+      if(jakUser) await fbPatch('users/' + jakUser.uid, {level:'executivo'});
+    } catch(e){}
     setPill('ok','Pronto');
   } catch(e){ setPill('err','Erro: '+e.message); }
 }
@@ -939,6 +953,11 @@ async function loadAllData() {
     var _lvlCrm=(CU.level||'').toLowerCase().trim();
     if(_lvlCrm==='diretor'||_lvlCrm==='trafego'||_lvlCrm==='gestor'){
       crmDeals = await fbGet('crm/deals') || {};
+      try {
+        var _funis = await fbGet('crm/funis') || {};
+        crmEtapasCustom = {};
+        Object.keys(_funis).forEach(function(k){ crmEtapasCustom[k] = (_funis[k]&&_funis[k].etapas)||{}; });
+      } catch(e){ crmEtapasCustom = {}; }
     }
     setPill('ok','Conectado');
   } catch(e){ setPill('err','Erro: '+e.message); }
@@ -1367,7 +1386,7 @@ async function saveProsp() {
       await fbSet('events/'+datePart+'/'+evId,ev);
     }
     // Encaminhamento (SDR ou Jackeline) com status qualificado
-    if(rec.proximo && (CU.level==='sdr'||CU.level==='jackeline') &&
+    if(rec.proximo && (CU.level==='sdr'||CU.level==='jackeline'||CU.level==='executivo') &&
        (rec.status==='Qualificado'||rec.status.indexOf('aguardando')<0&&rec.status.indexOf('Qualificado')>=0)){
       var destUser=Object.values(allUsers).find(function(u){
         var label=u.name+' — '+(u.cargo||ROLE_LABELS[u.level]||u.level);
@@ -2228,7 +2247,7 @@ window.saveEditProsp=async function(){
       var _ev={id:_evId,title:'Visita — '+_evPNome,time:_evTime,duration:'60',date:_evDate,author:CU.name,guests:_evGuests,type:'visita',prospId:overlay._pid};
       await fbSet('events/'+_evDate+'/'+_evId,_ev);
       // Encaminhamento: copy lead to destination user
-      if(_destUser && (CU.level==='sdr'||CU.level==='jackeline')){
+      if(_destUser && (CU.level==='sdr'||CU.level==='jackeline'||CU.level==='executivo')){
         var _destUid=_destUser.uid||_destUser.id;
         var _tRec=Object.assign({},(_origP2||{}),patch,{
           origem_encaminhamento:'Encaminhado por '+CU.name+' ('+( ROLE_LABELS[CU.level]||CU.level)+')',
@@ -2797,7 +2816,7 @@ function renderAgenda(c) {
 
 // VISAO DO TIME
 function renderTime(c) {
-  if(CU.level==='executivo'||CU.level==='sdr'||CU.level==='jackeline'||CU.level==='marketing'){c.innerHTML='<div class="empty"><div class="empty-icon">🔒</div><div class="empty-text">Acesso restrito</div></div>';return;}
+  if(CU.level==='executivo'||CU.level==='sdr'||CU.level==='jackeline'||CU.level==='engenharia'||CU.level==='marketing'){c.innerHTML='<div class="empty"><div class="empty-icon">🔒</div><div class="empty-text">Acesso restrito</div></div>';return;}
   var all=allProspList(),byUid={};
   all.forEach(function(p){byUid[p._uid]=(byUid[p._uid]||[]);byUid[p._uid].push(p);});
   var qual=all.filter(function(p){return p.status&&p.status.includes('Qualificado');}).length;
@@ -2862,7 +2881,7 @@ function renderHistorico(c) {
   var userSelHtml='';
   if(isTop){
     var opUsers=Object.values(allUsers).filter(function(u){
-      return ['executivo','sdr','jackeline','marketing','gestor'].indexOf(u.level)>=0;
+      return ['executivo','sdr','jackeline','engenharia','marketing','gestor'].indexOf(u.level)>=0;
     }).sort(function(a,b){return a.name.localeCompare(b.name);});
     userSelHtml='<select class="filter-select" id="filt-user" onchange="reRenderHist()" style="min-width:170px">'
       +'<option value="">Todos os colaboradores</option>'
@@ -2947,7 +2966,7 @@ function crmFilteredDeals(){
 function renderCRM(c){
   if(!crmCanManage()){c.innerHTML='<div class="empty"><div class="empty-icon">🔒</div><div class="empty-text">Acesso restrito</div></div>';return;}
   var respUsers=Object.values(allUsers).filter(function(u){
-    return ['diretor','trafego','gestor','executivo','sdr','jackeline','marketing'].indexOf(u.level)>=0;
+    return ['diretor','trafego','gestor','executivo','sdr','jackeline','engenharia','marketing'].indexOf(u.level)>=0;
   }).sort(function(a,b){return a.name.localeCompare(b.name);});
   var produtos=crmProdutosUnicos();
   var html='<div class="page-header"><div class="page-title">CRM — Funil de Vendas</div><div class="page-sub">Gestão de oportunidades e negociações</div></div>';
@@ -3007,13 +3026,20 @@ function crmCardHtml(d){
     +'</div>';
 }
 function crmKanbanHtml(list){
-  var etapas=CRM_FUNIS[crmFunilAtual].etapas;
+  var defaultEtapas=CRM_FUNIS[crmFunilAtual].etapas;
+  var custom=crmEtapasCustom[crmFunilAtual]||{};
+  var etapas=defaultEtapas.map(function(nome,i){return custom[i]!==undefined?custom[i]:nome;});
+  var canEdit=crmCanManage();
+  var origToDisplay={};
+  defaultEtapas.forEach(function(nome,i){origToDisplay[nome]=etapas[i];});
+  etapas.forEach(function(nome){origToDisplay[nome]=nome;});
   var byEtapa={};
   etapas.forEach(function(et){byEtapa[et]=[];});
-  list.forEach(function(d){ (byEtapa[d.etapa]||(byEtapa[d.etapa]=[])).push(d); });
-  return '<div class="crm-board">'+etapas.map(function(et){
+  list.forEach(function(d){var dn=origToDisplay[d.etapa]||d.etapa;(byEtapa[dn]||(byEtapa[dn]=[])).push(d);});
+  return '<div class="crm-board">'+etapas.map(function(et,i){
     var cards=byEtapa[et]||[];
-    return '<div class="crm-col"><div class="crm-col-head"><span>'+crmEsc(et)+'</span><span class="n">'+cards.length+'</span></div>'
+    var editBtn=canEdit?'<button class="crm-col-edit-btn" onclick="crmEtapaEditStart(\''+crmFunilAtual+'\','+i+',this)" title="Renomear etapa">✏</button>':'';
+    return '<div class="crm-col"><div class="crm-col-head"><span class="crm-col-head-label">'+crmEsc(et)+'</span>'+editBtn+'<span class="n">'+cards.length+'</span></div>'
       +'<div class="crm-col-body" data-etapa="'+crmEsc(et)+'">'
       +(cards.length?cards.map(crmCardHtml).join(''):'<div style="text-align:center;color:var(--gr);font-size:11px;padding:18px 6px">Nenhum deal</div>')
       +'</div></div>';
@@ -3086,6 +3112,49 @@ async function crmMoveDeal(id,novaEtapa){
 }
 
 // Modal: novo/editar deal
+function crmEtapaEditStart(funilKey, idx, btnEl) {
+  var head = btnEl.closest('.crm-col-head');
+  var label = head.querySelector('.crm-col-head-label');
+  if(label.querySelector('input')) return;
+  var current = label.textContent.trim();
+  label.innerHTML = '<input class="crm-col-edit-inp" type="text">';
+  var inp = label.querySelector('input');
+  inp.value = current;
+  btnEl.style.opacity = '0';
+  btnEl.style.pointerEvents = 'none';
+  inp.focus(); inp.select();
+  var committed = false;
+  function commit() {
+    if(committed) return;
+    committed = true;
+    var v = inp.value.trim();
+    if(!v || v === current) {
+      label.textContent = current;
+      btnEl.style.opacity = '';
+      btnEl.style.pointerEvents = '';
+      return;
+    }
+    label.textContent = v;
+    btnEl.style.opacity = '';
+    btnEl.style.pointerEvents = '';
+    crmEtapaSave(funilKey, idx, v);
+  }
+  inp.addEventListener('keydown', function(e) {
+    if(e.key === 'Enter') { e.preventDefault(); commit(); }
+    if(e.key === 'Escape') { committed = true; label.textContent = current; btnEl.style.opacity = ''; btnEl.style.pointerEvents = ''; }
+  });
+  inp.addEventListener('blur', commit);
+}
+async function crmEtapaSave(funilKey, idx, newName) {
+  if(!crmEtapasCustom[funilKey]) crmEtapasCustom[funilKey] = {};
+  crmEtapasCustom[funilKey][idx] = newName;
+  try {
+    await fbSet('crm/funis/' + funilKey + '/etapas/' + idx, newName);
+    showToast('Etapa renomeada com sucesso!');
+  } catch(e) {
+    showToast('Erro ao renomear etapa: ' + e.message, false);
+  }
+}
 function crmPopulateFunilSelect(selId,selectedKey){
   var sel=document.getElementById(selId);
   if(!sel) return;
@@ -3103,7 +3172,7 @@ function crmPopulateRespSelect(selId,selectedUid){
   var sel=document.getElementById(selId);
   if(!sel) return;
   var users=Object.values(allUsers).filter(function(u){
-    return ['diretor','trafego','gestor','executivo','sdr','jackeline','marketing'].indexOf(u.level)>=0;
+    return ['diretor','trafego','gestor','executivo','sdr','jackeline','engenharia','marketing'].indexOf(u.level)>=0;
   }).sort(function(a,b){return a.name.localeCompare(b.name);});
   sel.innerHTML='<option value="">Selecione</option>'+users.map(function(u){
     return '<option value="'+u.uid+'"'+(u.uid===selectedUid?' selected':'')+'>'+crmEsc(u.name)+' — '+crmEsc(ROLE_LABELS[u.level]||u.level)+'</option>';
@@ -3431,7 +3500,7 @@ window.crmConfirmImport=async function(){
 
 // USUARIOS
 function renderUsuarios(c) {
-  if(CU.level==='executivo'||CU.level==='sdr'||CU.level==='jackeline'||CU.level==='marketing'){c.innerHTML='<div class="empty"><div class="empty-icon">🔒</div><div class="empty-text">Acesso restrito</div></div>';return;}
+  if(CU.level==='executivo'||CU.level==='sdr'||CU.level==='jackeline'||CU.level==='engenharia'||CU.level==='marketing'){c.innerHTML='<div class="empty"><div class="empty-icon">🔒</div><div class="empty-text">Acesso restrito</div></div>';return;}
   var users=Object.values(allUsers);
   var visible=(CU.level==='diretor'||CU.level==='trafego')?users:users.filter(function(u){return u.uid===CU.uid||u.gestor===CU.uid;});
   var html='<div class="page-header"><div class="page-title">Usuarios</div></div>'
@@ -3457,12 +3526,12 @@ function renderUsuarios(c) {
 }
 
 function openCreateUser(){
-  var lvlOpts=(CU.level==='diretor'||CU.level==='trafego')?['gestor','trafego','executivo','sdr','jackeline','marketing']:['executivo','sdr','jackeline','marketing'];
+  var lvlOpts=(CU.level==='diretor'||CU.level==='trafego')?['gestor','trafego','executivo','sdr','jackeline','engenharia','marketing']:['executivo','sdr','jackeline','engenharia','marketing'];
   var sel=document.getElementById('cu-level');
   sel.innerHTML='<option value="">Selecione</option>'+lvlOpts.map(function(l){return '<option value="'+l+'">'+ROLE_LABELS[l]+'</option>';}).join('');
   var gs=document.getElementById('cu-gestor');
   gs.innerHTML=Object.values(allUsers).filter(function(u){return u.level==='gestor'||u.level==='diretor'||u.level==='trafego';}).map(function(u){return '<option value="'+u.uid+'">'+u.name+'</option>';}).join('');
-  sel.onchange=function(){document.getElementById('cu-gestores-wrap').style.display=((CU.level==='diretor'||CU.level==='trafego')&&['executivo','sdr','jackeline','marketing'].includes(sel.value))?'block':'none';};
+  sel.onchange=function(){document.getElementById('cu-gestores-wrap').style.display=((CU.level==='diretor'||CU.level==='trafego')&&['executivo','sdr','jackeline','engenharia','marketing'].includes(sel.value))?'block':'none';};
   document.getElementById('cu-err').textContent='';
   ['cu-name','cu-login','cu-pass'].forEach(function(id){document.getElementById(id).value='';});
   document.getElementById('modal-create-user').classList.add('open');
@@ -3486,7 +3555,7 @@ function openEditUser(uid){
   var u=allUsers[uid];if(!u)return;
   document.getElementById('eu-uid').value=uid;document.getElementById('eu-name').value=u.name;
   document.getElementById('eu-pass').value='';document.getElementById('eu-cargo').value=u.cargo||'';
-  var sel=document.getElementById('eu-level'),opts=(CU.level==='diretor'||CU.level==='trafego')?['gestor','trafego','executivo','sdr','jackeline','marketing']:['executivo','sdr','jackeline','marketing'];
+  var sel=document.getElementById('eu-level'),opts=(CU.level==='diretor'||CU.level==='trafego')?['gestor','trafego','executivo','sdr','jackeline','engenharia','marketing']:['executivo','sdr','jackeline','engenharia','marketing'];
   sel.innerHTML=opts.map(function(l){return '<option value="'+l+'"'+(u.level===l?' selected':'')+'>'+ROLE_LABELS[l]+'</option>';}).join('');
   document.getElementById('eu-err').textContent='';document.getElementById('modal-edit-user').classList.add('open');
 }
@@ -3661,7 +3730,7 @@ function agRenderDay(){
       (function(pid,eid){card.addEventListener('click',function(e){e.stopPropagation();agOpenRetomada(pid,eid);});})(ev.prospId,ev.id);
     }
     var _agMe=CU&&CU.name||agUser;
-    var isC=ev.author===_agMe||ev.author===agUser,isCo=ev.guests&&ev.guests.some(function(g){return (g.name===_agMe||g.name===agUser)&&g.status==='confirmed';}),isM=CU&&(CU.level==='diretor'||CU.level==='gestor'||CU.level==='trafego'||CU.level==='jackeline');
+    var isC=ev.author===_agMe||ev.author===agUser,isCo=ev.guests&&ev.guests.some(function(g){return (g.name===_agMe||g.name===agUser)&&g.status==='confirmed';}),isM=CU&&(CU.level==='diretor'||CU.level==='gestor'||CU.level==='trafego'||CU.level==='jackeline'||CU.level==='executivo');
     if(isC||isCo||isM){var acts=document.createElement('div');acts.className='ev-actions';var eb=document.createElement('button');eb.className='ev-edit';eb.innerHTML='✏';(function(e){eb.addEventListener('click',function(x){x.stopPropagation();agOpenEditModal(e);});})(ev);acts.appendChild(eb);if(isC||isM){var db=document.createElement('button');db.className='ev-del';db.innerHTML='×';(function(id){db.addEventListener('click',function(x){x.stopPropagation();agDelEv(id);});})(ev.id);acts.appendChild(db);}card.appendChild(acts);}
     if(ev.guests){ev.guests.forEach(function(g){if(g.name===agUser&&g.status!=='confirmed'){var cb=document.createElement('button');cb.textContent='✓ Confirmar presenca';cb.style.cssText='background:#C9940A;border:none;border-radius:6px;color:#FFF;cursor:pointer;font-size:11px;padding:4px 10px;margin-top:6px;font-family:inherit';(function(eid){cb.addEventListener('click',function(x){x.stopPropagation();agConfirmGuest(eid);});})(ev.id);card.querySelector('.ev-body').appendChild(cb);}});}
     var evDate=new Date(agSel+'T'+(ev.time||'00:00')),resBar=document.createElement('div');resBar.style.cssText='display:flex;gap:6px;margin-top:8px;align-items:center;flex-wrap:wrap';
