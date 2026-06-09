@@ -764,6 +764,7 @@ let allEventsToday = {};
 let crmView = 'kanban';
 let crmFunilAtual = 'venda_ufv';
 let crmFiltResp = '', crmFiltStatus = '', crmFiltProduto = '';
+let crmSearchQuery = '';
 let crmDragId = null;
 let crmEditId = null;
 
@@ -3125,6 +3126,7 @@ function renderCRM(c){
       +CRM_STATUSES.map(function(s){return '<option'+(s===crmFiltStatus?' selected':'')+'>'+s+'</option>';}).join('')+'</select>'
     +'<select class="filter-select" id="crm-f-prod" onchange="crmSetFilter(\'produto\',this.value)"><option value="">Todos os produtos</option>'
       +produtos.map(function(p){return '<option'+(p===crmFiltProduto?' selected':'')+'>'+crmEsc(p)+'</option>';}).join('')+'</select>'
+    +'<input type="text" id="crm-search" class="filter-select" placeholder="🔍 Buscar por nome, empresa, telefone..." value="'+crmSearchQuery+'" oninput="crmSearch(this.value)" style="min-width:220px;border-color:#D4CFC6;border-radius:8px;padding:8px 12px">'
     +'<div style="margin-left:auto;display:flex;gap:8px">'
       +(crmIsAdmin()?'<button class="btn btn-secondary btn-sm" onclick="crmOpenImport()">Importar CSV</button>':'')
       +((crmIsAdmin()||CU.level==='executivo')?'<button class="btn btn-primary btn-sm" onclick="crmOpenNew()">+ Novo Deal</button>':'')
@@ -3147,6 +3149,30 @@ function crmRenderView(){
   var list=crmFilteredDeals();
   area.innerHTML = crmView==='kanban' ? crmKanbanHtml(list) : crmListaHtml(list);
   if(crmView==='kanban') crmBindDragDrop();
+  crmApplySearch();
+}
+function crmNorm(s){return (s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();}
+function crmSearch(val){crmSearchQuery=val;crmApplySearch();}
+function crmApplySearch(){
+  var q=crmNorm(crmSearchQuery);
+  var area=document.getElementById('crm-view-area');
+  if(!area) return;
+  if(crmView==='kanban'){
+    area.querySelectorAll('.crm-col').forEach(function(col){
+      var count=0;
+      col.querySelectorAll('.crm-card').forEach(function(card){
+        var match=!q||crmNorm(card.dataset.search||'').indexOf(q)>=0;
+        card.style.display=match?'':'none';
+        if(match) count++;
+      });
+      var nEl=col.querySelector('.n');
+      if(nEl) nEl.textContent=count;
+    });
+  } else {
+    area.querySelectorAll('tbody tr').forEach(function(row){
+      row.style.display=(!q||crmNorm(row.dataset.search||'').indexOf(q)>=0)?'':'none';
+    });
+  }
 }
 
 function crmCardHtml(d){
@@ -3155,7 +3181,8 @@ function crmCardHtml(d){
   var fuCount=fuList.length;
   var fuLast=fuCount?fuList.sort(function(a,b){return (b.ts||0)-(a.ts||0);})[0]:null;
   var fuLastStr=fuLast?new Date(fuLast.ts).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):'';
-  return '<div class="crm-card" draggable="true" data-id="'+d._id+'" onclick="crmOpenEdit(\''+d._id+'\')">'
+  var _srch=crmEsc([d.nome,d.empresa,d.telefone,d.email,d.cidade].join(' '));
+  return '<div class="crm-card" draggable="true" data-id="'+d._id+'" data-search="'+_srch+'" onclick="crmOpenEdit(\''+d._id+'\')">'
     +'<div class="crm-card-name">'+crmEsc(d.nome)+'</div>'
     +(d.empresa?'<div class="crm-card-co">'+crmEsc(d.empresa)+'</div>':'')
     +(d.valor?'<div class="crm-card-val">'+crmFmtBRL(d.valor)+'</div>':'')
@@ -3199,7 +3226,7 @@ function crmListaHtml(list){
     +'</tr></thead><tbody>';
   list.slice().sort(function(a,b){return (b.createdAt||0)-(a.createdAt||0);}).forEach(function(d){
     var dt=d.createdAt?new Date(d.createdAt).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit'}):'—';
-    html+='<tr>'
+    html+='<tr data-search="'+crmEsc([d.nome,d.empresa,d.telefone,d.email,d.cidade].join(' '))+'">'
       +'<td style="font-weight:500">'+crmEsc(d.nome)+'</td>'
       +'<td style="font-size:12px">'+crmEsc(d.empresa||'—')+'</td>'
       +'<td style="font-size:12px;font-family:DM Mono,monospace">'+crmEsc(d.telefone||'—')+'</td>'
