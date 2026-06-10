@@ -3235,19 +3235,16 @@ function crmSortDeals(deals){
 function crmKanbanHtml(list){
   var defaultEtapas=CRM_FUNIS[crmFunilAtual].etapas;
   var custom=crmEtapasCustom[crmFunilAtual]||{};
-  var etapas=defaultEtapas.map(function(nome,i){return custom[i]!==undefined?custom[i]:nome;});
   var canEdit=crmIsAdmin()||CU.name==='Fernando Fadel';
-  var origToDisplay={};
-  defaultEtapas.forEach(function(nome,i){origToDisplay[nome]=etapas[i];});
-  etapas.forEach(function(nome){origToDisplay[nome]=nome;});
   var byEtapa={};
-  etapas.forEach(function(et){byEtapa[et]=[];});
-  list.forEach(function(d){var dn=origToDisplay[d.etapa]||d.etapa;(byEtapa[dn]||(byEtapa[dn]=[])).push(d);});
-  return '<div class="crm-board">'+etapas.map(function(et,i){
-    var cards=crmSortDeals(byEtapa[et]||[]);
+  defaultEtapas.forEach(function(nome){byEtapa[nome]=[];});
+  list.forEach(function(d){(byEtapa[d.etapa]||(byEtapa[d.etapa]=[])).push(d);});
+  return '<div class="crm-board">'+defaultEtapas.map(function(etOrig,i){
+    var etDisplay=custom[i]!==undefined?custom[i]:etOrig;
+    var cards=crmSortDeals(byEtapa[etOrig]||[]);
     var editBtn=canEdit?'<button class="crm-col-edit-btn" onclick="crmEtapaEditStart(\''+crmFunilAtual+'\','+i+',this)" title="Renomear etapa">✏</button>':'';
-    return '<div class="crm-col"><div class="crm-col-head"><span class="crm-col-head-label">'+crmEsc(et)+'</span>'+editBtn+'<span class="n">'+cards.length+'</span></div>'
-      +'<div class="crm-col-body" data-etapa="'+crmEsc(et)+'">'
+    return '<div class="crm-col"><div class="crm-col-head"><span class="crm-col-head-label">'+crmEsc(etDisplay)+'</span>'+editBtn+'<span class="n">'+cards.length+'</span></div>'
+      +'<div class="crm-col-body" data-etapa="'+crmEsc(etOrig)+'">'
       +(cards.length?cards.map(crmCardHtml).join(''):'<div style="text-align:center;color:var(--gr);font-size:11px;padding:18px 6px">Nenhum deal</div>')
       +'</div></div>';
   }).join('')+'</div>';
@@ -3477,7 +3474,11 @@ function crmPopulateEtapaSelect(selId,funilKey,selectedEtapa){
   var sel=document.getElementById(selId);
   if(!sel) return;
   var etapas=(CRM_FUNIS[funilKey]||{}).etapas||[];
-  sel.innerHTML=etapas.map(function(et){return '<option'+(et===selectedEtapa?' selected':'')+'>'+crmEsc(et)+'</option>';}).join('');
+  var custom=crmEtapasCustom[funilKey]||{};
+  sel.innerHTML=etapas.map(function(et,i){
+    var label=custom[i]!==undefined?custom[i]:et;
+    return '<option value="'+crmEsc(et)+'"'+(et===selectedEtapa?' selected':'')+'>'+crmEsc(label)+'</option>';
+  }).join('');
 }
 function crmPopulateRespSelect(selId,selectedUid){
   var sel=document.getElementById(selId);
