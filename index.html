@@ -715,20 +715,14 @@ const METAS = {
   },
   sdr:{
     diaria:[
-      {id:'prosp',       label:'Ligações',                    meta:50},
-      {id:'qualif_ag',   label:'Qualificações (agendado)',     meta:5},
-      {id:'agend_eletro',label:'Agend. Eletromobilidade',     meta:0},
-      {id:'agend_usina', label:'Agend. Usina de Investimento',meta:0},
-      {id:'agend_energia',label:'Agend. Energia por Assinatura',meta:0},
-      {id:'agend_varejo',label:'Agend. Varejo Solar',         meta:0},
+      {id:'prosp_sdr',         label:'Prospecção',          meta:30},
+      {id:'agendamentos_sdr',  label:'Agendamentos',        meta:2},
+      {id:'interacao_sdr',     label:'Interação Comercial', meta:20},
     ],
     mensal:[
-      {id:'prosp',       label:'Ligações',                    meta:1100},
-      {id:'qualif_ag',   label:'Qualificações (agendado)',     meta:110},
-      {id:'agend_eletro',label:'Agend. Eletromobilidade',     meta:0},
-      {id:'agend_usina', label:'Agend. Usina de Investimento',meta:0},
-      {id:'agend_energia',label:'Agend. Energia por Assinatura',meta:0},
-      {id:'agend_varejo',label:'Agend. Varejo Solar',         meta:0},
+      {id:'prosp_sdr_mensal',        label:'Prospecções',          meta:600},
+      {id:'agendamentos_sdr_mensal', label:'Agendamentos',         meta:40},
+      {id:'interacao_sdr_mensal',    label:'Interação Comercial',  meta:400},
     ]
   },
   jackeline:{
@@ -1617,8 +1611,27 @@ function countMeta(list,id){
   if(id==='eventos') return list.length;
   if(id==='indicacoes') return list.filter(p=>p.produto&&p.produto.includes('Embaixador')).length;
   // Executivo — novas métricas
-  if(id==='novos_clientes'||id==='prosp_mensal')
+  if(id==='novos_clientes'||id==='prosp_mensal'||id==='prosp_sdr'||id==='prosp_sdr_mensal')
     return list.filter(function(p){return !p.tipo||p.tipo!=='atendimento';}).length;
+  // SDR — novas métricas
+  if(id==='agendamentos_sdr'||id==='agendamentos_sdr_mensal'){
+    return list.filter(function(p){
+      return p.status&&p.status.toLowerCase().includes('qualificado')&&p.agendado==='Sim'&&p.proximo&&String(p.proximo).trim()!=='';
+    }).length;
+  }
+  if(id==='interacao_sdr'){
+    var todayStart=window._metaDataSel?new Date(window._metaDataSel+'T00:00:00'):new Date(); todayStart.setHours(0,0,0,0);
+    var todayTs=todayStart.getTime(), todayEnd=todayTs+86400000;
+    var interacoes=(allProsp[CU.uid]||{}).interacoes||{};
+    return Object.values(interacoes).filter(function(i){return i&&i.ts>=todayTs&&i.ts<todayEnd;}).length;
+  }
+  if(id==='interacao_sdr_mensal'){
+    var now=new Date();
+    var monStart=new Date(now.getFullYear(),now.getMonth(),1).getTime();
+    var monEnd=new Date(now.getFullYear(),now.getMonth()+1,1).getTime();
+    var interacoes=(allProsp[CU.uid]||{}).interacoes||{};
+    return Object.values(interacoes).filter(function(i){return i&&i.ts>=monStart&&i.ts<monEnd;}).length;
+  }
   if(id==='interacao'){
     var todayStart=window._metaDataSel?new Date(window._metaDataSel+'T00:00:00'):new Date(); todayStart.setHours(0,0,0,0);
     var todayTs=todayStart.getTime(), todayEnd=todayTs+86400000;
