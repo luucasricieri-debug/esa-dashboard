@@ -1597,6 +1597,17 @@ async function registrarInteracao(){
 }
 
 // // METAS
+function agCountAtendCliente(events){
+  var count=0;
+  Object.values(events||{}).forEach(function(ev){
+    if(!ev) return;
+    var isMe=ev.author===CU.name||(ev.guests&&ev.guests.some(function(g){return g.name===CU.name;}));
+    var isSucesso=ev.resultado==='sucesso';
+    var isCliente=!ev.tipo_atendimento||ev.tipo_atendimento==='cliente';
+    if(isMe&&isSucesso&&isCliente) count++;
+  });
+  return count;
+}
 function countMeta(list,id){
   if(id==='prosp') return list.filter(function(p){return !p.tipo||p.tipo!=='atendimento';}).length;
   if(id==='sucesso'||id==='qualif') return list.filter(p=>p.status&&p.status.includes('Qualificado')).length;
@@ -1642,12 +1653,19 @@ function countMeta(list,id){
     return count;
   }
   if(id==='atendimentos'){
-    var todayStart=window._metaDataSel?new Date(window._metaDataSel+'T00:00:00'):new Date(); todayStart.setHours(0,0,0,0);
-    var todayTs=todayStart.getTime(), todayEnd=todayTs+86400000;
-    var interacoes=(allProsp[CU.uid]||{}).interacoes||{};
-    return Object.values(interacoes).filter(function(i){return i&&i.tipo==='atendimento'&&i.ts>=todayTs&&i.ts<todayEnd;}).length;
+    var todayKey=window._metaDataSel||new Date().toISOString().slice(0,10);
+    return agCountAtendCliente(agEvs[todayKey]);
   }
-  if(id==='atend_mensal') return list.filter(function(p){return p.agendado==='Sim';}).length;
+  if(id==='atend_mensal'){
+    var now=new Date(), count=0;
+    for(var d=1;d<=31;d++){
+      var dt=new Date(now.getFullYear(),now.getMonth(),d);
+      if(dt.getMonth()!==now.getMonth()) break;
+      var key=dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
+      count+=agCountAtendCliente(agEvs[key]);
+    }
+    return count;
+  }
   if(id==='leads_qualificados'){
     var _now1=new Date();
     return Object.values(crmDeals||{}).filter(function(d){
