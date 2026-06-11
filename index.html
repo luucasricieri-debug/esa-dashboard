@@ -1620,17 +1620,19 @@ function countMeta(list,id){
   if(id==='novos_clientes'||id==='prosp_mensal')
     return list.filter(function(p){return !p.tipo||p.tipo!=='atendimento';}).length;
   if(id==='interacao'){
-    var todayStart=new Date(); todayStart.setHours(0,0,0,0); var todayTs=todayStart.getTime();
+    var todayStart=window._metaDataSel?new Date(window._metaDataSel+'T00:00:00'):new Date(); todayStart.setHours(0,0,0,0);
+    var todayTs=todayStart.getTime(), todayEnd=todayTs+86400000;
     var count=0;
     var userData=allProsp[CU.uid]||{};
     var interacoes=userData.interacoes||{};
-    Object.values(interacoes).forEach(function(i){if(i&&i.ts>=todayTs) count++;});
+    Object.values(interacoes).forEach(function(i){if(i&&i.ts>=todayTs&&i.ts<todayEnd) count++;});
     return count;
   }
   if(id==='atendimentos'){
-    var todayStart=new Date(); todayStart.setHours(0,0,0,0); var todayTs=todayStart.getTime();
+    var todayStart=window._metaDataSel?new Date(window._metaDataSel+'T00:00:00'):new Date(); todayStart.setHours(0,0,0,0);
+    var todayTs=todayStart.getTime(), todayEnd=todayTs+86400000;
     var interacoes=(allProsp[CU.uid]||{}).interacoes||{};
-    return Object.values(interacoes).filter(function(i){return i&&i.tipo==='atendimento'&&i.ts>=todayTs;}).length;
+    return Object.values(interacoes).filter(function(i){return i&&i.tipo==='atendimento'&&i.ts>=todayTs&&i.ts<todayEnd;}).length;
   }
   if(id==='atend_mensal') return list.filter(function(p){return p.agendado==='Sim';}).length;
   if(id==='leads_qualificados'){
@@ -1688,23 +1690,43 @@ function metaRow(m,real,meta){
   <td><span class="badge ${badge}">${lbl}</span></td></tr>`;
 }
 
+function metaSetDia(diasAtras){
+  var d=new Date(); d.setDate(d.getDate()-diasAtras);
+  window._metaDataSel=d.toISOString().slice(0,10);
+  renderMetas(document.getElementById('content'));
+}
 function renderMetasFor(c, targetUid, targetName, targetLevel) {
   const metas = METAS[targetLevel] || {diaria:[], mensal:[]};
   const list  = Object.entries(allProsp[targetUid]||{}).filter(function(e){return e[0]!=='interacoes'&&!!e[1];}).map(function(e){return e[1];}).sort((a,b)=>b.ts-a.ts);
   const hoje  = new Date(); hoje.setHours(0,0,0,0);
-  const hj    = list.filter(p=>{const d=new Date(p.ts);d.setHours(0,0,0,0);return d.getTime()===hoje.getTime();});
+  const hjReal = list.filter(p=>{const d=new Date(p.ts);d.setHours(0,0,0,0);return d.getTime()===hoje.getTime();});
   const mes   = list.filter(p=>{const d=new Date(p.ts);return d.getMonth()===hoje.getMonth()&&d.getFullYear()===hoje.getFullYear();});
   const total = mes.length;
   const qual  = mes.filter(p=>p.status?.includes('Qualificado')).length;
   const agend = mes.filter(p=>p.agendado==='Sim').length;
   const conv  = total>0?Math.round(qual/total*100):0;
+
+  if(!window._metaDataSel) window._metaDataSel=hoje.toISOString().slice(0,10);
+  const selDate = new Date(window._metaDataSel+'T00:00:00');
+  const hj = list.filter(p=>{const d=new Date(p.ts);d.setHours(0,0,0,0);return d.getTime()===selDate.getTime();});
+  const isHoje = window._metaDataSel===hoje.toISOString().slice(0,10);
+
   let html = `<div class="cards-grid">
-    <div class="kpi-card"><div class="kpi-val">${hj.length}</div><div class="kpi-label">Prospecções hoje</div><div class="kpi-meta">Meta: ${metas.diaria[0]?.meta||0}/dia</div></div>
+    <div class="kpi-card"><div class="kpi-val">${hjReal.length}</div><div class="kpi-label">Prospecções hoje</div><div class="kpi-meta">Meta: ${metas.diaria[0]?.meta||0}/dia</div></div>
     <div class="kpi-card"><div class="kpi-val">${total}</div><div class="kpi-label">Total no mês</div><div class="kpi-meta">${hoje.toLocaleDateString('pt-BR',{month:'long'})}</div></div>
     <div class="kpi-card"><div class="kpi-val">${qual}</div><div class="kpi-label">Qualificados</div><div class="kpi-meta">Taxa: ${conv}%</div></div>
     <div class="kpi-card"><div class="kpi-val">${agend}</div><div class="kpi-label">Visitas agendadas</div></div>
   </div>`;
-  if(metas.diaria.length) html+=`<div class="card"><div class="card-title">Metas Diárias — Hoje</div><table class="tbl"><thead><tr><th>Atividade</th><th>Realizado</th><th>Meta</th><th>Progresso</th><th>Status</th></tr></thead><tbody>${metas.diaria.map(m=>metaRow(m,countMeta(hj,m.id),m.meta)).join('')}</tbody></table></div>`;
+  if(metas.diaria.length) html+=`<div class="card">
+    <div class="card-title">Metas Diárias ${isHoje?'— Hoje':'— '+selDate.toLocaleDateString('pt-BR')}</div>
+    <div style="display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+      <div><label style="display:block;font-size:10px;color:var(--gr);font-family:DM Mono,monospace;margin-bottom:4px">CONSULTAR DIA</label>
+      <input type="date" value="${window._metaDataSel}" onchange="window._metaDataSel=this.value;renderMetas(document.getElementById('content'))" style="background:#F7F5F0;border:1.5px solid #E0DBD0;border-radius:8px;padding:8px 12px;font-family:DM Sans,sans-serif;font-size:13px;outline:none"></div>
+      <button class="btn btn-secondary btn-sm" onclick="metaSetDia(0)">Hoje</button>
+      <button class="btn btn-secondary btn-sm" onclick="metaSetDia(1)">Ontem</button>
+      <button class="btn btn-secondary btn-sm" onclick="metaSetDia(2)">Anteontem</button>
+    </div>
+    <table class="tbl"><thead><tr><th>Atividade</th><th>Realizado</th><th>Meta</th><th>Progresso</th><th>Status</th></tr></thead><tbody>${metas.diaria.map(m=>metaRow(m,countMeta(hj,m.id),m.meta)).join('')}</tbody></table></div>`;
   if(metas.mensal.length) html+=`<div class="card"><div class="card-title">Metas Mensais</div><table class="tbl"><thead><tr><th>Atividade</th><th>Realizado</th><th>Meta</th><th>Progresso</th><th>Status</th></tr></thead><tbody>${metas.mensal.map(m=>metaRow(m,countMeta(mes,m.id),m.meta)).join('')}</tbody></table></div>`;
   return html;
 }
@@ -2081,17 +2103,7 @@ async function renderRelCharts(){
     });
   });
 
-  var wds=['D','S','T','Q','Q','S','S'];
   var COLS=['#0D2418','#C9940A','#4A7A5E','#1A5C38','#8A6500','#E65100','#1565C0','#6A1B9A','#B71C1C'];
-
-  // Only show dates with data if period > 7 days
-  var showDates=dates;
-  if(dates.length>7){
-    showDates=dates.filter(function(dt){
-      return selUids.some(function(uid){return (byUD[uid][dt]||[]).length>0;});
-    });
-    if(!showDates.length) showDates=dates.slice(-5);
-  }
 
   var html='';
 
@@ -2114,121 +2126,99 @@ async function renderRelCharts(){
       +'</div></div></div>';
   }
 
-  // ── BLOCO 1: Resumo do período — tabela por pessoa ─────────────────────
-  html+='<div style="font-size:11px;font-weight:700;color:#0D2418;letter-spacing:.8px;text-transform:uppercase;margin-bottom:10px">Bloco 1 — Atividade por colaborador</div>';
-
-  // Summary KPIs
-  var totalAll=allList.length;
-  var qualAll=allList.filter(function(p){return p.status&&p.status.includes('Qualificado');}).length;
-  var visAll=allList.filter(function(p){return p.agendado==='Sim';}).length;
-  var sucAll=allList.filter(function(p){return p.resultado_lead==='sucesso';}).length;
-  html+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">';
-  [['Total',totalAll,dias+' dias'],['Qualificados',qualAll,totalAll>0?Math.round(qualAll/totalAll*100)+'%':'—'],
-   ['Visitas',visAll,''],['Sucessos',sucAll,'']].forEach(function(k){
-    html+='<div style="background:#fff;border:1px solid #E8E4DC;border-radius:10px;padding:14px 16px">'
-      +'<div style="font-size:22px;font-weight:700;color:#0D2418">'+k[1]+'</div>'
-      +'<div style="font-size:12px;color:#1A5C38;font-weight:500;margin-top:2px">'+k[0]+'</div>'
-      +(k[2]?'<div style="font-size:11px;color:var(--gr);margin-top:2px">'+k[2]+'</div>':'')
-      +'</div>';
-  });
-  html+='</div>';
-
-  // Activity table
+  // ── BLOCO 1: Indicadores por colaborador ───────────────────────────────
+  html+='<div style="font-size:11px;font-weight:700;color:#0D2418;letter-spacing:.8px;text-transform:uppercase;margin-bottom:10px">Bloco 1 — Indicadores por colaborador</div>';
   html+='<div style="background:#fff;border:1px solid #E8E4DC;border-radius:10px;overflow-x:auto;margin-bottom:20px"><table style="width:100%;border-collapse:collapse;font-size:12px">';
   html+='<thead><tr style="background:#0D2418;color:#fff">'
     +'<th style="padding:10px 14px;text-align:left;font-weight:600;white-space:nowrap">Colaborador</th>'
-    +'<th style="padding:10px 8px;text-align:center">Meta/dia</th>';
-  showDates.forEach(function(dt){
-    var isT=dt===todayStr;
-    html+='<th style="padding:10px 8px;text-align:center;min-width:42px;'+(isT?'background:#C9940A;':'')+'">'+fmtDt(dt)
-      +'<div style="font-size:9px;font-weight:400;opacity:.8">'+wds[new Date(dt+'T12:00:00').getDay()]+(isT?' ★':'')+'</div></th>';
-  });
-  html+='<th style="padding:10px 8px;text-align:center">Total</th>'
-    +'<th style="padding:10px 14px;text-align:left;min-width:120px">vs Meta</th></tr></thead><tbody>';
-
-  selUids.forEach(function(uid){
-    var u=allUsers[uid]; if(!u) return;
-    var isOp=opLevels.indexOf(u.level)>=0;
-    if(!isOp) return;
-    var metaDia=(METAS[u.level]&&METAS[u.level].diaria&&METAS[u.level].diaria[0]&&METAS[u.level].diaria[0].meta)||0;
-    var metaPer=metaDia*dias;
-    var totalU=0;
-    showDates.forEach(function(dt){totalU+=(byUD[uid][dt]||[]).length;});
-    // count all in period for total
-    var totalUAll=dates.reduce(function(s,dt){return s+(byUD[uid][dt]||[]).length;},0);
-    var pct=metaPer>0?Math.min(120,Math.round(totalUAll/metaPer*100)):0;
-    var pColor=pct>=100?'#1A5C38':pct>=60?'#8A6500':'#C0392B';
-    var pBg=pct>=100?'#E8F5E9':pct>=60?'#FFF9EC':'#FEF0E8';
-    html+='<tr style="border-top:1px solid #F0EDE8">';
-    html+='<td style="padding:9px 14px;font-weight:600">'+u.name+'<div style="font-size:10px;color:var(--gr);font-weight:400">'+(ROLE_LABELS[u.level]||u.level)+'</div></td>';
-    html+='<td style="padding:9px 8px;text-align:center;color:var(--gr);">'+(metaDia||'—')+'</td>';
-    showDates.forEach(function(dt){
-      var n=(byUD[uid][dt]||[]).length;
-      var isT=dt===todayStr;
-      var ok=metaDia>0&&n>=metaDia;
-      var bg=n===0?(isT?'background:#FFF0EB':''):(ok?'background:#E8F5E9':'background:#FFF9EC');
-      var col=n===0?'color:#bbb':(ok?'color:#1A5C38;font-weight:700':'color:#8A6500;font-weight:600');
-      html+='<td style="padding:9px 8px;text-align:center;'+bg+';'+col+';">'+(n||'—')+'</td>';
-    });
-    html+='<td style="padding:9px 8px;text-align:center;font-weight:700;color:'+pColor+'">'+totalUAll+'</td>';
-    html+='<td style="padding:9px 14px"><div style="display:flex;align-items:center;gap:8px">'
-      +'<div style="flex:1;background:#F0EDE8;border-radius:10px;height:8px;overflow:hidden">'
-      +'<div style="height:100%;background:'+pColor+';border-radius:10px;width:'+Math.min(100,pct)+'%"></div></div>'
-      +'<span style="font-size:11px;font-weight:700;background:'+pBg+';color:'+pColor+';border-radius:6px;padding:2px 8px;white-space:nowrap">'+pct+'%</span>'
-      +'</div></td></tr>';
-  });
-  html+='</tbody></table></div>';
-
-  // ── BLOCO 2: Funil de conversão ────────────────────────────────────────
-  html+='<div style="font-size:11px;font-weight:700;color:#0D2418;letter-spacing:.8px;text-transform:uppercase;margin-bottom:10px">Bloco 2 — Funil de conversão</div>';
-  html+='<div style="background:#fff;border:1px solid #E8E4DC;border-radius:10px;overflow-x:auto;margin-bottom:20px"><table style="width:100%;border-collapse:collapse;font-size:12px">';
-  html+='<thead><tr style="background:#0D2418;color:#fff">'
-    +'<th style="padding:10px 14px;text-align:left">Colaborador</th>'
-    +'<th style="padding:10px 8px;text-align:center">Leads</th>'
-    +'<th style="padding:10px 8px;text-align:center">Qualificados</th>'
-    +'<th style="padding:10px 8px;text-align:center">Lead→Qual %</th>'
-    +'<th style="padding:10px 8px;text-align:center">Visitas</th>'
-    +'<th style="padding:10px 8px;text-align:center">Qual→Visita %</th>'
-    +'<th style="padding:10px 8px;text-align:center">Sucesso</th>'
-    +'<th style="padding:10px 8px;text-align:center">Visita→Suc %</th>'
+    +'<th style="padding:10px 8px;text-align:center">Novos Clientes</th>'
+    +'<th style="padding:10px 8px;text-align:center">Interações</th>'
+    +'<th style="padding:10px 8px;text-align:center">Atendimentos</th>'
+    +'<th style="padding:10px 8px;text-align:center">Leads Qualificados</th>'
+    +'<th style="padding:10px 8px;text-align:center">Contratos Fechados</th>'
     +'<th style="padding:10px 14px;text-align:center">Status</th></tr></thead><tbody>';
 
+  var dtIniTs=dtIni.getTime(), dtFimTs=dtFim.getTime();
   selUids.forEach(function(uid){
     var u=allUsers[uid]; if(!u) return;
     if(opLevels.indexOf(u.level)<0) return;
-    var list=allList.filter(function(p){return p._uid===uid;});
-    var tot=list.length;
-    if(tot===0){
-      html+='<tr style="border-top:1px solid #F0EDE8"><td style="padding:9px 14px;font-weight:600">'+u.name+'</td>'
-        +'<td colspan="8" style="padding:9px;text-align:center;color:var(--gr);font-size:11px">Sem registros no período</td></tr>';
-      return;
-    }
-    var ql=list.filter(function(p){return p.status&&p.status.toLowerCase().includes('qualificado');}).length;
-    var vis=list.filter(function(p){return p.agendado==='Sim';}).length;
-    var suc=list.filter(function(p){return p.resultado_lead==='sucesso';}).length;
-    var pLQ=tot>0?Math.round(ql/tot*100):0;
-    var pQV=ql>0?Math.round(vis/ql*100):0;
-    var pVS=vis>0?Math.round(suc/vis*100):0;
-    function pctCell(v,w,ok){
-      var c=v>=ok?'#1A5C38':v>=w?'#8A6500':'#C0392B';
-      var bg=v>=ok?'#E8F5E9':v>=w?'#FFF9EC':'#FEF0E8';
-      return '<td style="padding:9px 8px;text-align:center"><span style="background:'+bg+';color:'+c+';font-weight:700;border-radius:6px;padding:3px 8px">'+v+'%</span></td>';
-    }
-    var overall=pLQ>=40&&pQV>=50?'No ritmo':pLQ>=20||pQV>=30?'Atenção':'Abaixo';
-    var oC=overall==='No ritmo'?'#1A5C38':overall==='Atenção'?'#8A6500':'#C0392B';
-    var oB=overall==='No ritmo'?'#E8F5E9':overall==='Atenção'?'#FFF9EC':'#FEF0E8';
+    var listU=allList.filter(function(p){return p._uid===uid;});
+    var novosClientes=listU.filter(function(p){return !p.tipo||p.tipo!=='atendimento';}).length;
+    var interacoesObj=(allProsp[uid]||{}).interacoes||{};
+    var interacoesPeriodo=Object.values(interacoesObj).filter(function(i){return i&&i.ts>=dtIniTs&&i.ts<=dtFimTs;});
+    var interacoesCount=interacoesPeriodo.length;
+    var atendimentosCount=interacoesPeriodo.filter(function(i){return i.tipo==='atendimento';}).length;
+    var leadsQualificados=Object.values(crmDeals||{}).filter(function(d){
+      if(!d||d.captadorUid!==uid||d.etapa!=='Lead') return false;
+      var t=d.createdAt||d.ts||0;
+      return t>=dtIniTs&&t<=dtFimTs;
+    }).length;
+    var contratosFechados=Object.values(crmDeals||{}).filter(function(d){
+      if(!d||d.captadorUid!==uid||d.etapa!=='Contrato assinado') return false;
+      var t=d.etapaTs||d.createdAt||d.ts||0;
+      return t>=dtIniTs&&t<=dtFimTs;
+    }).length;
+    var metaDia=(METAS[u.level]&&METAS[u.level].diaria&&METAS[u.level].diaria[0]&&METAS[u.level].diaria[0].meta)||0;
+    var metaPer=metaDia*dias;
+    var pct=metaPer>0?Math.round(novosClientes/metaPer*100):(novosClientes>0?100:0);
+    var semColor=pct>=100?'#1A5C38':pct>=60?'#8A6500':'#C0392B';
+    var semBg=pct>=100?'#E8F5E9':pct>=60?'#FFF9EC':'#FEF0E8';
+    var semIcon=pct>=100?'🟢':pct>=60?'🟡':'🔴';
+    var semLbl=pct>=100?'No ritmo':pct>=60?'Atenção':'Abaixo';
     html+='<tr style="border-top:1px solid #F0EDE8">'
       +'<td style="padding:9px 14px;font-weight:600">'+u.name+'<div style="font-size:10px;color:var(--gr);font-weight:400">'+(ROLE_LABELS[u.level]||u.level)+'</div></td>'
-      +'<td style="padding:9px 8px;text-align:center;font-weight:700">'+tot+'</td>'
-      +'<td style="padding:9px 8px;text-align:center">'+ql+'</td>'
-      +pctCell(pLQ,20,40)
-      +'<td style="padding:9px 8px;text-align:center">'+vis+'</td>'
-      +pctCell(pQV,30,50)
-      +'<td style="padding:9px 8px;text-align:center">'+suc+'</td>'
-      +pctCell(pVS,25,50)
-      +'<td style="padding:9px 14px;text-align:center"><span style="background:'+oB+';color:'+oC+';font-weight:700;border-radius:6px;padding:3px 10px;font-size:11px">'+overall+'</span></td>'
+      +'<td style="padding:9px 8px;text-align:center;font-weight:700">'+novosClientes+'</td>'
+      +'<td style="padding:9px 8px;text-align:center">'+interacoesCount+'</td>'
+      +'<td style="padding:9px 8px;text-align:center">'+atendimentosCount+'</td>'
+      +'<td style="padding:9px 8px;text-align:center">'+leadsQualificados+'</td>'
+      +'<td style="padding:9px 8px;text-align:center">'+contratosFechados+'</td>'
+      +'<td style="padding:9px 14px;text-align:center"><span style="background:'+semBg+';color:'+semColor+';font-weight:700;border-radius:6px;padding:3px 10px;font-size:11px">'+semIcon+' '+semLbl+'</span></td>'
       +'</tr>';
   });
+  html+='</tbody></table></div>';
+
+  // ── BLOCO 2: Contratos assinados por responsável ───────────────────────
+  html+='<div style="font-size:11px;font-weight:700;color:#0D2418;letter-spacing:.8px;text-transform:uppercase;margin-bottom:10px">Bloco 2 — Contratos assinados por responsável</div>';
+  html+='<div style="background:#fff;border:1px solid #E8E4DC;border-radius:10px;overflow-x:auto;margin-bottom:20px"><table style="width:100%;border-collapse:collapse;font-size:12px">';
+  html+='<thead><tr style="background:#0D2418;color:#fff">'
+    +'<th style="padding:10px 14px;text-align:left">Responsável</th>'
+    +'<th style="padding:10px 8px;text-align:center">Nº Contratos</th>'
+    +'<th style="padding:10px 8px;text-align:right">Valor Total (R$)</th>'
+    +'<th style="padding:10px 14px;text-align:right">Ticket Médio (R$)</th></tr></thead><tbody>';
+
+  var contratosPorResp={};
+  Object.values(crmDeals||{}).forEach(function(d){
+    if(!d||d.etapa!=='Contrato assinado') return;
+    var t=d.etapaTs||d.createdAt||d.ts||0;
+    if(t<dtIniTs||t>dtFimTs) return;
+    var ruid=d.responsavelUid||'—';
+    if(!contratosPorResp[ruid]) contratosPorResp[ruid]={nome:d.responsavelNome||'—',count:0,total:0};
+    contratosPorResp[ruid].count++;
+    contratosPorResp[ruid].total+=Number(d.valor)||0;
+  });
+  var respEntries=Object.values(contratosPorResp).sort(function(a,b){return b.total-a.total;});
+  if(!respEntries.length){
+    html+='<tr><td colspan="4" style="padding:14px;text-align:center;color:var(--gr);font-size:11px">Nenhum contrato assinado no período</td></tr>';
+  } else {
+    var totCount=0, totValor=0;
+    respEntries.forEach(function(r){
+      var ticket=r.count>0?r.total/r.count:0;
+      totCount+=r.count; totValor+=r.total;
+      html+='<tr style="border-top:1px solid #F0EDE8">'
+        +'<td style="padding:9px 14px;font-weight:600">'+crmEsc(r.nome)+'</td>'
+        +'<td style="padding:9px 8px;text-align:center;font-weight:700">'+r.count+'</td>'
+        +'<td style="padding:9px 8px;text-align:right;font-family:DM Mono,monospace">'+crmFmtBRL(r.total)+'</td>'
+        +'<td style="padding:9px 14px;text-align:right;font-family:DM Mono,monospace">'+crmFmtBRL(ticket)+'</td>'
+        +'</tr>';
+    });
+    var totTicket=totCount>0?totValor/totCount:0;
+    html+='<tr style="border-top:2px solid #0D2418;background:#F7F5F0;font-weight:700">'
+      +'<td style="padding:9px 14px">Total</td>'
+      +'<td style="padding:9px 8px;text-align:center">'+totCount+'</td>'
+      +'<td style="padding:9px 8px;text-align:right;font-family:DM Mono,monospace">'+crmFmtBRL(totValor)+'</td>'
+      +'<td style="padding:9px 14px;text-align:right;font-family:DM Mono,monospace">'+crmFmtBRL(totTicket)+'</td>'
+      +'</tr>';
+  }
   html+='</tbody></table></div>';
 
   // ── BLOCO 3: Qualidade por canal ───────────────────────────────────────
