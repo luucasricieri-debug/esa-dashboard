@@ -1169,7 +1169,7 @@ function formExecutivo() {
   <div class="card"><div class="card-title"><svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>Qualificação</div>
   <div class="fg"><div class="ff s2"><label>Campanha de captação *</label>${checkGroup('f-campanha',['Tráfego pago (Meta/Google)','Indicação — Embaixador','Indicação — Cliente','Prospecção ativa','Evento / Jackeline','SDR','Orgânico','Outro'])}</div>
   <div class="ff s2"><label>Setor *</label>${checkGroup('f-setor',['Residencial','Comércio','Indústria','Agronegócio','Condomínio','Frota / Mobilidade','Investidor','Outro'])}</div>
-  <div class="ff s2"><label>Produto *</label>${checkGroup('f-produto',['Varejo Solar','Eletromobilidade','Usinas Investimento','Energia Assinatura GD2'])}</div>
+  <div class="ff s2"><label>Produto *</label>${checkGroup('f-produto',['Varejo Solar','Eletromobilidade','Usinas Investimento','Energia Assinatura GD2','MOVOM'])}</div>
   <div class="ff"><label>Conta de energia (R$/mês)</label><input type="text" id="f-conta" placeholder="Ex: 800"></div>
   <div class="ff"><label>Proprietário / autonomia?</label><select id="f-proprio"><option value="">Selecione</option><option>Sim</option><option>Não</option><option>Sócio com autonomia</option></select></div>
   <div class="ff s2"><label>Observações / objeções</label><textarea id="f-obs"></textarea></div></div></div>
@@ -1245,7 +1245,7 @@ function formSDR() {
   <div class="ff"><label>Cargo</label><input type="text" id="f-cargo"></div>
   <div class="ff"><label>Setor *</label><select id="f-setor-sel"><option value="">Selecione</option>${['Eletromobilidade','Industrial','Agronegócio','Comércio','Condomínio','Logística','Energia Assinatura','Outro'].map(o=>`<option>${o}</option>`).join('')}</select></div></div></div>
   <div class="card"><div class="card-title"><svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/></svg>Qualificação BANT</div>
-  <div class="fg"><div class="ff s2"><label>Produto *</label>${checkGroup('f-produto',['Eletromobilidade','Usinas Investimento','Energia Assinatura GD2','Varejo Solar'])}</div>
+  <div class="fg"><div class="ff s2"><label>Produto *</label>${checkGroup('f-produto',['Eletromobilidade','Usinas Investimento','Energia Assinatura GD2','Varejo Solar','MOVOM'])}</div>
   <div class="ff s2"><label>Origem do contato *</label>${checkGroup('f-campanha',['Tráfego Pago','App de captação','Fatura de energia','LinkedIn','Indicação','Prospecção ativa','Evento','Outro'])}</div>
   <div class="ff"><label>Conta de energia (R$/mês)</label><select id="f-conta"><option value="">Selecione</option><option>Abaixo de R$ 800</option><option>R$ 800 – R$ 2.000</option><option>R$ 2.000 – R$ 5.000</option><option>R$ 5.000 – R$ 15.000</option><option>Acima de R$ 15.000</option></select></div>
   <div class="ff"><label>Autonomia de decisão?</label><select id="f-proprio"><option value="">Selecione</option><option>Sim</option><option>Não</option><option>Parcial</option></select></div>
@@ -1442,6 +1442,26 @@ async function saveProsp() {
       crmDeals[dealId]=_dealData;
       showToast('✅ Deal criado no CRM automaticamente!');
     }
+    // Gatilho CRM: produto MOVOM + qualificado → cria deal no Funil O&M
+    if(rec.produto && rec.produto.includes('MOVOM') && rec.status && rec.status.includes('Qualificado')){
+      var omDealId='deal_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+      var _omRespNome=rec.proximo||CU.name;
+      var _omRespUser=Object.values(allUsers).find(function(u){
+        return u.name===_omRespNome||((u.name+' — '+(u.cargo||ROLE_LABELS[u.level]||u.level))===_omRespNome);
+      });
+      var _omRespUid=_omRespUser?_omRespUser.uid:CU.uid;
+      var _omDealData={
+        nome:rec.nome, empresa:rec.empresa||'', telefone:rec.tel||'',
+        funil:'om', etapa:CRM_FUNIS.om.etapas[0], status:'Em andamento',
+        responsavelUid:_omRespUid, responsavelNome:_omRespUser?_omRespUser.name:CU.name,
+        captadorUid:CU.uid, captadorNome:CU.name,
+        ts:Date.now(), createdAt:Date.now(), createdBy:CU.uid, etapaTs:Date.now(),
+        origem:'Prospecção MOVOM',
+      };
+      await fbSet('crm/deals/'+omDealId, _omDealData);
+      crmDeals[omDealId]=_omDealData;
+      showToast('✅ Deal MOVOM criado no Funil O&M!');
+    }
     // Agenda: visita agendada (agendado=Sim)
     if(rec.agendado === 'Sim' && rec.data_visita) {
       var evId='prosp_'+id;
@@ -1608,6 +1628,14 @@ function agCountAtendCliente(events){
   });
   return count;
 }
+function crmEtapasContendo(funilKey,substr){
+  var etapas=(CRM_FUNIS[funilKey]||{}).etapas||[];
+  var custom=crmEtapasCustom[funilKey]||{};
+  return etapas.filter(function(et,i){
+    var disp=custom[i]!==undefined?custom[i]:et;
+    return et.indexOf(substr)>=0||String(disp).indexOf(substr)>=0;
+  });
+}
 function countMeta(list,id){
   if(id==='prosp') return list.filter(function(p){return !p.tipo||p.tipo!=='atendimento';}).length;
   if(id==='sucesso'||id==='qualif') return list.filter(p=>p.status&&p.status.includes('Qualificado')).length;
@@ -1704,6 +1732,27 @@ function countMeta(list,id){
     });
     return _sum2;
   }
+  if(id==='vendas_empresa'){
+    var _now5=new Date(), _sum3=0;
+    Object.values(crmDeals||{}).forEach(function(d){
+      if(!d||d.etapa!=='Contrato assinado') return;
+      var _dt=new Date(d.etapaTs||d.createdAt||d.ts||0);
+      if(_dt.getMonth()!==_now5.getMonth()||_dt.getFullYear()!==_now5.getFullYear()) return;
+      _sum3+=Number(d.valor)||0;
+    });
+    return _sum3;
+  }
+  if(id==='kwh_assinatura'){
+    var _now6=new Date(), _sumKwh=0;
+    var _etapasGD=crmEtapasContendo('assinatura_energia','Conclusão da GD');
+    Object.values(crmDeals||{}).forEach(function(d){
+      if(!d||d.funil!=='assinatura_energia'||_etapasGD.indexOf(d.etapa)<0) return;
+      var _dt=new Date(d.etapaTs||d.createdAt||d.ts||0);
+      if(_dt.getMonth()!==_now6.getMonth()||_dt.getFullYear()!==_now6.getFullYear()) return;
+      _sumKwh+=Number(d.kwh)||0;
+    });
+    return _sumKwh;
+  }
   return 0;
 }
 function metaRow(m,real,meta){
@@ -1711,9 +1760,10 @@ function metaRow(m,real,meta){
   const cls=pct>=100?'prog-ok':pct>=60?'prog-warn':'prog-bad';
   const badge=pct>=100?'badge-green':pct>=60?'badge-yellow':'badge-red';
   const lbl=pct>=100?'✓ Meta atingida':pct>=60?'Em andamento':'Abaixo da meta';
-  const _isBRL=m.id==='vendas'||m.id==='vendas_mensal';
-  const displayReal=_isBRL?Number(real).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:0}):real;
-  const displayMeta=_isBRL?(meta>0?Number(meta).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:0}):'—'):meta;
+  const _isBRL=m.id==='vendas'||m.id==='vendas_mensal'||m.id==='vendas_empresa';
+  const _isKWH=m.id==='kwh_assinatura';
+  const displayReal=_isBRL?Number(real).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:0}):_isKWH?Number(real).toLocaleString('pt-BR')+' kWh':real;
+  const displayMeta=_isBRL?(meta>0?Number(meta).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:0}):'—'):_isKWH?(meta>0?Number(meta).toLocaleString('pt-BR')+' kWh':'—'):meta;
   return `<tr><td style="font-weight:500">${m.label}</td>
   <td style="font-family:DM Mono,monospace;font-weight:600">${displayReal}</td>
   <td style="font-family:DM Mono,monospace;color:var(--gr)">${displayMeta}</td>
@@ -1758,7 +1808,19 @@ function renderMetasFor(c, targetUid, targetName, targetLevel) {
       <button class="btn btn-secondary btn-sm" onclick="metaSetDia(2)">Anteontem</button>
     </div>
     <table class="tbl"><thead><tr><th>Atividade</th><th>Realizado</th><th>Meta</th><th>Progresso</th><th>Status</th></tr></thead><tbody>${metas.diaria.map(m=>metaRow(m,countMeta(hj,m.id),m.meta)).join('')}</tbody></table></div>`;
-  if(metas.mensal.length) html+=`<div class="card"><div class="card-title">Metas Mensais</div><table class="tbl"><thead><tr><th>Atividade</th><th>Realizado</th><th>Meta</th><th>Progresso</th><th>Status</th></tr></thead><tbody>${metas.mensal.map(m=>metaRow(m,countMeta(mes,m.id),m.meta)).join('')}</tbody></table></div>`;
+  let mensalList=(metas.mensal||[]).map(function(m){
+    if(targetName==='Marcus Zucoloto'&&(m.id==='vendas'||m.id==='vendas_mensal')){
+      return Object.assign({},m,{meta:600000});
+    }
+    return m;
+  });
+  if(targetName==='Fernando Fadel'){
+    mensalList=mensalList.concat([
+      {id:'vendas_empresa', label:'Vendas da Empresa (R$)',     meta:2000000},
+      {id:'kwh_assinatura', label:'Meta kWh Assinatura GD',     meta:50000},
+    ]);
+  }
+  if(mensalList.length) html+=`<div class="card"><div class="card-title">Metas Mensais</div><table class="tbl"><thead><tr><th>Atividade</th><th>Realizado</th><th>Meta</th><th>Progresso</th><th>Status</th></tr></thead><tbody>${mensalList.map(m=>metaRow(m,countMeta(mes,m.id),m.meta)).join('')}</tbody></table></div>`;
   return html;
 }
 
@@ -3234,7 +3296,9 @@ function crmCardHtml(d){
     +'<div class="crm-card-name">'+crmEsc(d.nome)+'</div>'
     +(d.empresa?'<div class="crm-card-co">'+crmEsc(d.empresa)+'</div>':'')
     +'<div class="crm-card-resp">👤 '+(d.responsavelNome?crmEsc(d.responsavelNome):'<span style="color:#aaa">Sem responsável</span>')+'</div>'
-    +(d.valor?'<div class="crm-card-val">'+crmFmtBRL(d.valor)+'</div>':'')
+    +(d.funil==='assinatura_energia'
+      ?(d.kwh?'<div class="crm-card-val">'+Number(d.kwh).toLocaleString('pt-BR')+' kWh</div>':'')
+      :(d.valor?'<div class="crm-card-val">'+crmFmtBRL(d.valor)+'</div>':''))
     +'<div style="margin-bottom:4px">'+crmStatusBadge(d.status)+'</div>'
     +(fuLastTxt?'<div class="crm-fu-text">'+crmEsc(fuLastTxt)+'</div>':'')
     +'<div class="crm-card-fu-footer">'
@@ -3281,7 +3345,7 @@ function crmListaHtml(list){
       +'<td style="font-weight:500">'+crmEsc(d.nome)+'</td>'
       +'<td style="font-size:12px">'+crmEsc(d.empresa||'—')+'</td>'
       +'<td style="font-size:12px;font-family:DM Mono,monospace">'+crmEsc(d.telefone||'—')+'</td>'
-      +'<td style="font-family:DM Mono,monospace">'+(d.valor?crmFmtBRL(d.valor):'—')+'</td>'
+      +'<td style="font-family:DM Mono,monospace">'+(d.funil==='assinatura_energia'?(d.kwh?Number(d.kwh).toLocaleString('pt-BR')+' kWh':'—'):(d.valor?crmFmtBRL(d.valor):'—'))+'</td>'
       +'<td style="font-size:12px">'+crmEsc(d.produto||'—')+'</td>'
       +'<td style="font-size:12px">'+crmEsc(d.etapa||'—')+'</td>'
       +'<td style="font-size:12px">'+crmEsc(d.responsavelNome||'—')+'</td>'
@@ -3511,8 +3575,23 @@ function crmPopulateRespSelect(selId,selectedUid){
     return '<option value="'+u.uid+'"'+(u.uid===selectedUid?' selected':'')+'>'+crmEsc(u.name)+' — '+crmEsc(ROLE_LABELS[u.level]||u.level)+'</option>';
   }).join('');
 }
+function crmUpdateValorField(){
+  var lbl=document.getElementById('cd-valor-label');
+  var inp=document.getElementById('cd-valor');
+  if(!lbl||!inp) return;
+  if(getVal('cd-funil')==='assinatura_energia'){
+    lbl.textContent='Compra kWh';
+    inp.placeholder='0';
+    inp.step='1';
+  } else {
+    lbl.textContent='Valor estimado (R$)';
+    inp.placeholder='0';
+    inp.step='100';
+  }
+}
 function crmModalFunilChanged(){
   crmPopulateEtapaSelect('cd-etapa',getVal('cd-funil'),null);
+  crmUpdateValorField();
   crmDealEtapaChanged();
 }
 function crmDealEtapaChanged(){
@@ -3567,6 +3646,7 @@ function crmOpenNew(){
   document.getElementById('cd-historico-wrap').style.display='none';
   crmPopulateFunilSelect('cd-funil',crmFunilAtual);
   crmPopulateEtapaSelect('cd-etapa',crmFunilAtual,CRM_FUNIS[crmFunilAtual].etapas[0]);
+  crmUpdateValorField();
   crmPopulateRespSelect('cd-responsavel',CU.uid);
   document.getElementById('cd-save-btn').textContent='Salvar';
   document.getElementById('cd-objecao-cliente').value='';
@@ -3588,12 +3668,13 @@ window.crmOpenEdit=function(id){
   document.getElementById('cd-nome').value=d.nome||'';
   document.getElementById('cd-empresa').value=d.empresa||'';
   document.getElementById('cd-telefone').value=d.telefone||'';
-  document.getElementById('cd-valor').value=d.valor||'';
+  document.getElementById('cd-valor').value=(d.funil==='assinatura_energia'?d.kwh:d.valor)||'';
   document.getElementById('cd-produto').value=d.produto||'';
   document.getElementById('cd-status').value=d.status||'Em andamento';
   document.getElementById('cd-err').textContent='';
   crmPopulateFunilSelect('cd-funil',d.funil);
   crmPopulateEtapaSelect('cd-etapa',d.funil,d.etapa);
+  crmUpdateValorField();
   crmPopulateRespSelect('cd-responsavel',d.responsavelUid);
   var _saveBtn=document.getElementById('cd-save-btn');
   _saveBtn.textContent='Salvar alterações';
@@ -3630,18 +3711,23 @@ window.crmSaveDeal=async function(){
   if(btn.disabled) return;
   btn.disabled=true; var origTxt=btn.textContent; btn.textContent='Salvando...';
   try{
-    var valor=Number(getVal('cd-valor'))||0;
+    var valorInput=Number(getVal('cd-valor'))||0;
     var common={
       nome:nome,
       empresa:getVal('cd-empresa').trim(),
       telefone:getVal('cd-telefone').trim(),
-      valor:valor,
       produto:getVal('cd-produto').trim(),
       funil:funil,
       status:getVal('cd-status')||'Em andamento',
       responsavelUid:respUid,
       responsavelNome:respUser?respUser.name:'',
     };
+    if(funil==='assinatura_energia'){
+      common.kwh=valorInput;
+      common.valor=0;
+    } else {
+      common.valor=valorInput;
+    }
     if(funil==='venda_ufv'){
       var _apWrap=document.getElementById('cd-objecao-apresentacao-wrap');
       if(_apWrap&&_apWrap.style.display!=='none'){
@@ -4636,7 +4722,7 @@ var _origInitDash=window.initDashboard||null;
       <div class="ff"><label>Nome do cliente *</label><input type="text" id="cd-nome" placeholder="Nome completo"></div>
       <div class="ff"><label>Empresa</label><input type="text" id="cd-empresa" placeholder="Empresa (opcional)"></div>
       <div class="ff"><label>Telefone</label><input type="text" id="cd-telefone" placeholder="(00) 00000-0000"></div>
-      <div class="ff"><label>Valor estimado (R$)</label><input type="number" id="cd-valor" placeholder="0" min="0" step="100"></div>
+      <div class="ff"><label id="cd-valor-label">Valor estimado (R$)</label><input type="number" id="cd-valor" placeholder="0" min="0" step="100"></div>
       <div class="ff"><label>Produto</label><input type="text" id="cd-produto" placeholder="Ex: Varejo Solar"></div>
       <div class="ff"><label>Funil *</label><select id="cd-funil" onchange="crmModalFunilChanged()"></select></div>
       <div class="ff"><label>Etapa atual *</label><select id="cd-etapa" onchange="crmDealEtapaChanged()"></select></div>
