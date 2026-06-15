@@ -466,6 +466,24 @@ body{font-family:DM Sans,sans-serif;background:var(--bg);color:var(--bk);min-hei
 .crm-funnel-tab.active{background:var(--g);color:#fff;border-color:var(--g)}
 .crm-import-drop{border:1.5px dashed var(--bd);border-radius:10px;padding:22px;text-align:center;color:var(--gr);font-size:12px;cursor:pointer;transition:border-color .15s}
 .crm-import-drop:hover{border-color:var(--go)}
+.solana-tab{font-size:12px;padding:7px 16px;border-radius:8px;border:1.5px solid var(--bd);background:var(--wh);color:var(--gr);cursor:pointer;font-family:DM Sans,sans-serif;font-weight:500;transition:all .15s}
+.solana-tab.active{background:var(--g);color:#fff;border-color:var(--g)}
+.solana-mode-btn{font-size:12px;padding:5px 13px;border-radius:7px;border:1.5px solid var(--bd);background:var(--wh);color:var(--gr);cursor:pointer;font-family:DM Sans,sans-serif;font-weight:500;transition:all .15s}
+.solana-mode-btn.active{background:var(--g);color:#fff;border-color:var(--g)}
+.solana-msg{display:flex;gap:10px;max-width:85%}
+.solana-msg.user{align-self:flex-end;flex-direction:row-reverse}
+.solana-msg-bubble{padding:10px 14px;border-radius:10px;font-size:13px;line-height:1.6;color:var(--bk)}
+.solana-msg.solana .solana-msg-bubble{background:var(--bg);border:1px solid var(--bd);border-bottom-left-radius:4px}
+.solana-msg.user .solana-msg-bubble{background:var(--g);color:#fff;border-bottom-right-radius:4px}
+.solana-msg-avatar{width:28px;height:28px;border-radius:50%;background:var(--g);display:flex;align-items:center;justify-content:center;color:var(--go);font-size:11px;font-weight:700;flex-shrink:0;margin-top:2px;font-family:DM Sans,sans-serif}
+.solana-msg.user .solana-msg-avatar{background:var(--bd);color:var(--gr)}
+.solana-sim-chip{font-size:11px;padding:4px 10px;border-radius:7px;border:1px solid var(--bd);background:var(--bg);color:var(--gr);cursor:pointer;transition:border-color .15s}
+.solana-sim-chip:hover{border-color:var(--go);color:var(--g)}
+.solana-typing{display:flex;gap:4px;padding:10px 14px}
+.solana-typing span{width:6px;height:6px;border-radius:50%;background:var(--gr);animation:solanaBlink 1.2s infinite}
+.solana-typing span:nth-child(2){animation-delay:.2s}
+.solana-typing span:nth-child(3){animation-delay:.4s}
+@keyframes solanaBlink{0%,80%,100%{opacity:.3}40%{opacity:1}}
 .arq-item{display:flex;align-items:center;gap:10px;padding:9px 12px;background:#F7F5F0;border-radius:8px;margin-bottom:6px}
 .arq-icon{font-size:20px;flex-shrink:0}
 .arq-info{flex:1;min-width:0}
@@ -966,6 +984,7 @@ function buildNav() {
     ${navItem('relatorios','<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="3"/>','Relatórios')}
     ${navItem('usuarios','<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>','Usuários')}
     ` : ''}
+    ${(_lvl==='diretor'||_lvl==='gestor') ? navItem('solana','<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/><circle cx="9" cy="11.5" r="1"/><circle cx="12" cy="11.5" r="1"/><circle cx="15" cy="11.5" r="1"/>','Solana IA') : ''}
     <div class="sb-section">Conta</div>
     ${navItem('conta','<circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/>','Minha Conta')}
   `;
@@ -1045,7 +1064,7 @@ function allProspList() {
 }
 
 // // NAVIGATION
-const PAGE_TITLES = {prosp:'Registrar Prospecção',historico:'Histórico',metas:'Minhas Metas',indicadores:'Indicadores',agenda:'Agenda Executiva',marketing:'Marketing',time:'Visão do Time',usuarios:'Usuários',conta:'Minha Conta',relatorios:'Relatórios',crm:'CRM',oportunidades:'Oportunidades'};
+const PAGE_TITLES = {prosp:'Registrar Prospecção',historico:'Histórico',metas:'Minhas Metas',indicadores:'Indicadores',agenda:'Agenda Executiva',marketing:'Marketing',time:'Visão do Time',usuarios:'Usuários',conta:'Minha Conta',relatorios:'Relatórios',crm:'CRM',oportunidades:'Oportunidades',solana:'Solana IA'};
 let currentPage = 'prosp';
 
 function goPage(page) {
@@ -1071,6 +1090,7 @@ function renderPage(page) {
   else if(page==='marketing') renderMarketing(c);
   else if(page==='crm') renderCRM(c);
   else if(page==='oportunidades') renderOportunidades(c);
+  else if(page==='solana') renderSolana(c);
 }
 
 // // FORMULÁRIOS
@@ -4436,6 +4456,419 @@ window.oportConfirmImport=async function(){
   }finally{
     btn.disabled=false; btn.textContent='Importar';
   }
+};
+
+// SOLANA IA ──────────────────────────────────────────────────────────────
+const SOLANA_SYSTEM_PROMPT_DEFAULT = `Você é a Solana, consultora virtual da ESA Capital e Energia. Sua missão é atender leads de energia solar para o segmento varejo (residências e pequenos comércios) com abordagem consultiva — você escuta primeiro, faz perguntas para entender a situação do cliente, e só então apresenta soluções.
+
+SOBRE A ESA CAPITAL E ENERGIA:
+- Empresa de investimentos em energia solar sediada em Londrina, PR
+- Atua em todo o Brasil com projetos de pequeno, médio e grande porte
+- Portfólio: +106.000 casas abastecidas, +420.000 MWh de geração anual, +5,3 milhões m² construídos, +150.000 módulos instalados, +80 MW de potência instalada
+- Clientes: WEG, JBS, SENAI, Itaipu Binacional, Muffatão, Frisia, UEL e dezenas de outros
+- Processo Turn-Key 360°: da consultoria técnica e financeira até instalação, homologação e O&M
+- Três braços: ESA Capital (construtora/projetos), ESA Energia (comercialização por assinatura), movom (O&M)
+- Sistemas: usina de solo, usina de telhado, garagem solar (carport)
+- Segmentos: Agro, Indústria, Público, Comércio, Investidor, Mercado Livre
+
+PRODUTO VAREJO (foco principal agora):
+- Sistemas fotovoltaicos para residências e pequenos comércios
+- Ticket: R$ 15.000 a R$ 80.000 dependendo do consumo
+- Benefício principal: redução de 70% a 95% na fatura de energia
+- A fatura não vai a zero porque a concessionária cobra a taxa mínima (CIP + fio B)
+- Payback médio: 4 a 6 anos dependendo do consumo e forma de pagamento
+
+FORMAS DE PAGAMENTO:
+- À vista: melhor payback, desconto possível
+- Parcelamento no cartão de crédito: via maquininha
+- Financiamento bancário: parcelas mensais que geralmente ficam abaixo do valor atual da fatura
+
+COMO TRATAR A OBJEÇÃO DE PAYBACK E FATURA:
+Explique sempre com números reais. Exemplo: cliente com fatura de R$ 800/mês. Com solar, fatura cai para R$ 80 (taxa mínima). Economia: R$ 720/mês. Se financiou por R$ 35.000 em 60 meses, paga ~R$ 580/mês. Saldo: ainda economiza R$ 220/mês durante o financiamento. Após quitar: economia total de R$ 720/mês.
+
+COMO TRATAR A OBJEÇÃO DE PAGAMENTO:
+Nunca diga "não tem como". Sempre apresente o financiamento bancário como solução. A parcela do financiamento costuma ser menor que a fatura atual.
+
+FLUXO CONSULTIVO:
+1. Receba o lead com cordialidade, apresente-se brevemente
+2. Pergunte sobre a situação atual: qual o valor médio da fatura de energia?
+3. Pergunte sobre o imóvel: próprio ou alugado? Telhado ou terreno disponível?
+4. Com essas informações, apresente uma estimativa de economia e forma de pagamento adequada
+5. Quando o lead demonstrar interesse real, informe que um consultor especializado da ESA entrará em contato
+6. Registre nome, telefone e cidade para passar ao executivo responsável
+
+TOM E ESTILO:
+- Consultivo e humano — não robotizado
+- Linguagem simples, evite jargão técnico desnecessário
+- Faça no máximo 2 perguntas por mensagem
+- Nunca prometa valores exatos sem fazer a visita técnica
+- Sempre reforce o diferencial ESA: empresa com histórico comprovado, processo Turn-Key completo, O&M incluso
+
+MODO DE SIMULAÇÃO: Quando o usuário enviar uma objeção para treino, responda como a Solana responderia ao cliente, depois adicione uma linha separada com: [Análise da Solana: o que funcionou nessa resposta e o que poderia melhorar]
+
+MODO TREINAMENTO: Quando solicitado, explique estratégias de vendas, como lidar com objeções específicas, ou discuta cases do portfólio ESA para embasar argumentos.
+
+BASE DE CONHECIMENTO ADICIONAL:
+{{KNOWLEDGE_BASE}}`;
+
+const SOLANA_SIM_OBJECTIONS = [
+  'Quanto custa instalar painéis solares na minha casa?',
+  'Não tenho dinheiro para pagar à vista, como funciona?',
+  'Quanto tempo leva para pagar o investimento?',
+  'Minha fatura vai a zero após instalar?',
+  'E se ficar nublado por muitos dias?',
+  'Prefiro esperar a tecnologia melhorar mais'
+];
+
+let _solanaConfig = { status:'treinamento', systemPrompt: SOLANA_SYSTEM_PROMPT_DEFAULT, lastUpdated:null, updatedBy:null };
+let _solanaKnowledge = {};
+let _solanaChatMessages = [];
+let _solanaTab = 'atendimento';
+let _solanaChatMode = 'atendimento';
+let _solanaCurrentChatId = null;
+let _solanaLoading = false;
+
+function solanaCanAccess(){
+  var lvl=(CU.level||'').toLowerCase().trim();
+  return lvl==='diretor'||lvl==='gestor';
+}
+
+async function renderSolana(c){
+  if(!solanaCanAccess()){ goPage('prosp'); return; }
+  c.innerHTML='<div class="page-header"><div class="page-title">Solana IA</div><div class="page-sub">Consultora virtual para atendimento do varejo solar</div></div>'
+    +'<div style="text-align:center;padding:48px;color:var(--gr)">Carregando...</div>';
+  if(!window._solanaLoaded){
+    try{
+      var cfg=await fbGet('solana/config');
+      if(cfg) _solanaConfig=Object.assign({},_solanaConfig,cfg);
+    }catch(e){}
+    try{ _solanaKnowledge=await fbGet('solana/knowledge')||{}; }catch(e){ _solanaKnowledge={}; }
+    window._solanaLoaded=true;
+  }
+  solanaRenderShell(c);
+}
+
+function solanaRenderShell(c){
+  var isAtiva=_solanaConfig.status==='ativa';
+  var statusBadge=isAtiva
+    ? '<span style="background:var(--gl);color:var(--success);padding:4px 12px;border-radius:8px;font-size:12px;font-weight:600">● Ativa</span>'
+    : '<span style="background:var(--gf);color:var(--warn);padding:4px 12px;border-radius:8px;font-size:12px;font-weight:600">● Em treinamento</span>';
+  var tabs=[['atendimento','Chat de treino'],['conhecimento','Base de conhecimento'],['historico','Histórico de conversas']];
+  var html='<div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px">'
+    +'<div><div class="page-title">Solana IA</div><div class="page-sub">Consultora virtual para atendimento do varejo solar</div></div>'
+    +'<div style="display:flex;align-items:center;gap:10px">'+statusBadge
+    +'<button class="btn btn-secondary btn-sm" onclick="solanaToggleStatus()">'+(isAtiva?'Voltar para treinamento':'Ativar Solana')+'</button>'
+    +'</div></div>';
+  html+='<div style="display:flex;gap:8px;margin-bottom:16px;border-bottom:1px solid var(--bd);padding-bottom:12px;flex-wrap:wrap">'
+    +tabs.map(function(t){
+      return '<button class="solana-tab'+(_solanaTab===t[0]?' active':'')+'" onclick="solanaSetTab(\''+t[0]+'\')">'+t[1]+'</button>';
+    }).join('')
+    +'</div>';
+  html+='<div id="solana-content"></div>';
+  c.innerHTML=html;
+  solanaRenderTab();
+}
+
+function solanaSetTab(tab){
+  _solanaTab=tab;
+  solanaRenderShell(document.getElementById('content'));
+}
+
+function solanaRenderTab(){
+  var c=document.getElementById('solana-content');
+  if(!c) return;
+  if(_solanaTab==='conhecimento') return solanaRenderKnowledge(c);
+  if(_solanaTab==='historico') return solanaRenderHistory(c);
+  return solanaRenderChat(c);
+}
+
+// ---------- CHAT DE TREINO ----------
+
+function solanaRenderChat(c){
+  c.innerHTML='<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">'
+    +'<button class="solana-mode-btn" id="solana-mode-atendimento" onclick="solanaSetChatMode(\'atendimento\')">Atendimento</button>'
+    +'<button class="solana-mode-btn" id="solana-mode-simulacao" onclick="solanaSetChatMode(\'simulacao\')">Simulação de objeção</button>'
+    +'<button class="solana-mode-btn" id="solana-mode-treinamento" onclick="solanaSetChatMode(\'treinamento\')">Treinamento</button>'
+    +'<button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="solanaNewChat()">Nova conversa</button>'
+    +'</div>'
+    +'<div id="solana-sim-bar" style="display:none;gap:6px;flex-wrap:wrap;margin-bottom:12px"></div>'
+    +'<div class="card" style="display:flex;flex-direction:column;height:520px;padding:0;overflow:hidden">'
+      +'<div id="solana-messages" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px"></div>'
+      +'<div style="padding:12px 16px;border-top:1px solid var(--bd);display:flex;gap:8px">'
+        +'<textarea id="solana-input" placeholder="Digite sua mensagem..." onkeydown="solanaHandleKey(event)" style="flex:1;padding:10px 14px;border-radius:10px;border:1.5px solid var(--bd);background:var(--bg);font-size:14px;color:var(--bk);resize:none;height:42px;font-family:inherit"></textarea>'
+        +'<button id="solana-send-btn" class="btn btn-primary" onclick="solanaSendMessage()" style="height:42px">Enviar</button>'
+      +'</div>'
+    +'</div>';
+  var modeBtn=document.getElementById('solana-mode-'+_solanaChatMode);
+  if(modeBtn) modeBtn.classList.add('active');
+  if(_solanaChatMessages.length===0){
+    solanaAddMessage('solana','Olá! Sou a Solana, consultora virtual da ESA Capital e Energia.\n\nEste é o modo de treinamento — você pode simular conversas com clientes, treinar objeções ou me dar instruções de estratégia.\n\nComo posso ajudar?');
+  } else {
+    _solanaChatMessages.forEach(function(m){ solanaAddMessage(m.role==='assistant'?'solana':'user', m.displayText||m.content, false); });
+  }
+  if(_solanaChatMode==='simulacao') solanaShowSimBar();
+}
+
+function solanaSetChatMode(mode){
+  _solanaChatMode=mode;
+  document.querySelectorAll('.solana-mode-btn').forEach(function(b){b.classList.remove('active');});
+  var btn=document.getElementById('solana-mode-'+mode);
+  if(btn) btn.classList.add('active');
+  if(mode==='simulacao'){
+    solanaShowSimBar();
+  } else {
+    var bar=document.getElementById('solana-sim-bar');
+    if(bar){ bar.style.display='none'; bar.innerHTML=''; }
+  }
+}
+
+function solanaShowSimBar(){
+  var bar=document.getElementById('solana-sim-bar');
+  if(!bar) return;
+  bar.style.display='flex';
+  bar.innerHTML='<span style="font-size:11px;color:var(--gr);align-self:center">Objeções:</span>'
+    +SOLANA_SIM_OBJECTIONS.map(function(o){
+      return '<div class="solana-sim-chip" onclick="solanaInjectSim(\''+o.replace(/'/g,"\\'")+'\')">'+(o.length>30?o.slice(0,30)+'…':o)+'</div>';
+    }).join('');
+}
+
+function solanaAddMessage(role,text,scroll){
+  if(scroll===undefined) scroll=true;
+  var msgs=document.getElementById('solana-messages');
+  if(!msgs) return;
+  var div=document.createElement('div');
+  div.className='solana-msg '+(role==='solana'?'solana':'user');
+  var avatar=document.createElement('div');
+  avatar.className='solana-msg-avatar';
+  avatar.textContent=role==='solana'?'S':(CU.name||'V').charAt(0).toUpperCase();
+  var bubble=document.createElement('div');
+  bubble.className='solana-msg-bubble';
+  bubble.innerHTML=crmEsc(String(text)).replace(/\n/g,'<br>').replace(/\[Análise da Solana:(.*?)\]/g,'<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--bd);font-size:11px;color:var(--gr)"><strong>Análise:</strong>$1</div>');
+  div.appendChild(avatar);
+  div.appendChild(bubble);
+  msgs.appendChild(div);
+  if(scroll) msgs.scrollTop=msgs.scrollHeight;
+}
+
+function solanaShowTyping(){
+  var msgs=document.getElementById('solana-messages');
+  if(!msgs) return;
+  var div=document.createElement('div');
+  div.className='solana-msg solana';
+  div.id='solana-typing';
+  div.innerHTML='<div class="solana-msg-avatar">S</div><div class="solana-msg-bubble"><div class="solana-typing"><span></span><span></span><span></span></div></div>';
+  msgs.appendChild(div);
+  msgs.scrollTop=msgs.scrollHeight;
+}
+
+function solanaRemoveTyping(){
+  var t=document.getElementById('solana-typing');
+  if(t) t.remove();
+}
+
+function solanaBuildSystemPrompt(){
+  var entries=Object.values(_solanaKnowledge||{});
+  var kbText=entries.length
+    ? entries.map(function(k){return '### '+k.title+' ('+k.category+')\n'+k.content;}).join('\n\n')
+    : 'Nenhum material adicional incorporado ainda.';
+  var base=_solanaConfig.systemPrompt||SOLANA_SYSTEM_PROMPT_DEFAULT;
+  return base.replace('{{KNOWLEDGE_BASE}}',kbText);
+}
+
+window.solanaSendMessage=async function(){
+  var input=document.getElementById('solana-input');
+  var text=input.value.trim();
+  if(!text||_solanaLoading) return;
+  input.value='';
+  _solanaLoading=true;
+  var sendBtn=document.getElementById('solana-send-btn');
+  sendBtn.disabled=true;
+  solanaAddMessage('user',text);
+  _solanaChatMessages.push({role:'user',content:text,displayText:text});
+  solanaShowTyping();
+  var modeInstruction = _solanaChatMode==='simulacao'
+    ? '\n\nMODO SIMULAÇÃO ATIVO: O usuário está simulando a objeção de um cliente. Responda como responderia ao cliente, depois adicione [Análise da Solana: avaliação da resposta].'
+    : _solanaChatMode==='treinamento'
+    ? '\n\nMODO TREINAMENTO ATIVO: O usuário é da equipe ESA buscando orientação de vendas. Seja direto e estratégico.'
+    : '';
+  try{
+    var response=await fetch('/.netlify/functions/solana-chat',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        system: solanaBuildSystemPrompt()+modeInstruction,
+        messages: _solanaChatMessages.map(function(m){return {role:m.role,content:m.content};})
+      })
+    });
+    var data=await response.json();
+    if(!response.ok) throw new Error(data.error||'Erro na API');
+    var reply=(data.content&&data.content[0]&&data.content[0].text)||'Desculpe, tive um problema técnico. Pode repetir?';
+    solanaRemoveTyping();
+    solanaAddMessage('solana',reply);
+    _solanaChatMessages.push({role:'assistant',content:reply,displayText:reply});
+    await solanaSaveChat();
+  }catch(e){
+    solanaRemoveTyping();
+    solanaAddMessage('solana','Tive um problema de conexão. Pode tentar novamente?');
+  }
+  _solanaLoading=false;
+  sendBtn.disabled=false;
+  input.focus();
+};
+
+async function solanaSaveChat(){
+  try{
+    var nowIso=new Date().toISOString();
+    if(_solanaCurrentChatId){
+      await fbPatch('solana/trainingChats/'+_solanaCurrentChatId,{messages:_solanaChatMessages,updatedAt:nowIso});
+    } else {
+      _solanaCurrentChatId='chat_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+      await fbSet('solana/trainingChats/'+_solanaCurrentChatId,{
+        mode:_solanaChatMode,
+        messages:_solanaChatMessages,
+        startedAt:nowIso,
+        updatedAt:nowIso,
+        user:CU.name||'Diretoria'
+      });
+    }
+  }catch(e){}
+}
+
+function solanaNewChat(){
+  _solanaChatMessages=[];
+  _solanaCurrentChatId=null;
+  var msgs=document.getElementById('solana-messages');
+  if(msgs) msgs.innerHTML='';
+  solanaAddMessage('solana','Nova conversa iniciada. Como posso ajudar?');
+}
+
+function solanaInjectSim(text){
+  document.getElementById('solana-input').value=text;
+  solanaSendMessage();
+}
+
+function solanaHandleKey(e){
+  if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); solanaSendMessage(); }
+}
+
+// ---------- BASE DE CONHECIMENTO ----------
+
+function solanaRenderKnowledge(c){
+  var entries=Object.entries(_solanaKnowledge||{});
+  var html='<div class="card" style="margin-bottom:16px">'
+    +'<div class="card-title">Adicionar material</div>'
+    +'<div class="fg">'
+      +'<div class="ff s2"><label>Título</label><input type="text" id="solana-kb-title" placeholder="Ex: Manual de Prospecção Varejo v2"></div>'
+      +'<div class="ff"><label>Categoria</label><select id="solana-kb-category">'
+        +['Institucional','Produto','Objeções','Processo de vendas','Regulamento','Reunião (Granola)','Outro'].map(function(o){return '<option>'+o+'</option>';}).join('')
+      +'</select></div>'
+      +'<div class="ff s2"><label>Conteúdo</label><textarea id="solana-kb-content" rows="5" style="resize:vertical" placeholder="Cole aqui o conteúdo (texto do documento, transcrição, resumo de reunião, etc.)"></textarea></div>'
+    +'</div>'
+    +'<div class="form-actions"><button class="btn btn-primary" onclick="solanaAddKnowledge()">Adicionar à base de conhecimento</button></div>'
+    +'<div style="margin-top:12px;padding:10px;background:var(--bg);border-radius:8px;font-size:12px;color:var(--gr)"><strong>Dica:</strong> para incorporar transcrições de reuniões de treinamento (Granola), peça para buscar a transcrição/resumo da reunião e colar o conteúdo relevante aqui.</div>'
+    +'</div>';
+  html+='<div class="page-sub" style="margin-bottom:10px;font-weight:600;color:var(--g);font-size:13px">Materiais incorporados ('+entries.length+')</div>';
+  if(!entries.length){
+    html+='<div class="card" style="text-align:center;color:var(--gr)">Nenhum material adicionado ainda.</div>';
+  } else {
+    html+=entries.map(function(e){
+      var id=e[0], k=e[1];
+      return '<div class="card" style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px">'
+        +'<div style="flex:1">'
+          +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="font-weight:600;font-size:13px;color:var(--g)">'+crmEsc(k.title)+'</span>'
+          +'<span style="font-size:11px;padding:2px 8px;border-radius:7px;background:var(--bg);color:var(--gr)">'+crmEsc(k.category)+'</span></div>'
+          +'<div style="font-size:11px;color:var(--gr)">Adicionado em '+new Date(k.addedAt).toLocaleDateString('pt-BR')+' por '+crmEsc(k.addedBy||'—')+' · '+(k.content||'').length+' caracteres</div>'
+        +'</div>'
+        +'<button class="btn btn-danger btn-sm" onclick="solanaRemoveKnowledge(\''+id+'\')">Remover</button>'
+        +'</div>';
+    }).join('');
+  }
+  c.innerHTML=html;
+}
+
+window.solanaAddKnowledge=async function(){
+  var title=getVal('solana-kb-title').trim();
+  var category=getVal('solana-kb-category');
+  var content=getVal('solana-kb-content').trim();
+  if(!title||!content){ showToast('Preencha título e conteúdo.',false); return; }
+  var entry={
+    title:title, category:category, content:content,
+    addedAt:new Date().toISOString(),
+    addedBy:CU.name||'Diretoria',
+    source: category==='Reunião (Granola)'?'granola':'manual'
+  };
+  var id='kb_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+  try{
+    await fbSet('solana/knowledge/'+id,entry);
+    _solanaKnowledge[id]=entry;
+    solanaRenderKnowledge(document.getElementById('solana-content'));
+    showToast('✅ Material adicionado!');
+  }catch(e){
+    showToast('Erro ao salvar: '+e.message,false);
+  }
+};
+
+window.solanaRemoveKnowledge=async function(id){
+  if(!confirm('Remover este material da base de conhecimento da Solana?')) return;
+  try{
+    await fbDelete('solana/knowledge/'+id);
+    delete _solanaKnowledge[id];
+    solanaRenderKnowledge(document.getElementById('solana-content'));
+  }catch(e){
+    showToast('Erro ao remover: '+e.message,false);
+  }
+};
+
+// ---------- HISTÓRICO DE CONVERSAS ----------
+
+async function solanaRenderHistory(c){
+  c.innerHTML='<div style="text-align:center;padding:32px;color:var(--gr)">Carregando histórico...</div>';
+  var chats={};
+  try{ chats=await fbGet('solana/trainingChats')||{}; }catch(e){}
+  var entries=Object.entries(chats).sort(function(a,b){return new Date(b[1].updatedAt)-new Date(a[1].updatedAt);});
+  var modeLabel={atendimento:'Atendimento',simulacao:'Simulação de objeção',treinamento:'Treinamento'};
+  var html='<div class="page-sub" style="margin-bottom:10px;font-weight:600;color:var(--g);font-size:13px">Conversas de treino ('+entries.length+')</div>';
+  if(!entries.length){
+    html+='<div class="card" style="text-align:center;color:var(--gr)">Nenhuma conversa registrada ainda.</div>';
+  } else {
+    html+=entries.map(function(e){
+      var id=e[0], chat=e[1];
+      var msgs=chat.messages||[];
+      return '<div class="card" style="margin-bottom:10px">'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px">'
+          +'<div><span style="font-weight:600;font-size:13px;color:var(--g)">'+(modeLabel[chat.mode]||chat.mode)+'</span>'
+          +'<span style="font-size:11px;color:var(--gr);margin-left:8px">por '+crmEsc(chat.user||'—')+' · '+new Date(chat.updatedAt).toLocaleString('pt-BR')+'</span></div>'
+          +'<span style="font-size:11px;color:var(--gr)">'+msgs.length+' mensagens</span>'
+        +'</div>'
+        +'<details><summary style="cursor:pointer;font-size:12px;color:var(--go);font-weight:600">Ver conversa</summary>'
+        +'<div style="margin-top:8px;display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto">'
+          +msgs.map(function(m){
+            return '<div style="font-size:12px;padding:7px 11px;border-radius:8px;background:'+(m.role==='assistant'?'var(--bg)':'var(--gl)')+'"><strong>'+(m.role==='assistant'?'Solana':'Você')+':</strong> '+crmEsc((m.displayText||m.content||'').slice(0,500))+'</div>';
+          }).join('')
+        +'</div></details>'
+        +'</div>';
+    }).join('');
+  }
+  c.innerHTML=html;
+}
+
+// ---------- TOGGLE STATUS ----------
+
+window.solanaToggleStatus=async function(){
+  var newStatus=_solanaConfig.status==='ativa'?'treinamento':'ativa';
+  if(newStatus==='ativa'){
+    if(!confirm('Ativar a Solana? Ela ainda não está conectada ao funil de leads, mas este status indica que ela está liberada para uso. Confirma?')) return;
+  }
+  _solanaConfig.status=newStatus;
+  _solanaConfig.lastUpdated=new Date().toISOString();
+  _solanaConfig.updatedBy=CU.name||'Diretoria';
+  try{
+    await fbSet('solana/config',_solanaConfig);
+  }catch(e){
+    showToast('Erro ao salvar status: '+e.message,false);
+    return;
+  }
+  solanaRenderShell(document.getElementById('content'));
 };
 
 // USUARIOS
