@@ -956,6 +956,17 @@ function buildNav() {
   const isDir = _lvl==='diretor'||_lvl==='trafego';
   const isGes = _lvl==='gestor'||_lvl==='trafego';
   const isTop = isDir||isGes;
+  const isEng = _lvl==='engenharia';
+  if(isEng){
+    const nav = document.getElementById('sb-nav');
+    nav.innerHTML = `
+    <div class="sb-section">Prospecção</div>
+    ${navItem('crm','<path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/>','CRM')}
+    <div class="sb-section">Agenda</div>
+    ${navItem('agenda','<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>','Agenda Executiva')}
+    `;
+    return;
+  }
   // Check pending date-change requests for marketing badge
   var mkgPending=false;
   if(isDir||_lvl==='trafego'){
@@ -1078,6 +1089,7 @@ function goPage(page) {
 function renderCurrentPage(){ renderPage(currentPage); }
 function renderPage(page) {
   const c = document.getElementById('content');
+  if(CU.level==='engenharia' && page!=='crm' && page!=='agenda'){ goPage('crm'); return; }
   if(page==='prosp') renderProsp(c);
   else if(page==='historico') renderHistorico(c);
   else if(page==='metas') renderMetas(c);
