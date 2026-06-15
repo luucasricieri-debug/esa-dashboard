@@ -15,7 +15,7 @@ exports.handler = async function (event) {
     return { statusCode: 400, body: JSON.stringify({ error: 'Body inválido' }) };
   }
 
-  const { system, messages } = payload;
+  const { systemPrompt, messages } = payload;
   if (!Array.isArray(messages) || !messages.length) {
     return { statusCode: 400, body: JSON.stringify({ error: 'messages é obrigatório' }) };
   }
@@ -31,7 +31,7 @@ exports.handler = async function (event) {
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 1024,
-        system: system || '',
+        system: systemPrompt || '',
         messages: messages,
       }),
     });

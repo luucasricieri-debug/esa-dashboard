@@ -4696,7 +4696,7 @@ window.solanaSendMessage=async function(){
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
-        system: solanaBuildSystemPrompt()+modeInstruction,
+        systemPrompt: solanaBuildSystemPrompt()+modeInstruction,
         messages: _solanaChatMessages.map(function(m){return {role:m.role,content:m.content};})
       })
     });
