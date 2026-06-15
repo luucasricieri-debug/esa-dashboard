@@ -1141,14 +1141,22 @@ function getChk(id){
 }
 
 function populateEncaminhar(){
-  var sel=document.getElementById('f-proximo');
-  if(!sel||sel.options.length>1) return;
-  Object.values(allUsers||{}).forEach(function(u){
-    var opt=document.createElement('option');
-    opt.value=u.name+' — '+(u.cargo||ROLE_LABELS[u.level]||u.level);
-    opt.textContent=u.name+' — '+(u.cargo||ROLE_LABELS[u.level]||u.level);
-    sel.appendChild(opt);
-  });
+  try {
+    var sel = document.getElementById('f-proximo');
+    if(!sel || sel.options.length > 1) return;
+    var users = Object.values(allUsers || {});
+    if(!users || !users.length) return;
+    users.forEach(function(u){
+      if(!u) return;
+      var opt = document.createElement('option');
+      var label = (u.name||'') + ' — ' + (u.cargo || ROLE_LABELS[u.level] || u.level || '');
+      opt.value = label;
+      opt.textContent = label;
+      sel.appendChild(opt);
+    });
+  } catch(e) {
+    console.warn('populateEncaminhar:', e);
+  }
 }
 function renderProspGuestChips(){
   var container=document.getElementById('f-guests-list');
