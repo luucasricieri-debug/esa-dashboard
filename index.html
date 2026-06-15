@@ -1074,8 +1074,22 @@ function renderPage(page) {
 }
 
 // // FORMULÁRIOS
-function checkGroup(id, items) {
-  return `<div class="check-group" id="${id}-grp">${items.map(o=>`<label class="check-item"><input type="checkbox" value="${o}" onchange="syncChk(this,'${id}-grp')">${o}</label>`).join('')}</div><input type="hidden" id="${id}">`;
+function checkGroup(id, items, extraOnchange) {
+  const extra = extraOnchange ? (';'+extraOnchange+'()') : '';
+  return `<div class="check-group" id="${id}-grp">${items.map(o=>`<label class="check-item"><input type="checkbox" value="${o}" onchange="syncChk(this,'${id}-grp')${extra}">${o}</label>`).join('')}</div><input type="hidden" id="${id}">`;
+}
+function prospIsAssinaturaEnergia(produto){
+  var p=(produto||'').toLowerCase();
+  return p.indexOf('energia por assinatura')>=0 || p.indexOf('assinatura de energia')>=0 || p.indexOf('energia assinatura')>=0;
+}
+function prospProdutoChange(){
+  var produto=getChk('f-produto')||'';
+  var isAssin=prospIsAssinaturaEnergia(produto);
+  var contaWrap=document.getElementById('f-conta-wrap');
+  var demandaWrap=document.getElementById('f-demanda-wrap');
+  if(!contaWrap||!demandaWrap) return;
+  contaWrap.style.display=isAssin?'none':'';
+  demandaWrap.style.display=isAssin?'':'none';
 }
 function syncChk(inp, grpId) {
   const g=document.getElementById(grpId);
@@ -1187,8 +1201,9 @@ function formExecutivo() {
   <div class="card"><div class="card-title"><svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>Qualificação</div>
   <div class="fg"><div class="ff s2"><label>Campanha de captação *</label>${checkGroup('f-campanha',['Tráfego pago (Meta/Google)','Indicação — Embaixador','Indicação — Cliente','Prospecção ativa','Evento / Jackeline','SDR','Orgânico','Outro'])}</div>
   <div class="ff s2"><label>Setor *</label>${checkGroup('f-setor',['Residencial','Comércio','Indústria','Agronegócio','Condomínio','Frota / Mobilidade','Investidor','Outro'])}</div>
-  <div class="ff s2"><label>Produto *</label>${checkGroup('f-produto',['Varejo Solar','Eletromobilidade','Usinas Investimento','Energia Assinatura GD2','MOVOM'])}</div>
-  <div class="ff"><label>Conta de energia (R$/mês)</label><input type="text" id="f-conta" placeholder="Ex: 800"></div>
+  <div class="ff s2"><label>Produto *</label>${checkGroup('f-produto',['Varejo Solar','Eletromobilidade','Usinas Investimento','Energia Assinatura GD2','MOVOM'],'prospProdutoChange')}</div>
+  <div class="ff" id="f-conta-wrap"><label>Conta de energia (R$/mês)</label><input type="text" id="f-conta" placeholder="Ex: 800"></div>
+  <div class="ff" id="f-demanda-wrap" style="display:none"><label>Demanda kWh</label><input type="number" id="f-demanda-kwh" placeholder="kWh/mês"></div>
   <div class="ff"><label>Proprietário / autonomia?</label><select id="f-proprio"><option value="">Selecione</option><option>Sim</option><option>Não</option><option>Sócio com autonomia</option></select></div>
   <div class="ff s2"><label>Observações / objeções</label><textarea id="f-obs"></textarea></div></div></div>
   <div class="card"><div class="card-title"><svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/></svg>Resultado</div>
@@ -1263,9 +1278,10 @@ function formSDR() {
   <div class="ff"><label>Cargo</label><input type="text" id="f-cargo"></div>
   <div class="ff"><label>Setor *</label><select id="f-setor-sel"><option value="">Selecione</option>${['Eletromobilidade','Industrial','Agronegócio','Comércio','Condomínio','Logística','Energia Assinatura','Outro'].map(o=>`<option>${o}</option>`).join('')}</select></div></div></div>
   <div class="card"><div class="card-title"><svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/></svg>Qualificação BANT</div>
-  <div class="fg"><div class="ff s2"><label>Produto *</label>${checkGroup('f-produto',['Eletromobilidade','Usinas Investimento','Energia Assinatura GD2','Varejo Solar','MOVOM'])}</div>
+  <div class="fg"><div class="ff s2"><label>Produto *</label>${checkGroup('f-produto',['Eletromobilidade','Usinas Investimento','Energia Assinatura GD2','Varejo Solar','MOVOM'],'prospProdutoChange')}</div>
   <div class="ff s2"><label>Origem do contato *</label>${checkGroup('f-campanha',['Tráfego Pago','App de captação','Fatura de energia','LinkedIn','Indicação','Prospecção ativa','Evento','Outro'])}</div>
-  <div class="ff"><label>Conta de energia (R$/mês)</label><select id="f-conta"><option value="">Selecione</option><option>Abaixo de R$ 800</option><option>R$ 800 – R$ 2.000</option><option>R$ 2.000 – R$ 5.000</option><option>R$ 5.000 – R$ 15.000</option><option>Acima de R$ 15.000</option></select></div>
+  <div class="ff" id="f-conta-wrap"><label>Conta de energia (R$/mês)</label><select id="f-conta"><option value="">Selecione</option><option>Abaixo de R$ 800</option><option>R$ 800 – R$ 2.000</option><option>R$ 2.000 – R$ 5.000</option><option>R$ 5.000 – R$ 15.000</option><option>Acima de R$ 15.000</option></select></div>
+  <div class="ff" id="f-demanda-wrap" style="display:none"><label>Demanda kWh</label><input type="number" id="f-demanda-kwh" placeholder="kWh/mês"></div>
   <div class="ff"><label>Autonomia de decisão?</label><select id="f-proprio"><option value="">Selecione</option><option>Sim</option><option>Não</option><option>Parcial</option></select></div>
   <div class="ff"><label>Tem VEs / eletrificação?</label><select id="f-ve"><option value="">N/A</option><option>Sim</option><option>Não</option><option>Em análise</option></select></div>
   <div class="ff"><label>Objeção principal</label><input type="text" id="f-obs"></div>
@@ -1409,6 +1425,7 @@ async function saveProsp() {
     setor,
     produto,
     conta:    getVal('f-conta')    || '',
+    demanda_kwh: getVal('f-demanda-kwh') || '',
     proprio:  getVal('f-proprio')  || '',
     obs:      getVal('f-obs')      || '',
     status,
@@ -1479,6 +1496,32 @@ async function saveProsp() {
       await fbSet('crm/deals/'+omDealId, _omDealData);
       crmDeals[omDealId]=_omDealData;
       showToast('✅ Deal MOVOM criado no Funil O&M!');
+    }
+    // Gatilho CRM: Energia por assinatura + qualificado + agendado → cria deal no Funil Assinatura de Energia
+    if(rec.produto && prospIsAssinaturaEnergia(rec.produto) && rec.status && rec.status.includes('Qualificado') && rec.agendado==='Sim'){
+      var assDealId='deal_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+      var _assRespNome=rec.proximo||CU.name;
+      var _assRespUser=Object.values(allUsers).find(function(u){
+        return u.name===_assRespNome||((u.name+' — '+(u.cargo||ROLE_LABELS[u.level]||u.level))===_assRespNome);
+      });
+      var _assRespUid=_assRespUser?_assRespUser.uid:CU.uid;
+      var _assDealHist={};
+      if(rec.followups){Object.entries(rec.followups).forEach(function(e){_assDealHist[e[0]]=e[1];});}
+      var _assInitKey='fu_'+Date.now();
+      _assDealHist[_assInitKey]={ts:Date.now(),autor:CU.name,de:'',para:CRM_FUNIS.assinatura_energia.etapas[0],nota:'Lead qualificado — Energia por Assinatura',tipo:'followup'};
+      var _assDealData={
+        nome:rec.nome, empresa:rec.empresa||'', telefone:rec.tel||'', email:rec.email||'',
+        funil:'assinatura_energia', etapa:CRM_FUNIS.assinatura_energia.etapas[0], status:'Em andamento',
+        responsavelUid:_assRespUid, responsavelNome:_assRespUser?_assRespUser.name:CU.name,
+        captadorUid:CU.uid, captadorNome:CU.name,
+        kwh:Number(rec.demanda_kwh)||0,
+        ts:Date.now(), createdAt:Date.now(), createdBy:CU.uid, etapaTs:Date.now(),
+        origem:'Prospecção '+CU.name,
+        historico:_assDealHist
+      };
+      await fbSet('crm/deals/'+assDealId, _assDealData);
+      crmDeals[assDealId]=_assDealData;
+      showToast('✅ Deal Assinatura de Energia criado no CRM!');
     }
     // Agenda: visita agendada (agendado=Sim)
     if(rec.agendado === 'Sim' && rec.data_visita) {
