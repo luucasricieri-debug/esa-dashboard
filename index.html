@@ -498,6 +498,21 @@ body{font-family:DM Sans,sans-serif;background:var(--bg);color:var(--bk);min-hei
     padding-bottom: max(16px, env(safe-area-inset-bottom));
   }
 }
+/* RELATÓRIOS — impressão / PDF */
+.rel-print-header,.rel-print-footer{display:none}
+@media print{
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body{background:#fff}
+  .sidebar,.topbar,.mob-menu-btn,.mob-overlay,#rel-filter-card,.page-header{display:none!important}
+  .main{margin-left:0!important}
+  .content{padding:0!important}
+  #rel-charts-area>div{width:100%!important;background:#fff!important;page-break-inside:avoid}
+  table,th,td{border:1px solid #999!important}
+  th{background:#0D2418!important;color:#fff!important}
+  .rel-print-header{display:block!important;font-size:16px;font-weight:700;color:#0D2418;border-bottom:2px solid #0D2418;padding-bottom:10px;margin-bottom:14px}
+  .rel-print-footer{display:block!important;font-size:10px;color:#4A7A5E;border-top:1px solid #ccc;padding-top:6px;margin-top:16px;text-align:right}
+  @page{margin:1.5cm}
+}
 </style>
 </head>
 <body>
@@ -2031,6 +2046,7 @@ function renderRelatorios(c) {
 
   // Filter card
   var fc = document.createElement('div');
+  fc.id='rel-filter-card';
   fc.className='card';
   fc.style.cssText='margin-bottom:16px;padding:16px';
 
@@ -2072,6 +2088,11 @@ function renderRelatorios(c) {
   gerarBtn.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Gerar Relatório';
   gerarBtn.onclick=function(){renderRelCharts();};
   dateRow.appendChild(gerarBtn);
+  var pdfBtn = document.createElement('button');
+  pdfBtn.className='btn btn-secondary btn-sm';
+  pdfBtn.textContent='📄 Exportar PDF';
+  pdfBtn.onclick=function(){exportRelatorioPDF();};
+  dateRow.appendChild(pdfBtn);
   var printBtn = document.createElement('button');
   printBtn.className='btn btn-secondary btn-sm';
   printBtn.innerHTML='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> Imprimir / PDF';
@@ -2098,8 +2119,16 @@ function renderRelatorios(c) {
   fc.appendChild(chipBtns);
   var chartsArea=document.createElement('div');
   chartsArea.id='rel-charts-area';
+  var printHeader=document.createElement('div');
+  printHeader.className='rel-print-header';
+  printHeader.id='rel-print-header';
+  var printFooter=document.createElement('div');
+  printFooter.className='rel-print-footer';
+  printFooter.id='rel-print-footer';
+  pg.appendChild(printHeader);
   pg.appendChild(fc);
   pg.appendChild(chartsArea);
+  pg.appendChild(printFooter);
   container.innerHTML='';
   container.appendChild(pg);
   chartsArea.innerHTML='<div style="text-align:center;padding:48px;color:var(--gr)"><div style="font-size:28px;margin-bottom:10px">&#128202;</div><div>Selecione o per&#237;odo e colaboradores, depois clique em <b>Gerar Relat&#243;rio</b></div></div>';
@@ -2126,6 +2155,26 @@ function relClearAll(){
 function relDateChange(id,val){
   if(id==='rel-dt-ini') window._relDtIni=val;
   else window._relDtFim=val;
+}
+function relAtivDiaChange(val){
+  window._relAtivDia=val;
+  renderRelCharts();
+}
+function relHjList(uid,dia){
+  return Object.entries(allProsp[uid]||{}).filter(function(e){
+    if(e[0]==='interacoes'||!e[1]||!e[1].ts) return false;
+    return new Date(e[1].ts).toISOString().slice(0,10)===dia;
+  }).map(function(e){return e[1];});
+}
+function countMetaFor(uid,list,id,dia){
+  var u=allUsers[uid]||{};
+  var prevCU=CU, prevSel=window._metaDataSel;
+  CU={uid:uid,name:u.name,level:u.level};
+  window._metaDataSel=dia;
+  var r=0;
+  try{ r=countMeta(list,id); }catch(e){}
+  CU=prevCU; window._metaDataSel=prevSel;
+  return r;
 }
 function relSetPeriod(days){
   var fim=new Date();
@@ -2267,6 +2316,56 @@ async function renderRelCharts(){
       +'<td style="padding:9px 8px;text-align:center">'+contratosFechados+'</td>'
       +'<td style="padding:9px 14px;text-align:center"><span style="background:'+semBg+';color:'+semColor+';font-weight:700;border-radius:6px;padding:3px 10px;font-size:11px">'+semIcon+' '+semLbl+'</span></td>'
       +'</tr>';
+  });
+  html+='</tbody></table></div>';
+
+  // ── BLOCO ATIVIDADES: Atividades realizadas por colaborador no dia ────
+  if(!window._relAtivDia) window._relAtivDia=todayStr;
+  var ativDia=window._relAtivDia;
+  var ativDiaFmt=new Date(ativDia+'T12:00:00').toLocaleDateString('pt-BR');
+  function ativCell(label,real,meta){
+    var pct=meta>0?Math.round(real/meta*100):(real>0?100:0);
+    var bg=pct>=100?'#E8F5E9':pct>=50?'#FFF9EC':'#FEF0E8';
+    return '<td style="padding:9px 8px;text-align:center;background:'+bg+'">'
+      +'<div style="font-size:10px;color:var(--gr);margin-bottom:2px">'+label+'</div>'
+      +'<div style="font-weight:700">'+real+' <span style="font-weight:400;color:var(--gr)">(meta '+meta+')</span></div>'
+      +'</td>';
+  }
+  html+='<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">'
+    +'<div style="font-size:11px;font-weight:700;color:#0D2418;letter-spacing:.8px;text-transform:uppercase">Atividades realizadas — '+ativDiaFmt+'</div>'
+    +'<div style="display:flex;align-items:center;gap:6px">'
+      +'<label style="font-size:10px;color:var(--gr);font-family:DM Mono,monospace">CONSULTAR DIA</label>'
+      +'<input type="date" value="'+ativDia+'" onchange="relAtivDiaChange(this.value)" style="background:#F7F5F0;border:1.5px solid #E0DBD0;border-radius:8px;padding:6px 10px;font-family:DM Sans,sans-serif;font-size:12px;outline:none">'
+    +'</div></div>';
+  html+='<div style="background:#fff;border:1px solid #E8E4DC;border-radius:10px;overflow-x:auto;margin-bottom:20px"><table style="width:100%;border-collapse:collapse;font-size:12px">';
+  html+='<thead><tr style="background:#0D2418;color:#fff">'
+    +'<th style="padding:10px 14px;text-align:left;white-space:nowrap">Colaborador</th>'
+    +'<th style="padding:10px 8px;text-align:center">Indicador 1</th>'
+    +'<th style="padding:10px 8px;text-align:center">Indicador 2</th>'
+    +'<th style="padding:10px 8px;text-align:center">Indicador 3</th>'
+    +'</tr></thead><tbody>';
+  selUids.forEach(function(uid){
+    var u=allUsers[uid]; if(!u) return;
+    var hjList=relHjList(uid,ativDia);
+    html+='<tr style="border-top:1px solid #F0EDE8">'
+      +'<td style="padding:9px 14px;font-weight:600">'+u.name+'<div style="font-size:10px;color:var(--gr);font-weight:400">'+(ROLE_LABELS[u.level]||u.level)+'</div></td>';
+    if(u.level==='executivo'){
+      var dm=METAS.executivo.diaria;
+      html+=ativCell('Novos Clientes',countMetaFor(uid,hjList,'novos_clientes',ativDia),dm[0].meta);
+      html+=ativCell('Interação Comercial',countMetaFor(uid,hjList,'interacao',ativDia),dm[1].meta);
+      html+=ativCell('Atendimentos Realizados',countMetaFor(uid,hjList,'atendimentos',ativDia),dm[2].meta);
+    } else if(u.level==='sdr'){
+      var dms=METAS.sdr.diaria;
+      html+=ativCell('Prospecção',countMetaFor(uid,hjList,'prosp_sdr',ativDia),dms[0].meta);
+      html+=ativCell('Agendamentos',countMetaFor(uid,hjList,'agendamentos_sdr',ativDia),dms[1].meta);
+      html+=ativCell('Interação Comercial',countMetaFor(uid,hjList,'interacao_sdr',ativDia),dms[2].meta);
+    } else {
+      var totalProsp=hjList.filter(function(p){return !p.tipo||p.tipo!=='atendimento';}).length;
+      html+='<td style="padding:9px 8px;text-align:center"><div style="font-size:10px;color:var(--gr);margin-bottom:2px">Total de prospecções no dia</div><div style="font-weight:700">'+totalProsp+'</div></td>'
+        +'<td style="padding:9px 8px;text-align:center;color:var(--gr)">—</td>'
+        +'<td style="padding:9px 8px;text-align:center;color:var(--gr)">—</td>';
+    }
+    html+='</tr>';
   });
   html+='</tbody></table></div>';
 
@@ -3000,6 +3099,15 @@ window._mkgCloseMod=function(){
   if(m) m.remove();
 };
 function mkgBindRespChips(){}
+
+window.exportRelatorioPDF=function(){
+  var hdr=document.getElementById('rel-print-header');
+  var ftr=document.getElementById('rel-print-footer');
+  var hoje=new Date().toLocaleDateString('pt-BR');
+  if(hdr) hdr.textContent='ESA Capital e Energia — Relatório Comercial — '+hoje;
+  if(ftr) ftr.textContent='Gerado em '+new Date().toLocaleString('pt-BR')+' por '+CU.name;
+  window.print();
+};
 
 window.printRelatorio=function(){
   var ini=window._relDtIni,fim=window._relDtFim;
