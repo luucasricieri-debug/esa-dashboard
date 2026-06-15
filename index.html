@@ -773,6 +773,7 @@ const CRM_FUNIS = {
 };
 const CRM_STATUSES = ['Em andamento','Vendido','Perdido','Pausado'];
 let crmDeals = {};
+let oportunidades = {};
 let crmEtapasCustom = {};
 let allEventsToday = {};
 let crmView = 'kanban';
@@ -949,6 +950,7 @@ function buildNav() {
   const nav = document.getElementById('sb-nav');
   nav.innerHTML = `
     <div class="sb-section">Prospecção</div>
+    ${navItem('oportunidades','<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>','Oportunidades')}
     ${!isTop||true ? navItem('prosp','<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>','Registrar') : ''}
     ${navItem('historico','<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>','Histórico')}
     ${navItem('crm','<path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/>','CRM')}
@@ -1043,7 +1045,7 @@ function allProspList() {
 }
 
 // // NAVIGATION
-const PAGE_TITLES = {prosp:'Registrar Prospecção',historico:'Histórico',metas:'Minhas Metas',indicadores:'Indicadores',agenda:'Agenda Executiva',marketing:'Marketing',time:'Visão do Time',usuarios:'Usuários',conta:'Minha Conta',relatorios:'Relatórios',crm:'CRM'};
+const PAGE_TITLES = {prosp:'Registrar Prospecção',historico:'Histórico',metas:'Minhas Metas',indicadores:'Indicadores',agenda:'Agenda Executiva',marketing:'Marketing',time:'Visão do Time',usuarios:'Usuários',conta:'Minha Conta',relatorios:'Relatórios',crm:'CRM',oportunidades:'Oportunidades'};
 let currentPage = 'prosp';
 
 function goPage(page) {
@@ -1068,6 +1070,7 @@ function renderPage(page) {
   else if(page==='relatorios') renderRelatorios(c);
   else if(page==='marketing') renderMarketing(c);
   else if(page==='crm') renderCRM(c);
+  else if(page==='oportunidades') renderOportunidades(c);
 }
 
 // // FORMULÁRIOS
@@ -4158,6 +4161,240 @@ window.crmConfirmImport=async function(){
   }
 };
 
+// OPORTUNIDADES ──────────────────────────────────────────────────────────
+async function renderOportunidades(c){
+  c.innerHTML='<div class="page-header"><div class="page-title">Oportunidades</div><div class="page-sub">Base de empresas para prospecção</div></div>'
+    +'<div style="text-align:center;padding:48px;color:var(--gr)">Carregando...</div>';
+  if(!window._oportLoaded){
+    try{ oportunidades=await fbGet('oportunidades')||{}; }catch(e){ oportunidades={}; }
+    window._oportLoaded=true;
+  }
+  oportRenderPage(c);
+}
+function oportRenderPage(c){
+  var html='<div class="page-header" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px">'
+    +'<div><div class="page-title">Oportunidades</div><div class="page-sub">Base de empresas para prospecção</div></div>'
+    +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
+      +'<button class="btn btn-secondary btn-sm" onclick="oportOpenImport()">Importar CSV</button>'
+      +'<button class="btn btn-primary btn-sm" onclick="oportOpenNew()">+ Oportunidade</button>'
+    +'</div></div>';
+  html+='<div class="card" style="padding:14px;margin-bottom:16px">'
+    +'<input type="text" id="oport-search" placeholder="🔍 Buscar por Razão Social, Fantasia, Cidade ou Contato..." value="'+crmEsc(window._oportSearch||'')+'" oninput="oportSearch(this.value)" style="width:100%;background:var(--bg);border:1.5px solid var(--bd);border-radius:8px;padding:9px 13px;font-family:inherit;font-size:13px;outline:none;color:var(--bk)">'
+    +'</div>';
+  html+='<div class="card" style="padding:0;overflow-x:auto"><table class="tbl" id="oport-table"><thead><tr>'
+    +'<th>Razão Social</th><th>Nome Fantasia</th><th>Telefone</th><th>Cidade/Estado</th><th>Contato</th><th>Atividade Principal</th><th>Data de cadastro</th><th>Ações</th>'
+    +'</tr></thead><tbody id="oport-tbody">'+oportRowsHtml(Object.keys(oportunidades))+'</tbody></table></div>';
+  c.innerHTML=html;
+}
+function oportRowsHtml(ids){
+  var q=(window._oportSearch||'').toLowerCase().trim();
+  var list=ids.map(function(id){return Object.assign({_id:id},oportunidades[id]);}).filter(function(o){
+    if(!q) return true;
+    return [o.razaoSocial,o.nomeFantasia,o.cidadeEstado,o.contato].some(function(v){return (v||'').toLowerCase().indexOf(q)>=0;});
+  }).sort(function(a,b){return (b.createdAt||0)-(a.createdAt||0);});
+  if(!list.length) return '<tr><td colspan="8" style="padding:28px;text-align:center;color:var(--gr)">Nenhuma oportunidade encontrada</td></tr>';
+  return list.map(function(o){
+    var dt=o.createdAt?new Date(o.createdAt).toLocaleDateString('pt-BR'):'—';
+    return '<tr>'
+      +'<td style="font-weight:600">'+crmEsc(o.razaoSocial||'—')+'</td>'
+      +'<td>'+crmEsc(o.nomeFantasia||'—')+'</td>'
+      +'<td style="font-family:DM Mono,monospace">'+crmEsc(o.telefone||'—')+'</td>'
+      +'<td>'+crmEsc(o.cidadeEstado||'—')+'</td>'
+      +'<td>'+crmEsc(o.contato||'—')+'</td>'
+      +'<td style="font-size:12px">'+crmEsc(o.atividade||'—')+'</td>'
+      +'<td style="font-size:11px;color:var(--gr);font-family:DM Mono,monospace">'+dt+'</td>'
+      +'<td><div style="display:flex;gap:6px"><button class="btn btn-secondary btn-sm" onclick="oportOpenEdit(\''+o._id+'\')">Editar</button><button class="btn btn-danger btn-sm" onclick="oportDelete(\''+o._id+'\')">Excluir</button></div></td>'
+      +'</tr>';
+  }).join('');
+}
+function oportSearch(q){
+  window._oportSearch=q;
+  var tb=document.getElementById('oport-tbody');
+  if(tb) tb.innerHTML=oportRowsHtml(Object.keys(oportunidades));
+}
+function oportOpenNew(){
+  document.getElementById('oport-modal-title').textContent='Nova Oportunidade';
+  document.getElementById('op-id').value='';
+  ['op-razao','op-fantasia','op-telefone','op-endereco','op-cidade','op-contato','op-atividade'].forEach(function(id){document.getElementById(id).value='';});
+  document.getElementById('op-err').textContent='';
+  openModal('modal-oport');
+}
+window.oportOpenEdit=function(id){
+  var o=oportunidades[id];
+  if(!o){showToast('Oportunidade não encontrada.',false);return;}
+  document.getElementById('oport-modal-title').textContent='Editar Oportunidade';
+  document.getElementById('op-id').value=id;
+  document.getElementById('op-razao').value=o.razaoSocial||'';
+  document.getElementById('op-fantasia').value=o.nomeFantasia||'';
+  document.getElementById('op-telefone').value=o.telefone||'';
+  document.getElementById('op-endereco').value=o.endereco||'';
+  document.getElementById('op-cidade').value=o.cidadeEstado||'';
+  document.getElementById('op-contato').value=o.contato||'';
+  document.getElementById('op-atividade').value=o.atividade||'';
+  document.getElementById('op-err').textContent='';
+  openModal('modal-oport');
+};
+window.oportSave=async function(){
+  var razaoSocial=getVal('op-razao').trim();
+  var telefone=getVal('op-telefone').trim();
+  var endereco=getVal('op-endereco').trim();
+  var cidadeEstado=getVal('op-cidade').trim();
+  var contato=getVal('op-contato').trim();
+  var errEl=document.getElementById('op-err');
+  errEl.textContent='';
+  if(!razaoSocial||!telefone||!endereco||!cidadeEstado||!contato){
+    errEl.textContent='Preencha todos os campos obrigatórios (*).';
+    return;
+  }
+  var btn=document.getElementById('op-save-btn');
+  if(btn.disabled) return;
+  btn.disabled=true; var orig=btn.textContent; btn.textContent='Salvando...';
+  try{
+    var id=getVal('op-id')||('oport_'+Date.now()+'_'+Math.random().toString(36).slice(2,7));
+    var existing=oportunidades[id]||{};
+    var rec={
+      razaoSocial:razaoSocial,
+      nomeFantasia:getVal('op-fantasia').trim(),
+      telefone:telefone,
+      endereco:endereco,
+      cidadeEstado:cidadeEstado,
+      contato:contato,
+      atividade:getVal('op-atividade').trim(),
+      createdAt:existing.createdAt||Date.now(),
+      createdBy:existing.createdBy||CU.uid,
+    };
+    await fbSet('oportunidades/'+id,rec);
+    oportunidades[id]=rec;
+    closeModal('modal-oport');
+    oportRenderPage(document.getElementById('content'));
+    showToast('✅ Oportunidade salva!');
+  }catch(e){
+    errEl.textContent='Erro ao salvar: '+e.message;
+  }finally{
+    btn.disabled=false; btn.textContent=orig;
+  }
+};
+window.oportDelete=async function(id){
+  if(!confirm('Excluir esta oportunidade?')) return;
+  try{
+    await fbDelete('oportunidades/'+id);
+    delete oportunidades[id];
+    oportRenderPage(document.getElementById('content'));
+    showToast('Oportunidade excluída.');
+  }catch(e){
+    showToast('Erro ao excluir: '+e.message,false);
+  }
+};
+
+// Oportunidades — Importação CSV
+var OPORT_CSV_COLS={
+  razao_social:['Razão Social','Razao Social','RAZAO SOCIAL'],
+  nome_fantasia:['Nome Fantasia','NOME FANTASIA'],
+  telefone:['Telefone','TELEFONE','Telefones'],
+  endereco:['Endereço','Endereco','Logradouro'],
+  cidade:['Cidade','Cidade/Estado','CIDADE'],
+  contato:['Contato','Sócio','Socio','CONTATO'],
+  atividade:['Atividade','Atividade Principal','ATIVIDADE'],
+};
+function oportNormCol(s){
+  return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]/g,'');
+}
+function oportFindCol(header,candidates){
+  var normHeader=header.map(oportNormCol);
+  for(var i=0;i<candidates.length;i++){
+    var idx=normHeader.indexOf(oportNormCol(candidates[i]));
+    if(idx>=0) return idx;
+  }
+  return -1;
+}
+function oportField(r,header,idx,key){
+  var i=idx[key];
+  if(i==null||i<0) return '';
+  return (r[header[i]]||'').trim();
+}
+function oportOpenImport(){
+  document.getElementById('oi-err').textContent='';
+  document.getElementById('oi-preview').innerHTML='';
+  document.getElementById('oi-file').value='';
+  document.getElementById('oi-import-btn').disabled=true;
+  window._oportImportRows=null;
+  window._oportImportHeader=null;
+  openModal('modal-oport-import');
+}
+function oportHandleCsvFile(file){
+  if(!file) return;
+  var errEl=document.getElementById('oi-err');
+  errEl.textContent='';
+  var reader=new FileReader();
+  reader.onload=function(){
+    try{
+      var parsed=crmParseCsv(String(reader.result||''));
+      if(!parsed.rows.length){ errEl.textContent='Nenhuma linha encontrada no arquivo.'; return; }
+      window._oportImportRows=parsed.rows;
+      window._oportImportHeader=parsed.header;
+      var prev=document.getElementById('oi-preview');
+      prev.innerHTML='<b>'+parsed.rows.length+'</b> linha(s) encontrada(s). Colunas detectadas: '+crmEsc(parsed.header.join(', '));
+      document.getElementById('oi-import-btn').disabled=false;
+    }catch(e){ errEl.textContent='Erro ao ler arquivo: '+e.message; }
+  };
+  reader.onerror=function(){ errEl.textContent='Não foi possível ler o arquivo.'; };
+  reader.readAsText(file,'UTF-8');
+}
+window.oportConfirmImport=async function(){
+  var rows=window._oportImportRows, header=window._oportImportHeader;
+  var errEl=document.getElementById('oi-err');
+  errEl.textContent='';
+  if(!rows||!rows.length){ errEl.textContent='Selecione um arquivo CSV válido.'; return; }
+  var idx={};
+  Object.keys(OPORT_CSV_COLS).forEach(function(k){ idx[k]=oportFindCol(header,OPORT_CSV_COLS[k]); });
+  var btn=document.getElementById('oi-import-btn');
+  if(btn.disabled&&btn.textContent==='Importando...') return;
+  btn.disabled=true; btn.textContent='Importando...';
+  var ok=0, errs=[];
+  try{
+    for(var i=0;i<rows.length;i++){
+      var r=rows[i];
+      var razaoSocial=oportField(r,header,idx,'razao_social');
+      var telefone=oportField(r,header,idx,'telefone');
+      var contato=oportField(r,header,idx,'contato');
+      var missing=[];
+      if(!razaoSocial) missing.push('Razão Social');
+      if(!telefone) missing.push('Telefone');
+      if(!contato) missing.push('Contato');
+      if(missing.length){
+        errs.push('Linha '+(i+2)+': faltando '+missing.join(', '));
+        continue;
+      }
+      var id='oport_'+Date.now()+'_'+Math.random().toString(36).slice(2,7)+'_'+i;
+      var rec={
+        razaoSocial:razaoSocial,
+        nomeFantasia:oportField(r,header,idx,'nome_fantasia'),
+        telefone:telefone,
+        endereco:oportField(r,header,idx,'endereco'),
+        cidadeEstado:oportField(r,header,idx,'cidade'),
+        contato:contato,
+        atividade:oportField(r,header,idx,'atividade'),
+        createdAt:Date.now(),
+        createdBy:CU.uid,
+        importadoCsv:true,
+      };
+      await fbSet('oportunidades/'+id,rec);
+      oportunidades[id]=rec;
+      ok++;
+    }
+    oportRenderPage(document.getElementById('content'));
+    var rep='<div><b>'+ok+' importado(s), '+errs.length+' erro(s)</b></div>';
+    if(errs.length) rep+='<div style="color:#C0392B;margin-top:6px;max-height:120px;overflow-y:auto">'+errs.map(function(e){return crmEsc(e);}).join('<br>')+'</div>';
+    document.getElementById('oi-preview').innerHTML=rep;
+    showToast(ok+' importado(s), '+errs.length+' erro(s)',errs.length===0);
+    window._oportImportRows=null;
+  }catch(e){
+    errEl.textContent='Erro na importação: '+e.message;
+  }finally{
+    btn.disabled=false; btn.textContent='Importar';
+  }
+};
+
 // USUARIOS
 function renderUsuarios(c) {
   if(CU.level==='executivo'||CU.level==='sdr'||CU.level==='jackeline'||CU.level==='engenharia'||CU.level==='marketing'){c.innerHTML='<div class="empty"><div class="empty-icon">🔒</div><div class="empty-text">Acesso restrito</div></div>';return;}
@@ -4958,6 +5195,43 @@ var _origInitDash=window.initDashboard||null;
     <div id="ci-preview" style="margin-top:12px;font-size:12px;color:var(--gr)"></div>
     <div class="auth-err" id="ci-err"></div>
     <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-crm-import')">Cancelar</button><button class="btn btn-primary" id="ci-import-btn" onclick="crmConfirmImport()" disabled>Importar</button></div>
+  </div>
+</div>
+
+<!-- OPORTUNIDADES: NOVA/EDITAR -->
+<div class="modal-bg" id="modal-oport">
+  <div class="modal" style="width:500px">
+    <div class="modal-title"><span id="oport-modal-title">Nova Oportunidade</span><button class="modal-close" onclick="closeModal('modal-oport')">×</button></div>
+    <input type="hidden" id="op-id">
+    <div class="fg">
+      <div class="ff s2"><label>Razão Social *</label><input type="text" id="op-razao" placeholder="Razão social da empresa"></div>
+      <div class="ff s2"><label>Nome Fantasia</label><input type="text" id="op-fantasia" placeholder="Nome fantasia (opcional)"></div>
+      <div class="ff"><label>Telefone *</label><input type="tel" id="op-telefone" placeholder="(00) 00000-0000"></div>
+      <div class="ff"><label>Cidade/Estado *</label><input type="text" id="op-cidade" placeholder="Ex.: Londrina/PR"></div>
+      <div class="ff s2"><label>Endereço *</label><input type="text" id="op-endereco" placeholder="Logradouro, número, complemento"></div>
+      <div class="ff"><label>Contato *</label><input type="text" id="op-contato" placeholder="Nome do contato/sócio"></div>
+      <div class="ff"><label>Atividade Principal</label><input type="text" id="op-atividade" placeholder="Ex.: Comércio varejista (opcional)"></div>
+    </div>
+    <div class="auth-err" id="op-err"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-oport')">Cancelar</button>
+      <button class="btn btn-primary" id="op-save-btn" onclick="oportSave()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- OPORTUNIDADES: IMPORTAR CSV -->
+<div class="modal-bg" id="modal-oport-import">
+  <div class="modal" style="width:460px">
+    <div class="modal-title"><span>Importar Oportunidades via CSV</span><button class="modal-close" onclick="closeModal('modal-oport-import')">×</button></div>
+    <label class="crm-import-drop" id="oi-drop" for="oi-file">
+      <div>📄 Clique para selecionar um arquivo .csv</div>
+      <div style="margin-top:6px;font-size:10px">Colunas aceitas: Razão Social, Nome Fantasia, Telefone, Endereço, Cidade/Estado, Contato, Atividade Principal</div>
+    </label>
+    <input type="file" id="oi-file" accept=".csv,text/csv" style="display:none" onchange="oportHandleCsvFile(this.files[0])">
+    <div id="oi-preview" style="margin-top:12px;font-size:12px;color:var(--gr)"></div>
+    <div class="auth-err" id="oi-err"></div>
+    <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-oport-import')">Cancelar</button><button class="btn btn-primary" id="oi-import-btn" onclick="oportConfirmImport()" disabled>Importar</button></div>
   </div>
 </div>
 
