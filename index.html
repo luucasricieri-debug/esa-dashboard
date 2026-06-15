@@ -4543,13 +4543,12 @@ let _solanaChatMode = 'atendimento';
 let _solanaCurrentChatId = null;
 let _solanaLoading = false;
 
-function solanaCanAccess(){
-  var lvl=(CU.level||'').toLowerCase().trim();
-  return lvl==='diretor'||lvl==='gestor';
-}
-
 async function renderSolana(c){
-  if(!solanaCanAccess()){ goPage('prosp'); return; }
+  var _sLvl=(CU.level||'').toLowerCase().trim();
+  if(_sLvl!=='diretor'&&_sLvl!=='gestor'){
+    c.innerHTML='<div style="padding:2rem;text-align:center;color:var(--gr)">Acesso restrito a Diretoria e Gerência.</div>';
+    return;
+  }
   c.innerHTML='<div class="page-header"><div class="page-title">Solana IA</div><div class="page-sub">Consultora virtual para atendimento do varejo solar</div></div>'
     +'<div style="text-align:center;padding:48px;color:var(--gr)">Carregando...</div>';
   if(!window._solanaLoaded){
