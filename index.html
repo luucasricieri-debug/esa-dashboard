@@ -3525,7 +3525,12 @@ function crmKanbanHtml(list){
     var etDisplay=custom[i]!==undefined?custom[i]:etOrig;
     var cards=crmSortDeals(byEtapa[etOrig]||[]);
     var editBtn=canEdit?'<button class="crm-col-edit-btn" onclick="crmEtapaEditStart(\''+crmFunilAtual+'\','+i+',this)" title="Renomear etapa">✏</button>':'';
-    return '<div class="crm-col"><div class="crm-col-head"><span class="crm-col-head-label">'+crmEsc(etDisplay)+'</span>'+editBtn+'<span class="n">'+cards.length+'</span></div>'
+    var _isAss=crmFunilAtual==='assinatura_energia';
+    var _colSum=cards.reduce(function(a,x){return a+(Number(_isAss?x.kwh:x.valor)||0);},0);
+    var _colSumStr=_colSum>0?(_isAss?_colSum.toLocaleString('pt-BR')+' kWh':crmFmtBRL(_colSum)):'';
+    return '<div class="crm-col"><div class="crm-col-head"><span class="crm-col-head-label">'+crmEsc(etDisplay)+'</span>'+editBtn+'<span class="n">'+cards.length+'</span>'
+      +(_colSumStr?'<span style="font-size:11px;color:#C9940A;font-weight:600;font-family:DM Mono,monospace;flex-shrink:0">'+_colSumStr+'</span>':'')
+      +'</div>'
       +'<div class="crm-col-body" data-etapa="'+crmEsc(etOrig)+'">'
       +(cards.length?cards.map(crmCardHtml).join(''):'<div style="text-align:center;color:var(--gr);font-size:11px;padding:18px 6px">Nenhum deal</div>')
       +'</div></div>';
@@ -3817,14 +3822,47 @@ function crmAvancarElaboracao(){
 function crmRenderHistPanel(d){
   var wrap=document.getElementById('cd-historico-wrap'),box=document.getElementById('cd-historico');
   if(!wrap||!box) return;
-  var hist=Object.values(d.historico||{}).sort(function(a,b){return (b.ts||0)-(a.ts||0);});
-  if(!hist.length){ wrap.style.display='none'; return; }
+  var hist=Object.entries(d.historico||{})
+    .map(function(e){return Object.assign({_key:e[0]},e[1]);})
+    .sort(function(a,b){return (a.ts||0)-(b.ts||0);});
   wrap.style.display='block';
-  box.innerHTML=hist.map(function(h){
-    return '<div style="background:#F7F5F0;border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:12px">'
-      +'<span style="color:var(--gr);font-size:10px;font-family:DM Mono,monospace">'+(h.ts?new Date(h.ts).toLocaleString('pt-BR'):'')+'</span><br>'
-      +crmEsc(h.autorNome||'—')+' moveu de <b>'+crmEsc(h.de||'—')+'</b> para <b>'+crmEsc(h.para||'—')+'</b>'
-      +'</div>';
+  if(!hist.length){
+    box.innerHTML='<div style="color:var(--gr);font-size:12px;padding:10px;text-align:center">Nenhum registro ainda.</div>';
+    return;
+  }
+  box.innerHTML=hist.map(function(h,i){
+    var tipo=h.tipo==='followup'?'followup':h.tipo==='edicao'?'edicao':h.tipo==='insucesso'?'insucesso':(h.de!==undefined||h.para!==undefined)?'movimentacao':'outro';
+    var ts=h.ts?new Date(h.ts).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+    var autor=crmEsc(h.autorNome||h.autor||'—');
+    var dotColor,bg,body;
+    if(tipo==='followup'){
+      dotColor='var(--go)'; bg='var(--gf)';
+      var res=h.resultado||'';
+      var resBadge=res==='sucesso'?'<span style="background:var(--gl);color:var(--success);border-radius:6px;padding:2px 7px;font-size:10px;font-weight:600;margin-left:6px">✓ Sucesso</span>'
+        :res==='insucesso'?'<span style="background:#FEF0E8;color:var(--danger);border-radius:6px;padding:2px 7px;font-size:10px;font-weight:600;margin-left:6px">✗ Insucesso</span>':'';
+      body='<span style="font-weight:600">Follow-up'+resBadge+'</span>'
+        +(h.texto||h.nota||h.resumo?'<div style="margin-top:4px">'+crmEsc(h.texto||h.nota||h.resumo||'')+'</div>':'');
+    } else if(tipo==='edicao'){
+      dotColor='var(--gr)'; bg='var(--bg)';
+      body='<span style="color:var(--gr)">Atualização por '+autor+(h.nota?'</span><div style="margin-top:3px;color:var(--gr)">'+crmEsc(h.nota)+'</div>':'</span>');
+    } else if(tipo==='insucesso'){
+      dotColor='var(--danger)'; bg='#FEF0E8';
+      body='<span style="font-weight:600;color:var(--danger)">Insucesso</span>'+(h.nota?'<div style="margin-top:4px">'+crmEsc(h.nota)+'</div>':'');
+    } else {
+      dotColor='var(--g)'; bg='var(--gl)';
+      body='<b>'+crmEsc(h.de||'—')+'</b> <span style="color:var(--gr)">→</span> <b>'+crmEsc(h.para||'—')+'</b>';
+    }
+    var isLast=i===hist.length-1;
+    return '<div style="display:flex;gap:9px">'
+      +'<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:8px">'
+        +'<div style="width:8px;height:8px;border-radius:50%;background:'+dotColor+';margin-top:5px;flex-shrink:0"></div>'
+        +(isLast?'':'<div style="width:1px;flex:1;background:var(--bd);min-height:12px;margin-top:3px"></div>')
+      +'</div>'
+      +'<div style="flex:1;background:'+bg+';border-radius:8px;padding:7px 10px;font-size:12px;margin-bottom:8px">'
+        +'<div style="color:var(--gr);font-size:10px;font-family:DM Mono,monospace;margin-bottom:3px">'+ts+' · '+autor+'</div>'
+        +body
+      +'</div>'
+    +'</div>';
   }).join('');
 }
 function crmOpenNew(){
@@ -4328,7 +4366,7 @@ window.oportSave=async function(){
   var contato=getVal('op-contato').trim();
   var errEl=document.getElementById('op-err');
   errEl.textContent='';
-  if(!razaoSocial||!telefone||!endereco||!cidadeEstado||!contato){
+  if(!razaoSocial||!telefone||!endereco||!cidadeEstado){
     errEl.textContent='Preencha todos os campos obrigatórios (*).';
     return;
   }
@@ -4446,7 +4484,6 @@ window.oportConfirmImport=async function(){
       var missing=[];
       if(!razaoSocial) missing.push('Razão Social');
       if(!telefone) missing.push('Telefone');
-      if(!contato) missing.push('Contato');
       if(missing.length){
         errs.push('Linha '+(i+2)+': faltando '+missing.join(', '));
         continue;
@@ -5590,8 +5627,8 @@ var _origInitDash=window.initDashboard||null;
       </div>
     </div>
     <div id="cd-historico-wrap" style="display:none;margin-top:14px">
-      <div style="font-size:10px;color:var(--gr);text-transform:uppercase;letter-spacing:.7px;font-family:DM Mono,monospace;margin-bottom:6px">Histórico de movimentações</div>
-      <div id="cd-historico" style="max-height:140px;overflow-y:auto"></div>
+      <div style="font-size:10px;color:var(--gr);text-transform:uppercase;letter-spacing:.7px;font-family:DM Mono,monospace;margin-bottom:8px">Histórico do deal</div>
+      <div id="cd-historico" style="max-height:320px;overflow-y:auto"></div>
     </div>
     <div class="auth-err" id="cd-err"></div>
     <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-crm-deal')">Cancelar</button><button class="btn btn-primary" id="cd-save-btn" onclick="crmSaveDeal()">Salvar</button></div>
@@ -5707,7 +5744,7 @@ var _origInitDash=window.initDashboard||null;
       <div class="ff"><label>Telefone *</label><input type="tel" id="op-telefone" placeholder="(00) 00000-0000"></div>
       <div class="ff"><label>Cidade/Estado *</label><input type="text" id="op-cidade" placeholder="Ex.: Londrina/PR"></div>
       <div class="ff s2"><label>Endereço *</label><input type="text" id="op-endereco" placeholder="Logradouro, número, complemento"></div>
-      <div class="ff"><label>Contato *</label><input type="text" id="op-contato" placeholder="Nome do contato/sócio"></div>
+      <div class="ff"><label>Contato</label><input type="text" id="op-contato" placeholder="Nome do contato/sócio (opcional)"></div>
       <div class="ff"><label>Atividade Principal</label><input type="text" id="op-atividade" placeholder="Ex.: Comércio varejista (opcional)"></div>
     </div>
     <div class="auth-err" id="op-err"></div>
