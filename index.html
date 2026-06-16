@@ -1493,8 +1493,8 @@ async function saveProsp() {
 
   try {
     await fbSet('prospections/' + CU.uid + '/' + id, rec);
-    var intKey='int_'+Date.now();
-    try{await fbSet('prospections/'+CU.uid+'/interacoes/'+intKey,{ts:Date.now(),tipo:'interacao',autor:CU.name});}catch(e){}
+    registrarInteracao();
+    if(rec.agendado==='Sim') registrarInteracao();
     showToast('✅ Prospecção salva!');
     // Gatilho CRM: executivo + qualificado + visita agendada → cria deal automático
     if(CU.level==='executivo' && rec.status && rec.status.includes('Qualificado') && rec.agendado==='Sim'){
@@ -1664,6 +1664,11 @@ async function saveProsp() {
       }
     }
     await loadAllData();
+    if(window._oportunidadeOrigemId){
+      var _ooId=window._oportunidadeOrigemId;
+      window._oportunidadeOrigemId=null;
+      try{await fbSet('oportunidades/'+_ooId,null);if(typeof oportunidades!=='undefined'&&oportunidades) delete oportunidades[_ooId];showToast('✅ Oportunidade convertida em prospecção!');}catch(e2){}
+    }
     goPage('historico');
   } catch(e) {
     showToast('Erro ao salvar: ' + e.message, false);
@@ -1710,7 +1715,7 @@ function renderHistorico(c) {
 }
 
 async function registrarInteracao(){
-  if(!CU||!CU.uid||(CU.level||'').toLowerCase()!=='executivo') return;
+  if(!CU||!CU.uid) return;
   try{
     var _intKey='int_'+Date.now();
     var _entry={ts:Date.now(),tipo:'interacao',autor:CU.name};
@@ -4329,7 +4334,7 @@ function oportRowsHtml(ids){
       +'<td>'+crmEsc(o.contato||'—')+'</td>'
       +'<td style="font-size:12px">'+crmEsc(o.atividade||'—')+'</td>'
       +'<td style="font-size:11px;color:var(--gr);font-family:DM Mono,monospace">'+dt+'</td>'
-      +'<td><div style="display:flex;gap:6px"><button class="btn btn-secondary btn-sm" onclick="oportOpenEdit(\''+o._id+'\')">Editar</button><button class="btn btn-danger btn-sm" onclick="oportDelete(\''+o._id+'\')">Excluir</button></div></td>'
+      +'<td><div style="display:flex;gap:6px"><button class="btn btn-secondary btn-sm" onclick="oportOpenEdit(\''+o._id+'\')">Editar</button><button class="btn btn-danger btn-sm" onclick="oportDelete(\''+o._id+'\')">Excluir</button><button class="btn btn-primary btn-sm" onclick="oportToRegistrar(\''+o._id+'\')">➡ Registrar</button></div></td>'
       +'</tr>';
   }).join('');
 }
@@ -4410,6 +4415,29 @@ window.oportDelete=async function(id){
   }catch(e){
     showToast('Erro ao excluir: '+e.message,false);
   }
+};
+
+window.oportToRegistrar=function(id){
+  var o=oportunidades[id];
+  if(!o){showToast('Oportunidade não encontrada.',false);return;}
+  window._oportunidadeOrigemId=id;
+  goPage('prosp');
+  setTimeout(function(){
+    var fNome=document.getElementById('f-nome');
+    if(!fNome) return;
+    fNome.value=o.contato||o.razaoSocial||'';
+    var fEmp=document.getElementById('f-empresa');
+    if(fEmp) fEmp.value=o.razaoSocial||'';
+    var fTel=document.getElementById('f-tel');
+    if(fTel) fTel.value=o.telefone||'';
+    var fCid=document.getElementById('f-cidade');
+    if(fCid) fCid.value=o.cidadeEstado||'';
+    var grp=document.getElementById('f-campanha-grp');
+    if(grp){
+      var inp=grp.querySelector('input[value="Prospecção ativa"]');
+      if(inp&&!inp.checked){inp.checked=true;syncChk(inp,'f-campanha-grp');}
+    }
+  },300);
 };
 
 // Oportunidades — Importação CSV
@@ -5235,8 +5263,7 @@ window.saveLeadFollowup=async function(){
     }
     if(saveBtn){saveBtn.disabled=false;saveBtn.textContent='Salvar follow-up';}
     closeModal('modal-lead-panel');
-    var intKey='int_'+Date.now();
-    try{await fbSet('prospections/'+CU.uid+'/interacoes/'+intKey,{ts:Date.now(),tipo:'interacao',autor:CU.name});}catch(e){}
+    registrarInteracao();
     showToast('\xe2\x9c\x85 Follow-up salvo!');
     try{await loadAllData();}catch(e2){}
     var c=document.getElementById('content');
@@ -5529,7 +5556,7 @@ window.agSaveEv=async function(){
   var free=[];gIds.forEach(function(gid){free.push(gid);});
   var gObjs=TEAM_MEMBERS.filter(function(m){return free.indexOf(m.id)>=0;}).map(function(m){return{id:m.id,name:m.name,cargo:m.cargo,status:'pending'};});
   var ev={id:evId,title:title,time:timeVal,desc:document.getElementById('ag-m-desc').value.trim(),pri:document.getElementById('ag-m-pri').value,duration:document.getElementById('ag-m-dur').value,guests:gObjs,author:agUser||'Anonimo',author_uid:CU?CU.uid:'',ts:Date.now(),tipo_atendimento:(document.getElementById('ag-m-tipo-atend')&&document.getElementById('ag-m-tipo-atend').value)||'cliente'};
-  try{var r=await fetch(DB+'/events/'+dateVal+'/'+evId+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(ev)});if(!r.ok)throw new Error('HTTP '+r.status);if(dateVal!==agSel)agSel=dateVal;agCloseEv();await agPoll();showToast('✅ Atividade criada!');}catch(e){showToast('Erro: '+e.message,false);}
+  try{var r=await fetch(DB+'/events/'+dateVal+'/'+evId+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(ev)});if(!r.ok)throw new Error('HTTP '+r.status);if(dateVal!==agSel)agSel=dateVal;agCloseEv();await agPoll();registrarInteracao();showToast('✅ Atividade criada!');}catch(e){showToast('Erro: '+e.message,false);}
   btn.disabled=false;btn.textContent='Salvar';
 };
 window.agDelEv=async function(id){if(!confirm('Remover esta atividade?'))return;try{await fetch(DB+'/events/'+agSel+'/'+id+'.json',{method:'DELETE'});await agPoll();}catch(e){showToast('Erro: '+e.message,false);}};
