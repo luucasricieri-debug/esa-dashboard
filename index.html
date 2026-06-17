@@ -4584,15 +4584,21 @@ async function renderIndCRM(c){
         +'</div>';
     }).join('')
     +'</div>'
-    +'<div style="background:#fff;border:1px solid var(--bd);border-radius:12px;padding:16px">'
+    +'<div style="background:#fff;border:1px solid var(--bd);border-radius:12px;padding:16px;margin-bottom:20px">'
     +'<div style="font-size:12px;font-weight:700;color:var(--g);margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px">Valor total em negociação por funil</div>'
     +'<canvas id="chart-bar-total" height="100"></canvas>'
+    +'</div>'
+    +'<div style="background:#fff;border:1px solid var(--bd);border-radius:12px;padding:16px">'
+    +'<div style="font-size:12px;font-weight:700;color:var(--g);margin-bottom:16px;text-transform:uppercase;letter-spacing:.5px">Valor total em negociação por etapa — Funil Venda UFV</div>'
+    +'<div style="position:relative;height:400px"><canvas id="chart-etapas-venda-ufv"></canvas></div>'
+    +'<div id="indcrm-etapas-ufv-table" style="margin-top:16px"></div>'
     +'</div>';
   var loadEl=document.getElementById('indcrm-loading');
   if(loadEl) loadEl.outerHTML=gridHtml;
   setTimeout(function(){
     indCRMPieCharts(dealsList,funilKeys);
     indCRMBarChart(dealsList,funilKeys);
+    indCRMEtapasUFV(dealsList);
   },60);
 }
 
@@ -4679,6 +4685,80 @@ function indCRMBarChart(deals,funilKeys){
     },
     plugins:[barLabelPlugin]
   });
+}
+
+function indCRMEtapasUFV(deals){
+  var canvasId='chart-etapas-venda-ufv';
+  var el=document.getElementById(canvasId);
+  if(!el) return;
+  if(window._chartEtapasUFV){window._chartEtapasUFV.destroy();window._chartEtapasUFV=null;}
+  var etapas=CRM_FUNIS.venda_ufv.etapas||[];
+  var active=deals.filter(function(d){return d.funil==='venda_ufv'&&d.status==='Em andamento';});
+  var rows=etapas.map(function(e){
+    var ds=active.filter(function(d){return d.etapa===e;});
+    var valor=ds.reduce(function(s,d){return s+(Number(d.valor)||0);},0);
+    return {etapa:e,count:ds.length,valor:valor};
+  });
+  var n=etapas.length;
+  var colors=etapas.map(function(_,i){
+    var t=n>1?i/(n-1):0;
+    return 'rgb('+Math.round(0x0D+(0xC9-0x0D)*t)+','+Math.round(0x24+(0x94-0x24)*t)+','+Math.round(0x18+(0x0A-0x18)*t)+')';
+  });
+  window._chartEtapasUFV=new Chart(el.getContext('2d'),{
+    type:'bar',
+    data:{
+      labels:etapas,
+      datasets:[{data:rows.map(function(r){return r.valor;}),backgroundColor:colors,borderRadius:4,borderSkipped:false,barThickness:24}]
+    },
+    options:{
+      indexAxis:'y',
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{
+          title:function(items){return items[0].label;},
+          label:function(ctx){
+            var r=rows[ctx.dataIndex];
+            return ['  Valor: R$ '+Number(ctx.raw).toLocaleString('pt-BR',{minimumFractionDigits:2}),'  Deals: '+r.count+(r.count>0?'  |  Ticket médio: R$ '+(r.valor/r.count).toLocaleString('pt-BR',{minimumFractionDigits:2}):'')];
+          }
+        }}
+      },
+      scales:{
+        x:{beginAtZero:true,grid:{color:'rgba(0,0,0,.05)'},ticks:{callback:function(v){return v>=1000?'R$ '+(v/1000).toFixed(0)+'k':v===0?'R$ 0':v;}}},
+        y:{grid:{display:false},ticks:{font:{size:11}}}
+      }
+    }
+  });
+  var maxValor=rows.reduce(function(m,r){return r.valor>m?r.valor:m;},0);
+  var totalCount=rows.reduce(function(s,r){return s+r.count;},0);
+  var totalValor=rows.reduce(function(s,r){return s+r.valor;},0);
+  var tableEl=document.getElementById('indcrm-etapas-ufv-table');
+  if(!tableEl) return;
+  var tbody=rows.map(function(r){
+    var ticket=r.count?r.valor/r.count:0;
+    var isMax=r.valor>0&&r.valor===maxValor;
+    return '<tr style="background:'+(isMax?'#FFF9EC':'')+'">'+
+      '<td style="font-weight:'+(isMax?'600':'400')+'">'+crmEsc(r.etapa)+'</td>'+
+      '<td style="text-align:right;font-family:DM Mono,monospace">'+r.count+'</td>'+
+      '<td style="text-align:right;font-family:DM Mono,monospace;color:var(--go)">'+
+        (r.valor?'R$ '+r.valor.toLocaleString('pt-BR',{minimumFractionDigits:2}):'—')+'</td>'+
+      '<td style="text-align:right;font-family:DM Mono,monospace">'+
+        (ticket?'R$ '+ticket.toLocaleString('pt-BR',{minimumFractionDigits:2}):'—')+'</td>'+
+      '</tr>';
+  }).join('');
+  var totalTicket=totalCount?totalValor/totalCount:0;
+  tableEl.innerHTML='<table class="tbl" style="width:100%;font-size:12px">'+
+    '<thead><tr><th>Etapa</th><th style="text-align:right">Nº Deals</th><th style="text-align:right">Valor Total (R$)</th><th style="text-align:right">Ticket Médio (R$)</th></tr></thead>'+
+    '<tbody>'+tbody+'</tbody>'+
+    '<tfoot><tr style="font-weight:700">'+
+    '<td>Total</td>'+
+    '<td style="text-align:right;font-family:DM Mono,monospace">'+totalCount+'</td>'+
+    '<td style="text-align:right;font-family:DM Mono,monospace;color:var(--go)">R$ '+totalValor.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</td>'+
+    '<td style="text-align:right;font-family:DM Mono,monospace">'+
+      (totalTicket?'R$ '+totalTicket.toLocaleString('pt-BR',{minimumFractionDigits:2}):'—')+'</td>'+
+    '</tr></tfoot>'+
+    '</table>';
 }
 
 // SOLANA IA ──────────────────────────────────────────────────────────────
