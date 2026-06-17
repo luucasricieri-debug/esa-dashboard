@@ -4556,72 +4556,71 @@ async function renderIndCRM(c){
     c.innerHTML='<div style="padding:2rem;text-align:center;color:var(--gr)">Acesso restrito a Diretoria e Gerência.</div>';
     return;
   }
+  window._indCRMContainer=c;
   var funilKeys=Object.keys(CRM_FUNIS);
-  c.innerHTML='<div style="padding:24px"><h2 style="font-size:18px;font-weight:700;color:var(--g);margin:0 0 20px">Indicadores CRM</h2>'
-    +'<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:20px;margin-bottom:28px">'
+  c.innerHTML='<div style="padding:24px">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">'
+    +'<h2 style="font-size:18px;font-weight:700;color:var(--g);margin:0">Indicadores CRM</h2>'
+    +'<button class="btn btn-secondary btn-sm" onclick="renderIndCRM(window._indCRMContainer)">🔄 Atualizar</button>'
+    +'</div>'
+    +'<div id="indcrm-loading" style="text-align:center;padding:48px;color:var(--gr)">Carregando dados...</div>'
+    +'</div>';
+  var dealsList;
+  try{
+    var allDeals=await fbGet('crm/deals')||{};
+    dealsList=Object.entries(allDeals).map(function(e){return Object.assign({},e[1],{_id:e[0]});});
+  }catch(e){
+    document.getElementById('indcrm-loading').innerHTML='<span style="color:var(--danger)">Erro ao carregar dados: '+crmEsc(e.message)+'</span>';
+    return;
+  }
+  var gridHtml='<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:20px;margin-bottom:28px">'
     +funilKeys.map(function(k){
+      var total=dealsList.filter(function(d){return d.funil===k&&d.status==='Em andamento';}).length;
       return '<div style="background:#fff;border:1px solid var(--bd);border-radius:12px;padding:16px">'
         +'<div style="font-size:12px;font-weight:700;color:var(--g);margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px">'+CRM_FUNIS[k].nome+'</div>'
-        +'<canvas id="indcrm-pie-'+k+'" height="220"></canvas>'
-        +'<div id="indcrm-pie-legend-'+k+'" style="margin-top:10px;font-size:11px;line-height:1.8"></div>'
+        +'<canvas id="chart-pizza-'+k+'" height="220"></canvas>'
+        +'<div id="indcrm-legend-'+k+'" style="margin-top:10px;font-size:11px;line-height:1.8"></div>'
+        +(total?'<div style="margin-top:8px;font-size:11px;color:var(--gr)">Total em andamento: <b style="color:var(--g)">'+total+'</b></div>':'')
         +'</div>';
     }).join('')
     +'</div>'
     +'<div style="background:#fff;border:1px solid var(--bd);border-radius:12px;padding:16px">'
     +'<div style="font-size:12px;font-weight:700;color:var(--g);margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px">Valor total em negociação por funil</div>'
-    +'<canvas id="indcrm-bar" height="100"></canvas>'
-    +'</div>'
+    +'<canvas id="chart-bar-total" height="100"></canvas>'
     +'</div>';
-  if(typeof crmDeals==='undefined'||!crmDeals){
-    try{
-      var raw=await fbGet('crm');
-      window.crmDeals={};
-      Object.values(raw||{}).forEach(function(funilData){
-        Object.values(funilData||{}).forEach(function(d){
-          if(d&&d._id) window.crmDeals[d._id]=d;
-        });
-      });
-    }catch(e){
-      c.querySelector('h2').insertAdjacentHTML('afterend','<div style="color:var(--danger);margin-bottom:16px">Erro ao carregar dados: '+crmEsc(e.message)+'</div>');
-    }
-  }
-  var deals=Object.values(window.crmDeals||{});
+  var loadEl=document.getElementById('indcrm-loading');
+  if(loadEl) loadEl.outerHTML=gridHtml;
   setTimeout(function(){
-    indCRMPieCharts(deals,funilKeys);
-    indCRMBarChart(deals,funilKeys);
+    indCRMPieCharts(dealsList,funilKeys);
+    indCRMBarChart(dealsList,funilKeys);
   },60);
 }
 
 function indCRMPieCharts(deals,funilKeys){
   var palette=['#0D2418','#1A5C38','#2E7D52','#4CAF50','#81C784','#A5D6A7','#4A7A5E','#2E8B57','#388E3C','#006400'];
   funilKeys.forEach(function(k){
-    var canvasId='indcrm-pie-'+k;
+    var canvasId='chart-pizza-'+k;
     var el=document.getElementById(canvasId);
     if(!el) return;
-    if(window._chartInstances&&window._chartInstances[canvasId]){
-      window._chartInstances[canvasId].destroy();
-    }
+    if(window['_chart_'+canvasId]){window['_chart_'+canvasId].destroy();window['_chart_'+canvasId]=null;}
     var etapas=CRM_FUNIS[k].etapas||[];
-    var active=deals.filter(function(d){return d.funil===k&&d.status!=='arquivado';});
+    var active=deals.filter(function(d){return d.funil===k&&d.status==='Em andamento';});
     var counts=etapas.map(function(e){return active.filter(function(d){return d.etapa===e;}).length;});
-    var nonZero=counts.filter(function(n){return n>0;});
-    if(!nonZero.length){
+    var leg=document.getElementById('indcrm-legend-'+k);
+    if(!counts.some(function(n){return n>0;})){
       el.style.display='none';
-      var leg=document.getElementById('indcrm-pie-legend-'+k);
-      if(leg) leg.innerHTML='<span style="color:var(--gr);font-style:italic">Sem deals ativos</span>';
+      if(leg) leg.innerHTML='<span style="color:var(--gr);font-style:italic">Sem deals em andamento</span>';
       return;
     }
+    el.style.display='';
     var labels=etapas.filter(function(_,i){return counts[i]>0;});
     var data=counts.filter(function(n){return n>0;});
     var colors=labels.map(function(_,i){return palette[i%palette.length];});
-    var chart=new Chart(el.getContext('2d'),{
+    window['_chart_'+canvasId]=new Chart(el.getContext('2d'),{
       type:'doughnut',
       data:{labels:labels,datasets:[{data:data,backgroundColor:colors,borderWidth:2,borderColor:'#fff'}]},
       options:{responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){return ctx.label+': '+ctx.raw+' deal'+(ctx.raw!==1?'s':'');}}}}}
     });
-    if(!window._chartInstances) window._chartInstances={};
-    window._chartInstances[canvasId]=chart;
-    var leg=document.getElementById('indcrm-pie-legend-'+k);
     if(leg){
       leg.innerHTML=labels.map(function(l,i){
         return '<span style="display:inline-flex;align-items:center;gap:5px;margin-right:10px">'
@@ -4633,20 +4632,19 @@ function indCRMPieCharts(deals,funilKeys){
 }
 
 function indCRMBarChart(deals,funilKeys){
-  var canvasId='indcrm-bar';
+  var canvasId='chart-bar-total';
   var el=document.getElementById(canvasId);
   if(!el) return;
-  if(window._chartInstances&&window._chartInstances[canvasId]){
-    window._chartInstances[canvasId].destroy();
-  }
+  if(window['_chart_'+canvasId]){window['_chart_'+canvasId].destroy();window['_chart_'+canvasId]=null;}
   var labels=funilKeys.map(function(k){return CRM_FUNIS[k].nome;});
   var values=funilKeys.map(function(k){
     var isAss=k==='assinatura_energia';
-    return deals.filter(function(d){return d.funil===k&&d.status!=='arquivado';})
+    return deals.filter(function(d){return d.funil===k&&d.status==='Em andamento';})
       .reduce(function(s,d){return s+(Number(isAss?d.kwh:d.valor)||0);},0);
   });
-  var crmBarLabels={
-    id:'crmBarLabels',
+  var _funilKeys=funilKeys;
+  var barLabelPlugin={
+    id:'indcrmBarLabels',
     afterDatasetsDraw:function(chart){
       var ctx=chart.ctx;
       chart.data.datasets.forEach(function(_,i){
@@ -4654,7 +4652,7 @@ function indCRMBarChart(deals,funilKeys){
         meta.data.forEach(function(bar,idx){
           var v=chart.data.datasets[i].data[idx];
           if(!v) return;
-          var k=funilKeys[idx];
+          var k=_funilKeys[idx];
           var isAss=k==='assinatura_energia';
           var txt=isAss?v.toLocaleString('pt-BR')+' kWh':'R$ '+v.toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:0});
           ctx.save();
@@ -4667,22 +4665,20 @@ function indCRMBarChart(deals,funilKeys){
       });
     }
   };
-  var chart=new Chart(el.getContext('2d'),{
+  window['_chart_'+canvasId]=new Chart(el.getContext('2d'),{
     type:'bar',
     data:{labels:labels,datasets:[{data:values,backgroundColor:'#2E7D52',borderRadius:6,borderSkipped:false}]},
     options:{
       responsive:true,
       plugins:{legend:{display:false},tooltip:{callbacks:{label:function(ctx){
-        var k=funilKeys[ctx.dataIndex];
+        var k=_funilKeys[ctx.dataIndex];
         var isAss=k==='assinatura_energia';
         return isAss?ctx.raw.toLocaleString('pt-BR')+' kWh':'R$ '+ctx.raw.toLocaleString('pt-BR',{minimumFractionDigits:2});
       }}}},
       scales:{y:{beginAtZero:true,ticks:{callback:function(v){return v>0?'R$ '+(v/1000).toFixed(0)+'k':v;}}}}
     },
-    plugins:[crmBarLabels]
+    plugins:[barLabelPlugin]
   });
-  if(!window._chartInstances) window._chartInstances={};
-  window._chartInstances[canvasId]=chart;
 }
 
 // SOLANA IA ──────────────────────────────────────────────────────────────
