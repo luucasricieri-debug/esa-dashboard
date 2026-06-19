@@ -1726,11 +1726,12 @@ async function registrarInteracao(){
 }
 
 // // METAS
-function agCountAtendCliente(events){
+function agCountAtendCliente(events,tName){
   var count=0;
+  var checkName=tName||CU.name;
   Object.values(events||{}).forEach(function(ev){
     if(!ev) return;
-    var isMe=ev.author===CU.name||(ev.guests&&ev.guests.some(function(g){return g.name===CU.name;}));
+    var isMe=ev.author===checkName||(ev.guests&&ev.guests.some(function(g){return g.name===checkName;}));
     var isSucesso=ev.resultado==='sucesso';
     var isCliente=!ev.tipo_atendimento||ev.tipo_atendimento==='cliente';
     if(isMe&&isSucesso&&isCliente) count++;
@@ -1745,7 +1746,8 @@ function crmEtapasContendo(funilKey,substr){
     return et.indexOf(substr)>=0||String(disp).indexOf(substr)>=0;
   });
 }
-function countMeta(list,id){
+function countMeta(list,id,_uid,_uName){
+  var _eu=_uid||CU.uid, _en=_uName||CU.name;
   if(id==='prosp') return list.filter(function(p){return !p.tipo||p.tipo!=='atendimento';}).length;
   if(id==='sucesso'||id==='qualif') return list.filter(p=>p.status&&p.status.includes('Qualificado')).length;
   if(id==='qualif_ag') return list.filter(p=>p.status&&p.status.toLowerCase().includes('qualificado')&&p.agendado==='Sim').length;
@@ -1765,41 +1767,41 @@ function countMeta(list,id){
   if(id==='agendamentos_sdr'){
     var todayStart=window._metaDataSel?new Date(window._metaDataSel+'T00:00:00'):new Date(); todayStart.setHours(0,0,0,0);
     var todayTs=todayStart.getTime(), todayEnd=todayTs+86400000;
-    var interacoes=(allProsp[CU.uid]||{}).interacoes||{};
+    var interacoes=(allProsp[_eu]||{}).interacoes||{};
     return Object.values(interacoes).filter(function(i){return i&&i.tipo==='agendamento'&&i.ts>=todayTs&&i.ts<todayEnd;}).length;
   }
   if(id==='agendamentos_sdr_mensal'){
     var now=new Date();
     var monStart=new Date(now.getFullYear(),now.getMonth(),1).getTime();
     var monEnd=new Date(now.getFullYear(),now.getMonth()+1,1).getTime();
-    var interacoes=(allProsp[CU.uid]||{}).interacoes||{};
+    var interacoes=(allProsp[_eu]||{}).interacoes||{};
     return Object.values(interacoes).filter(function(i){return i&&i.tipo==='agendamento'&&i.ts>=monStart&&i.ts<monEnd;}).length;
   }
   if(id==='interacao_sdr'){
     var todayStart=window._metaDataSel?new Date(window._metaDataSel+'T00:00:00'):new Date(); todayStart.setHours(0,0,0,0);
     var todayTs=todayStart.getTime(), todayEnd=todayTs+86400000;
-    var interacoes=(allProsp[CU.uid]||{}).interacoes||{};
+    var interacoes=(allProsp[_eu]||{}).interacoes||{};
     return Object.values(interacoes).filter(function(i){return i&&i.ts>=todayTs&&i.ts<todayEnd;}).length;
   }
   if(id==='interacao_sdr_mensal'){
     var now=new Date();
     var monStart=new Date(now.getFullYear(),now.getMonth(),1).getTime();
     var monEnd=new Date(now.getFullYear(),now.getMonth()+1,1).getTime();
-    var interacoes=(allProsp[CU.uid]||{}).interacoes||{};
+    var interacoes=(allProsp[_eu]||{}).interacoes||{};
     return Object.values(interacoes).filter(function(i){return i&&i.ts>=monStart&&i.ts<monEnd;}).length;
   }
   if(id==='interacao'){
     var todayStart=window._metaDataSel?new Date(window._metaDataSel+'T00:00:00'):new Date(); todayStart.setHours(0,0,0,0);
     var todayTs=todayStart.getTime(), todayEnd=todayTs+86400000;
     var count=0;
-    var userData=allProsp[CU.uid]||{};
+    var userData=allProsp[_eu]||{};
     var interacoes=userData.interacoes||{};
     Object.values(interacoes).forEach(function(i){if(i&&i.ts>=todayTs&&i.ts<todayEnd) count++;});
     return count;
   }
   if(id==='atendimentos'){
     var todayKey=window._metaDataSel||new Date().toISOString().slice(0,10);
-    return agCountAtendCliente(agEvs[todayKey]);
+    return agCountAtendCliente(agEvs[todayKey],_en);
   }
   if(id==='atend_mensal'){
     var now=new Date(), count=0;
@@ -1807,14 +1809,14 @@ function countMeta(list,id){
       var dt=new Date(now.getFullYear(),now.getMonth(),d);
       if(dt.getMonth()!==now.getMonth()) break;
       var key=dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
-      count+=agCountAtendCliente(agEvs[key]);
+      count+=agCountAtendCliente(agEvs[key],_en);
     }
     return count;
   }
   if(id==='leads_qualificados'){
     var _now1=new Date();
     return Object.values(crmDeals||{}).filter(function(d){
-      if(!d||d.captadorUid!==CU.uid||d.funil!=='venda_ufv') return false;
+      if(!d||d.captadorUid!==_eu||d.funil!=='venda_ufv') return false;
       var _dt=new Date(d.createdAt||d.ts||0);
       return _dt.getMonth()===_now1.getMonth()&&_dt.getFullYear()===_now1.getFullYear();
     }).length;
@@ -1822,7 +1824,7 @@ function countMeta(list,id){
   if(id==='contratos'){
     var _now2=new Date();
     return Object.values(crmDeals||{}).filter(function(d){
-      if(!d||d.captadorUid!==CU.uid||d.etapa!=='Contrato assinado') return false;
+      if(!d||d.captadorUid!==_eu||d.etapa!=='Contrato assinado') return false;
       var _dt=new Date(d.etapaTs||d.createdAt||d.ts||0);
       return _dt.getMonth()===_now2.getMonth()&&_dt.getFullYear()===_now2.getFullYear();
     }).length;
@@ -1830,7 +1832,7 @@ function countMeta(list,id){
   if(id==='vendas'){
     var _now3=new Date(), _sum=0;
     Object.values(crmDeals||{}).forEach(function(d){
-      if(!d||d.captadorUid!==CU.uid||d.etapa!=='Contrato assinado') return;
+      if(!d||d.captadorUid!==_eu||d.etapa!=='Contrato assinado') return;
       var _dt=new Date(d.etapaTs||d.createdAt||d.ts||0);
       if(_dt.getMonth()!==_now3.getMonth()||_dt.getFullYear()!==_now3.getFullYear()) return;
       _sum+=Number(d.valor)||0;
@@ -1841,7 +1843,7 @@ function countMeta(list,id){
     var _now4=new Date(), _sum2=0;
     Object.values(crmDeals||{}).forEach(function(d){
       if(!d||d.etapa!=='Contrato assinado') return;
-      var _isOwner=d.captadorUid===CU.uid||d.captadorNome===CU.name||d.responsavelUid===CU.uid||d.responsavelNome===CU.name;
+      var _isOwner=d.captadorUid===_eu||d.captadorNome===_en||d.responsavelUid===_eu||d.responsavelNome===_en;
       if(!_isOwner) return;
       var _dt=new Date(d.etapaTs||d.createdAt||d.ts||0);
       if(_dt.getMonth()!==_now4.getMonth()||_dt.getFullYear()!==_now4.getFullYear()) return;
@@ -2270,12 +2272,11 @@ function relHjList(uid,dia){
 }
 function countMetaFor(uid,list,id,dia){
   var u=allUsers[uid]||{};
-  var prevCU=CU, prevSel=window._metaDataSel;
-  CU={uid:uid,name:u.name,level:u.level};
+  var prevSel=window._metaDataSel;
   window._metaDataSel=dia;
   var r=0;
-  try{ r=countMeta(list,id); }catch(e){}
-  CU=prevCU; window._metaDataSel=prevSel;
+  try{ r=countMeta(list,id,uid,u.name||''); }catch(e){}
+  window._metaDataSel=prevSel;
   return r;
 }
 function relSetPeriod(days){
