@@ -1897,6 +1897,9 @@ function metaSetDia(diasAtras){
 }
 function renderMetasFor(c, targetUid, targetName, targetLevel) {
   const metas = METAS[targetLevel] || {diaria:[], mensal:[]};
+  if(!metas.diaria.length&&!metas.mensal.length){
+    return `<div class="card" style="text-align:center;padding:48px 24px;color:var(--gr)"><div style="font-size:28px;margin-bottom:10px">—</div><div style="font-size:14px">Este nível não possui metas configuradas.</div></div>`;
+  }
   const list  = Object.entries(allProsp[targetUid]||{}).filter(function(e){return e[0]!=='interacoes'&&!!e[1];}).map(function(e){return e[1];}).sort((a,b)=>b.ts-a.ts);
   const hoje  = new Date(); hoje.setHours(0,0,0,0);
   const hjReal = list.filter(p=>{const d=new Date(p.ts);d.setHours(0,0,0,0);return d.getTime()===hoje.getTime();});
@@ -1947,21 +1950,33 @@ function renderMetas(c) {
   const isTop = CU.level==='diretor'||CU.level==='gestor'||CU.level==='trafego';
 
   if(isTop) {
-    const OPERATIONAL = ['executivo','sdr','jackeline'];
-    const subs = Object.values(allUsers).filter(u=>OPERATIONAL.includes(u.level)).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
-    const defaultUid = subs.length?subs[0].uid:'';
+    const VISIBLE = CU.level==='diretor'
+      ? ['executivo','sdr','jackeline','marketing','engenharia','gestor','trafego']
+      : ['executivo','sdr','jackeline','marketing','engenharia'];
+    const GROUP_LABELS = {
+      executivo:'Executivos de Vendas', sdr:'SDRs', jackeline:'Relações Públicas',
+      marketing:'Marketing', engenharia:'Engenharia', gestor:'Gerentes', trafego:'Gerentes de Tráfego'
+    };
+
+    const groups = VISIBLE.map(lv=>({
+      level:lv,
+      label:GROUP_LABELS[lv]||lv,
+      users:Object.values(allUsers).filter(u=>u.level===lv&&u.uid).sort((a,b)=>(a.name||'').localeCompare(b.name||''))
+    })).filter(g=>g.users.length>0);
+
+    const allSubs = groups.flatMap(g=>g.users);
+    const defaultUid = allSubs.length?allSubs[0].uid:'';
     const selUid = (window._metasSelUid&&allUsers[window._metasSelUid])?window._metasSelUid:defaultUid;
     const selUser = allUsers[selUid];
 
     if(!selUser){
-      c.innerHTML='<div class="page-header"><div class="page-title">Metas e Desempenho</div></div><div style="padding:40px;text-align:center;color:var(--gr)">Nenhum colaborador operacional encontrado.</div>';
+      c.innerHTML='<div class="page-header"><div class="page-title">Metas e Desempenho</div></div><div style="padding:40px;text-align:center;color:var(--gr)">Nenhum colaborador encontrado.</div>';
       return;
     }
 
+    const optsHtml = groups.map(g=>`<optgroup label="${g.label}">${g.users.map(u=>`<option value="${u.uid}"${u.uid===selUid?' selected':''}>${u.name}</option>`).join('')}</optgroup>`).join('');
     const selectHtml = `<div style="margin-bottom:20px"><label style="display:block;font-size:10px;color:var(--gr);font-family:DM Mono,monospace;margin-bottom:6px;letter-spacing:.05em">VISUALIZAR COMO</label>
-      <select class="filter-select" onchange="window._metasSelUid=this.value;renderMetas(document.getElementById('content'))">
-        ${subs.map(u=>`<option value="${u.uid}"${u.uid===selUid?' selected':''}>${u.name} — ${ROLE_LABELS[u.level]||u.level}</option>`).join('')}
-      </select></div>`;
+      <select class="filter-select" onchange="window._metasSelUid=this.value;renderMetas(document.getElementById('content'))">${optsHtml}</select></div>`;
 
     c.innerHTML = `<div class="page-header"><div class="page-title">Metas e Desempenho</div><div class="page-sub">Visualize os indicadores de cada colaborador</div></div>
     ${selectHtml}
