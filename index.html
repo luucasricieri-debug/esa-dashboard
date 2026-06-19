@@ -1019,15 +1019,8 @@ async function loadAllData() {
     setPill('conn','Atualizando...');
     allUsers = await fbGet('users') || {};
     // Load prospections based on level
-    if(CU.level==='diretor') {
+    if(CU.level==='diretor'||CU.level==='trafego'||CU.level==='gestor') {
       allProsp = await fbGet('prospections') || {};
-    } else if(CU.level==='gestor') {
-      // Load own + all subordinates in parallel
-      allProsp = {};
-      const subs = Object.values(allUsers).filter(u=>u.gestor===CU.uid||u.uid===CU.uid);
-      await Promise.all(subs.map(async u=>{
-        try{ allProsp[u.uid] = await fbGet('prospections/'+u.uid)||{}; }catch(e){ allProsp[u.uid]={}; }
-      }));
     } else {
       allProsp = {};
       allProsp[CU.uid] = await fbGet('prospections/'+CU.uid) || {};
@@ -2712,11 +2705,7 @@ window.saveEditProsp=async function(){
     var _editNote={ts:Date.now(),resultado:'em_andamento',resumo:'Lead editado por '+CU.name+(patch.status?' — Status: '+patch.status:'')+(patch.agendado==='Sim'?' — Visita agendada':''),autor:CU.name,tipo:'edicao'};
     await fbSet('prospections/'+overlay._uid+'/'+overlay._pid+'/followups/'+_editNoteKey, _editNote);
     if(patch.observacao){
-      var _origP3=allProsp[overlay._uid]&&allProsp[overlay._uid][overlay._pid];
-      var _prevObs=(_origP3&&_origP3.observacao)||'';
-      if(patch.observacao!==_prevObs){
-        await fbSet('prospections/'+overlay._uid+'/'+overlay._pid+'/followups/fu_obs_'+Date.now(),{ts:Date.now(),resultado:'em_andamento',resumo:patch.observacao,autor:CU.name,tipo:'observacao'});
-      }
+      await fbSet('prospections/'+overlay._uid+'/'+overlay._pid+'/followups/fu_obs_'+Date.now(),{ts:Date.now(),resultado:'em_andamento',resumo:patch.observacao,autor:CU.name,tipo:'observacao'});
     }
     if(CU.level==='sdr'&&patch.agendado==='Sim'&&epProximo){
       await fbSet('prospections/'+CU.uid+'/interacoes/agend_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),{ts:Date.now(),tipo:'agendamento',autor:CU.name});
