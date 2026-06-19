@@ -1571,8 +1571,9 @@ async function saveProsp() {
       crmDeals[assDealId]=_assDealData;
       showToast('✅ Deal Assinatura de Energia criado no CRM!');
     }
-    // Agenda: visita agendada (agendado=Sim)
-    if(rec.agendado === 'Sim' && rec.data_visita) {
+    // Agenda: visita agendada — skip when SDR/jackeline/executivo encaminha (event created below)
+    var _hasEncam=rec.proximo&&(CU.level==='sdr'||CU.level==='jackeline'||CU.level==='executivo');
+    if(rec.agendado === 'Sim' && rec.data_visita && !_hasEncam) {
       var evId='prosp_'+id;
       var datePart=rec.data_visita.slice(0,10);
       var timePart=rec.data_visita.slice(11,16)||'';
@@ -1621,7 +1622,8 @@ async function saveProsp() {
             guests:[{name:destUser.name,status:'pending'}],
             type:'visita',
             prospId:transferId,
-            encaminhadoPor:CU.name
+            encaminhadoPor:CU.name,
+            tipo_atendimento:'cliente'
           };
           await fbSet('events/'+encDate+'/'+encEvId, encEv);
         }
@@ -1929,7 +1931,7 @@ function renderMetasFor(c, targetUid, targetName, targetLevel) {
       <button class="btn btn-secondary btn-sm" onclick="metaSetDia(1)">Ontem</button>
       <button class="btn btn-secondary btn-sm" onclick="metaSetDia(2)">Anteontem</button>
     </div>
-    <table class="tbl"><thead><tr><th>Atividade</th><th>Realizado</th><th>Meta</th><th>Progresso</th><th>Status</th></tr></thead><tbody>${metas.diaria.map(m=>metaRow(m,countMeta(hj,m.id),m.meta)).join('')}</tbody></table></div>`;
+    <table class="tbl"><thead><tr><th>Atividade</th><th>Realizado</th><th>Meta</th><th>Progresso</th><th>Status</th></tr></thead><tbody>${metas.diaria.map(m=>metaRow(m,countMetaFor(targetUid,hj,m.id,window._metaDataSel),m.meta)).join('')}</tbody></table></div>`;
   let mensalList=(metas.mensal||[]).map(function(m){
     if(targetName==='Marcus Zucoloto'&&(m.id==='vendas'||m.id==='vendas_mensal')){
       return Object.assign({},m,{meta:600000});
@@ -1942,36 +1944,36 @@ function renderMetasFor(c, targetUid, targetName, targetLevel) {
       {id:'kwh_assinatura', label:'Meta kWh Assinatura GD',     meta:50000},
     ]);
   }
-  if(mensalList.length) html+=`<div class="card"><div class="card-title">Metas Mensais</div><table class="tbl"><thead><tr><th>Atividade</th><th>Realizado</th><th>Meta</th><th>Progresso</th><th>Status</th></tr></thead><tbody>${mensalList.map(m=>metaRow(m,countMeta(mes,m.id),m.meta)).join('')}</tbody></table></div>`;
+  if(mensalList.length) html+=`<div class="card"><div class="card-title">Metas Mensais</div><table class="tbl"><thead><tr><th>Atividade</th><th>Realizado</th><th>Meta</th><th>Progresso</th><th>Status</th></tr></thead><tbody>${mensalList.map(m=>metaRow(m,countMetaFor(targetUid,mes,m.id,window._metaDataSel),m.meta)).join('')}</tbody></table></div>`;
   return html;
 }
 
 function renderMetas(c) {
   const isTop = CU.level==='diretor'||CU.level==='gestor'||CU.level==='trafego';
 
-  // Para gestores/diretores: mostrar seletor de colaborador
   if(isTop) {
-    // Pegar subordinados carregados
-    const subs = Object.values(allUsers).filter(u=>{
-      if(CU.level==='diretor'||CU.level==='trafego') return u.level!=='diretor'&&u.level!=='trafego';
-      return u.gestor===CU.uid;
-    });
-    // Uid selecionado (default: próprio)
-    const selUid = window._metasSelUid || CU.uid;
-    const selUser = allUsers[selUid] || CU;
+    const OPERATIONAL = ['executivo','sdr','jackeline'];
+    const subs = Object.values(allUsers).filter(u=>OPERATIONAL.includes(u.level)).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+    const defaultUid = subs.length?subs[0].uid:'';
+    const selUid = (window._metasSelUid&&allUsers[window._metasSelUid])?window._metasSelUid:defaultUid;
+    const selUser = allUsers[selUid];
 
-    const opts = [{uid:CU.uid,name:CU.name+' (você)',level:CU.level}, ...subs.map(u=>({uid:u.uid,name:u.name,level:u.level}))];
-    const selectHtml = `<select class="filter-select" onchange="window._metasSelUid=this.value;renderMetas(document.getElementById('content'))" style="margin-bottom:20px">
-      ${opts.map(o=>`<option value="${o.uid}"${o.uid===selUid?' selected':''}>${o.name} — ${ROLE_LABELS[o.level]||o.level}</option>`).join('')}
-    </select>`;
+    if(!selUser){
+      c.innerHTML='<div class="page-header"><div class="page-title">Metas e Desempenho</div></div><div style="padding:40px;text-align:center;color:var(--gr)">Nenhum colaborador operacional encontrado.</div>';
+      return;
+    }
 
-    c.innerHTML = `<div class="page-header"><div class="page-title">Metas e Desempenho</div><div class="page-sub">Acompanhe o desempenho de cada colaborador</div></div>
+    const selectHtml = `<div style="margin-bottom:20px"><label style="display:block;font-size:10px;color:var(--gr);font-family:DM Mono,monospace;margin-bottom:6px;letter-spacing:.05em">VISUALIZAR COMO</label>
+      <select class="filter-select" onchange="window._metasSelUid=this.value;renderMetas(document.getElementById('content'))">
+        ${subs.map(u=>`<option value="${u.uid}"${u.uid===selUid?' selected':''}>${u.name} — ${ROLE_LABELS[u.level]||u.level}</option>`).join('')}
+      </select></div>`;
+
+    c.innerHTML = `<div class="page-header"><div class="page-title">Metas e Desempenho</div><div class="page-sub">Visualize os indicadores de cada colaborador</div></div>
     ${selectHtml}
     ${renderMetasFor(c, selUid, selUser.name, selUser.level)}`;
     return;
   }
 
-  // Para colaboradores: mostrar próprio desempenho
   c.innerHTML = `<div class="page-header"><div class="page-title">Minhas Metas</div><div class="page-sub">Acompanhe seu desempenho</div></div>
   ${renderMetasFor(c, CU.uid, CU.name, CU.level)}`;
 }
@@ -2676,16 +2678,17 @@ window.saveEditProsp=async function(){
     if(patch.agendado==='Sim' && patch.data_visita){
       var _origP2=allProsp[overlay._uid]&&allProsp[overlay._uid][overlay._pid];
       var _evPNome=(patch.nome||(_origP2&&_origP2.nome)||'');
-      var _evId='edit_'+overlay._pid;
       var _evDate=patch.data_visita.slice(0,10);
       var _evTime=patch.data_visita.length>10?patch.data_visita.slice(11,16):'';
-      var _evGuests=[];
       var _destUser=epProximo?Object.values(allUsers).find(function(u){return (u.name+' — '+(u.cargo||ROLE_LABELS[u.level]||u.level))===epProximo||u.name===epProximo;}):null;
-      if(_destUser) _evGuests=[{name:_destUser.name,status:'pending'}];
-      var _ev={id:_evId,title:'Visita — '+_evPNome,time:_evTime,duration:'60',date:_evDate,author:CU.name,guests:_evGuests,type:'visita',prospId:overlay._pid,tipo_atendimento:'cliente'};
-      await fbSet('events/'+_evDate+'/'+_evId,_ev);
-      // Encaminhamento: copy lead to destination user
-      if(_destUser && (CU.level==='sdr'||CU.level==='jackeline'||CU.level==='executivo')){
+      var _isEncam=_destUser&&(CU.level==='sdr'||CU.level==='jackeline'||CU.level==='executivo');
+      if(!_isEncam){
+        var _evId='edit_'+overlay._pid;
+        var _evGuests=_destUser?[{name:_destUser.name,status:'pending'}]:[];
+        var _ev={id:_evId,title:'Visita — '+_evPNome,time:_evTime,duration:'60',date:_evDate,author:CU.name,guests:_evGuests,type:'visita',prospId:overlay._pid,tipo_atendimento:'cliente'};
+        await fbSet('events/'+_evDate+'/'+_evId,_ev);
+      }
+      if(_isEncam){
         var _destUid=_destUser.uid||_destUser.id;
         var _tRec=Object.assign({},(_origP2||{}),patch,{
           origem_encaminhamento:'Encaminhado por '+CU.name+' ('+( ROLE_LABELS[CU.level]||CU.level)+')',
@@ -2699,9 +2702,8 @@ window.saveEditProsp=async function(){
         });
         var _tId='enc_edit_'+overlay._pid;
         await fbSet('prospections/'+_destUid+'/'+_tId, _tRec);
-        // Agenda event for dest user
         var _dEvId='enc_ev_edit_'+overlay._pid;
-        var _dEv={id:_dEvId,title:'Visita — '+_evPNome+' [➡ '+CU.name+']',time:_evTime,duration:'60',date:_evDate,author:_destUser.name,guests:[{name:_destUser.name,status:'pending'}],type:'visita',prospId:_tId,encaminhadoPor:CU.name};
+        var _dEv={id:_dEvId,title:'Visita — '+_evPNome+' [➡ '+CU.name+']',time:_evTime,duration:'60',date:_evDate,author:_destUser.name,guests:[{name:_destUser.name,status:'pending'}],type:'visita',prospId:_tId,encaminhadoPor:CU.name,tipo_atendimento:'cliente'};
         await fbSet('events/'+_evDate+'/'+_dEvId, _dEv);
       }
     }
