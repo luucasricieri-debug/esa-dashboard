@@ -4641,6 +4641,9 @@ async function renderIndCRM(c){
   try{
     var allDeals=await fbGet('crm/deals')||{};
     dealsList=Object.entries(allDeals).map(function(e){return Object.assign({},e[1],{_id:e[0]});});
+    if(!crmEtapasCustom||!Object.keys(crmEtapasCustom).length){
+      try{var _fns=await fbGet('crm/funis')||{};crmEtapasCustom={};Object.keys(_fns).forEach(function(k){crmEtapasCustom[k]=(_fns[k]&&_fns[k].etapas)||{};});}catch(e2){crmEtapasCustom={};}
+    }
   }catch(e){
     document.getElementById('indcrm-loading').innerHTML='<span style="color:var(--danger)">Erro ao carregar dados: '+crmEsc(e.message)+'</span>';
     return;
@@ -4682,6 +4685,8 @@ function indCRMPieCharts(deals,funilKeys){
     if(!el) return;
     if(window['_chart_'+canvasId]){window['_chart_'+canvasId].destroy();window['_chart_'+canvasId]=null;}
     var etapas=CRM_FUNIS[k].etapas||[];
+    var custom=(crmEtapasCustom&&crmEtapasCustom[k])||{};
+    var displayNames=etapas.map(function(e,i){return custom[i]||e;});
     var active=deals.filter(function(d){return d.funil===k&&d.status==='Em andamento';});
     var counts=etapas.map(function(e){return active.filter(function(d){return d.etapa===e;}).length;});
     var leg=document.getElementById('indcrm-legend-'+k);
@@ -4691,7 +4696,7 @@ function indCRMPieCharts(deals,funilKeys){
       return;
     }
     el.style.display='';
-    var labels=etapas.filter(function(_,i){return counts[i]>0;});
+    var labels=displayNames.filter(function(_,i){return counts[i]>0;});
     var data=counts.filter(function(n){return n>0;});
     var colors=labels.map(function(_,i){return palette[i%palette.length];});
     window['_chart_'+canvasId]=new Chart(el.getContext('2d'),{
@@ -4765,11 +4770,12 @@ function indCRMEtapasUFV(deals){
   if(!el) return;
   if(window._chartEtapasUFV){window._chartEtapasUFV.destroy();window._chartEtapasUFV=null;}
   var etapas=CRM_FUNIS.venda_ufv.etapas||[];
+  var customUFV=(crmEtapasCustom&&crmEtapasCustom['venda_ufv'])||{};
   var active=deals.filter(function(d){return d.funil==='venda_ufv'&&d.status==='Em andamento';});
-  var rows=etapas.map(function(e){
+  var rows=etapas.map(function(e,i){
     var ds=active.filter(function(d){return d.etapa===e;});
     var valor=ds.reduce(function(s,d){return s+(Number(d.valor)||0);},0);
-    return {etapa:e,count:ds.length,valor:valor};
+    return {etapa:customUFV[i]||e,count:ds.length,valor:valor};
   });
   var n=etapas.length;
   var colors=etapas.map(function(_,i){
@@ -4779,7 +4785,7 @@ function indCRMEtapasUFV(deals){
   window._chartEtapasUFV=new Chart(el.getContext('2d'),{
     type:'bar',
     data:{
-      labels:etapas,
+      labels:rows.map(function(r){return r.etapa;}),
       datasets:[{data:rows.map(function(r){return r.valor;}),backgroundColor:colors,borderRadius:4,borderSkipped:false,barThickness:24}]
     },
     options:{
