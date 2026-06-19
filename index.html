@@ -1767,10 +1767,18 @@ function countMeta(list,id){
   if(id==='novos_clientes'||id==='prosp_mensal'||id==='prosp_sdr'||id==='prosp_sdr_mensal')
     return list.filter(function(p){return !p.tipo||p.tipo!=='atendimento';}).length;
   // SDR — novas métricas
-  if(id==='agendamentos_sdr'||id==='agendamentos_sdr_mensal'){
-    return list.filter(function(p){
-      return p.status&&p.status.toLowerCase().includes('qualificado')&&p.agendado==='Sim'&&p.proximo&&String(p.proximo).trim()!=='';
-    }).length;
+  if(id==='agendamentos_sdr'){
+    var todayStart=window._metaDataSel?new Date(window._metaDataSel+'T00:00:00'):new Date(); todayStart.setHours(0,0,0,0);
+    var todayTs=todayStart.getTime(), todayEnd=todayTs+86400000;
+    var interacoes=(allProsp[CU.uid]||{}).interacoes||{};
+    return Object.values(interacoes).filter(function(i){return i&&i.tipo==='agendamento'&&i.ts>=todayTs&&i.ts<todayEnd;}).length;
+  }
+  if(id==='agendamentos_sdr_mensal'){
+    var now=new Date();
+    var monStart=new Date(now.getFullYear(),now.getMonth(),1).getTime();
+    var monEnd=new Date(now.getFullYear(),now.getMonth()+1,1).getTime();
+    var interacoes=(allProsp[CU.uid]||{}).interacoes||{};
+    return Object.values(interacoes).filter(function(i){return i&&i.tipo==='agendamento'&&i.ts>=monStart&&i.ts<monEnd;}).length;
   }
   if(id==='interacao_sdr'){
     var todayStart=window._metaDataSel?new Date(window._metaDataSel+'T00:00:00'):new Date(); todayStart.setHours(0,0,0,0);
@@ -2701,9 +2709,18 @@ window.saveEditProsp=async function(){
     var _editNoteKey='fu_edit_'+Date.now();
     var _editNote={ts:Date.now(),resultado:'em_andamento',resumo:'Lead editado por '+CU.name+(patch.status?' — Status: '+patch.status:'')+(patch.agendado==='Sim'?' — Visita agendada':''),autor:CU.name,tipo:'edicao'};
     await fbSet('prospections/'+overlay._uid+'/'+overlay._pid+'/followups/'+_editNoteKey, _editNote);
+    if(patch.observacao){
+      var _origP3=allProsp[overlay._uid]&&allProsp[overlay._uid][overlay._pid];
+      var _prevObs=(_origP3&&_origP3.observacao)||'';
+      if(patch.observacao!==_prevObs){
+        await fbSet('prospections/'+overlay._uid+'/'+overlay._pid+'/followups/fu_obs_'+Date.now(),{ts:Date.now(),resultado:'em_andamento',resumo:patch.observacao,autor:CU.name,tipo:'observacao'});
+      }
+    }
+    if(CU.level==='sdr'&&patch.agendado==='Sim'&&epProximo){
+      await fbSet('prospections/'+CU.uid+'/interacoes/agend_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),{ts:Date.now(),tipo:'agendamento',autor:CU.name});
+    }
     window.closeEditModal();
-    var intKey='int_'+Date.now();
-    try{await fbSet('prospections/'+CU.uid+'/interacoes/'+intKey,{ts:Date.now(),tipo:'interacao',autor:CU.name});}catch(e){}
+    await registrarInteracao();
     showToast('✅ Prospecção atualizada!');
     await loadAllData();
     renderHistorico(document.getElementById('content'));
