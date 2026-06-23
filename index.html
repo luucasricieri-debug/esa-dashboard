@@ -2726,6 +2726,29 @@ window.saveEditProsp=async function(){
     if(CU.level==='sdr'&&patch.agendado==='Sim'&&epProximo){
       await fbSet('prospections/'+CU.uid+'/interacoes/agend_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),{ts:Date.now(),tipo:'agendamento',autor:CU.name});
     }
+    // CRM auto-deal triggers on edit
+    var _cpOrig=(allProsp[overlay._uid]&&allProsp[overlay._uid][overlay._pid])||{};
+    var _cpProd=_cpOrig.produto||'';
+    var _cpRU=epProximo?Object.values(allUsers).find(function(u){return (u.name+' — '+(u.cargo||ROLE_LABELS[u.level]||u.level))===epProximo||u.name===epProximo;}):null;
+    var _cpRUid=_cpRU?(_cpRU.uid||_cpRU.id):CU.uid;
+    var _cpRNome=_cpRU?_cpRU.name:CU.name;
+    var _cpFu=function(){var h={};if(_cpOrig.followups){Object.entries(_cpOrig.followups).forEach(function(e){h[e[0]]=e[1];});}return h;};
+    if(prospIsAssinaturaEnergia(_cpProd)&&patch.status&&patch.status.includes('Qualificado')&&patch.agendado==='Sim'){
+      var _asId='deal_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+      var _asH=_cpFu(); _asH['fu_asg_'+Date.now()]={ts:Date.now(),autor:CU.name,de:'',para:CRM_FUNIS.assinatura_energia.etapas[0],nota:'Lead qualificado — Energia por Assinatura (via edição)',tipo:'followup'};
+      var _asDeal={nome:patch.nome||_cpOrig.nome||'',empresa:patch.empresa||_cpOrig.empresa||'',telefone:patch.tel||_cpOrig.tel||'',email:patch.email||_cpOrig.email||'',funil:'assinatura_energia',etapa:CRM_FUNIS.assinatura_energia.etapas[0],status:'Em andamento',responsavelUid:_cpRUid,responsavelNome:_cpRNome,captadorUid:CU.uid,captadorNome:CU.name,kwh:Number(_cpOrig.demanda_kwh)||0,ts:Date.now(),createdAt:Date.now(),createdBy:CU.uid,etapaTs:Date.now(),origem:'Prospecção '+CU.name,historico:_asH};
+      await fbSet('crm/deals/'+_asId,_asDeal); crmDeals[_asId]=Object.assign({},_asDeal,{_id:_asId});
+      showToast('✅ Deal Assinatura de Energia criado no CRM!');
+    }
+    var _epPid=overlay._pid;
+    var _jaTemDeal=Object.values(crmDeals||{}).some(function(d){return d&&d.prospId&&(d.prospId===_epPid||d.prospId===('enc_edit_'+_epPid));});
+    if(!prospIsAssinaturaEnergia(_cpProd)&&patch.status&&patch.status.includes('Qualificado')&&patch.agendado==='Sim'&&patch.data_visita&&!_jaTemDeal){
+      var _ufvId='deal_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+      var _ufvH=_cpFu(); _ufvH['fu_ufv_'+Date.now()]={ts:Date.now(),autor:CU.name,de:'',para:CRM_FUNIS.venda_ufv.etapas[0],nota:'Lead qualificado e visita agendada — edição do histórico',tipo:'followup'};
+      var _ufvDeal={nome:patch.nome||_cpOrig.nome||'',empresa:patch.empresa||_cpOrig.empresa||'',telefone:patch.tel||_cpOrig.tel||'',email:patch.email||_cpOrig.email||'',valor:0,produto:_cpProd,funil:'venda_ufv',etapa:CRM_FUNIS.venda_ufv.etapas[0],status:'Em andamento',responsavelUid:_cpRUid,responsavelNome:_cpRNome,captadorUid:CU.uid,captadorNome:CU.name,ts:Date.now(),createdAt:Date.now(),createdBy:CU.uid,etapaTs:Date.now(),origem:'Edição Histórico — '+CU.name,prospId:overlay._pid,historico:_ufvH};
+      await fbSet('crm/deals/'+_ufvId,_ufvDeal); crmDeals[_ufvId]=Object.assign({},_ufvDeal,{_id:_ufvId});
+      showToast('✅ Deal Venda UFV criado no CRM!');
+    }
     window.closeEditModal();
     await registrarInteracao();
     showToast('✅ Prospecção atualizada!');
