@@ -965,6 +965,8 @@ function buildNav() {
     nav.innerHTML = `
     <div class="sb-section">Prospecção</div>
     ${navItem('crm','<path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/>','CRM')}
+    <div class="sb-section">Proposta</div>
+    ${navItem('proposta','<rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/><line x1="9" y1="15" x2="12" y2="15"/>','Gerador de Proposta')}
     <div class="sb-section">Agenda</div>
     ${navItem('agenda','<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>','Agenda Executiva')}
     `;
@@ -994,6 +996,8 @@ function buildNav() {
     <div class="sb-section">Desempenho</div>
     ${navItem('metas','<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>','Minhas Metas')}
     ${navItem('indicadores','<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>','Indicadores')}
+    <div class="sb-section">Proposta</div>
+    ${navItem('proposta','<rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/><line x1="9" y1="15" x2="12" y2="15"/>','Gerador de Proposta')}
     <div class="sb-section">Agenda</div>
     ${navItem('agenda','<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>','Agenda Executiva')}
     ${(isTop||CU.level==='marketing') ? mkgNavSection(mkgPending) : ''}
@@ -1075,7 +1079,7 @@ function allProspList() {
 }
 
 // // NAVIGATION
-const PAGE_TITLES = {prosp:'Registrar Prospecção',historico:'Histórico',metas:'Minhas Metas',indicadores:'Indicadores',agenda:'Agenda Executiva',marketing:'Marketing',time:'Visão do Time',usuarios:'Usuários',conta:'Minha Conta',relatorios:'Relatórios',crm:'CRM',oportunidades:'Oportunidades',solana:'Solana IA',indcrm:'Indicadores CRM'};
+const PAGE_TITLES = {prosp:'Registrar Prospecção',historico:'Histórico',metas:'Minhas Metas',indicadores:'Indicadores',agenda:'Agenda Executiva',marketing:'Marketing',time:'Visão do Time',usuarios:'Usuários',conta:'Minha Conta',relatorios:'Relatórios',crm:'CRM',oportunidades:'Oportunidades',solana:'Solana IA',indcrm:'Indicadores CRM',proposta:'Gerador de Proposta'};
 let currentPage = 'prosp';
 
 function goPage(page) {
@@ -1089,7 +1093,8 @@ function goPage(page) {
 function renderCurrentPage(){ renderPage(currentPage); }
 function renderPage(page) {
   const c = document.getElementById('content');
-  if(CU.level==='engenharia' && page!=='crm' && page!=='agenda'){ goPage('crm'); return; }
+  c.style.padding = page === 'proposta' ? '0' : '';
+  if(CU.level==='engenharia' && page!=='crm' && page!=='agenda' && page!=='proposta'){ goPage('crm'); return; }
   if(page==='prosp') renderProsp(c);
   else if(page==='historico') renderHistorico(c);
   else if(page==='metas') renderMetas(c);
@@ -1104,6 +1109,7 @@ function renderPage(page) {
   else if(page==='oportunidades') renderOportunidades(c);
   else if(page==='solana') renderSolana(c);
   else if(page==='indcrm') renderIndCRM(c);
+  else if(page==='proposta') renderProposta(c);
 }
 
 // // FORMULÁRIOS
@@ -3300,6 +3306,11 @@ function renderAgenda(c) {
     +'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Nova atividade</button></div></div>'
     +'<div class="ag-evwrap" id="ag-evwrap"></div></div></div>';
   agUser=CU?CU.name:''; agInit();
+}
+
+// GERADOR DE PROPOSTA
+function renderProposta(c) {
+  c.innerHTML = '<iframe src="https://luucasricieri-debug.github.io/esa-proposal-spark/" style="width:100%;height:calc(100vh - 58px);border:none;display:block" allowfullscreen></iframe>';
 }
 
 // VISAO DO TIME
