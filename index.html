@@ -1494,12 +1494,12 @@ async function saveProsp() {
   };
 
   try {
+    var _is4Named=['Fernando Fadel','Pedro Oliveira','Andre Mosoli','Lucas Vizentin'].indexOf(CU.name)>=0;
     await fbSet('prospections/' + CU.uid + '/' + id, rec);
-    await registrarInteracao();
-    if(rec.agendado==='Sim') await registrarInteracao();
+    if(!_is4Named){ await registrarInteracao(); if(rec.agendado==='Sim') await registrarInteracao(); }
     showToast('✅ Prospecção salva!');
     // Gatilho CRM: executivo + qualificado + visita agendada → cria deal automático
-    if(CU.level==='executivo' && rec.status && rec.status.includes('Qualificado') && rec.agendado==='Sim'){
+    if((CU.level==='executivo'||_is4Named) && rec.status && rec.status.includes('Qualificado') && rec.agendado==='Sim'){
       var dealId='deal_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
       var _respNome=rec.proximo||CU.name;
       var _respUser=Object.values(allUsers).find(function(u){
@@ -1571,7 +1571,7 @@ async function saveProsp() {
       showToast('✅ Deal Assinatura de Energia criado no CRM!');
     }
     // Agenda: visita agendada — skip when SDR/jackeline/executivo encaminha (event created below)
-    var _hasEncam=rec.proximo&&(CU.level==='sdr'||CU.level==='jackeline'||CU.level==='executivo');
+    var _hasEncam=rec.proximo&&(CU.level==='sdr'||CU.level==='jackeline'||CU.level==='executivo'||_is4Named);
     if(rec.agendado === 'Sim' && rec.data_visita && !_hasEncam) {
       var evId='prosp_'+id;
       var datePart=rec.data_visita.slice(0,10);
@@ -1587,7 +1587,7 @@ async function saveProsp() {
       await fbSet('events/'+datePart+'/'+evId,ev);
     }
     // Encaminhamento (SDR ou Jackeline) com status qualificado
-    if(rec.proximo && (CU.level==='sdr'||CU.level==='jackeline'||CU.level==='executivo') &&
+    if(rec.proximo && (CU.level==='sdr'||CU.level==='jackeline'||CU.level==='executivo'||_is4Named) &&
        (rec.status==='Qualificado'||rec.status.indexOf('aguardando')<0&&rec.status.indexOf('Qualificado')>=0)){
       var destUser=Object.values(allUsers).find(function(u){
         var label=u.name+' — '+(u.cargo||ROLE_LABELS[u.level]||u.level);
@@ -2696,7 +2696,7 @@ window.saveEditProsp=async function(){
       var _evDate=patch.data_visita.slice(0,10);
       var _evTime=patch.data_visita.length>10?patch.data_visita.slice(11,16):'';
       var _destUser=epProximo?Object.values(allUsers).find(function(u){return (u.name+' — '+(u.cargo||ROLE_LABELS[u.level]||u.level))===epProximo||u.name===epProximo;}):null;
-      var _isEncam=_destUser&&(CU.level==='sdr'||CU.level==='jackeline'||CU.level==='executivo');
+      var _isEncam=_destUser&&(CU.level==='sdr'||CU.level==='jackeline'||CU.level==='executivo'||['Fernando Fadel','Pedro Oliveira','Andre Mosoli','Lucas Vizentin'].indexOf(CU.name)>=0);
       if(!_isEncam){
         var _evId='edit_'+overlay._pid;
         var _evGuests=_destUser?[{name:_destUser.name,status:'pending'}]:[];
@@ -2756,7 +2756,8 @@ window.saveEditProsp=async function(){
       showToast('✅ Deal Venda UFV criado no CRM!');
     }
     window.closeEditModal();
-    await registrarInteracao();
+    var _is4NamedEdit=['Fernando Fadel','Pedro Oliveira','Andre Mosoli','Lucas Vizentin'].indexOf(CU.name)>=0;
+    if(!_is4NamedEdit) await registrarInteracao();
     showToast('✅ Prospecção atualizada!');
     await loadAllData();
     renderHistorico(document.getElementById('content'));
