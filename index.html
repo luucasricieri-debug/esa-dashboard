@@ -1766,10 +1766,11 @@ function agCountAtendCliente(events,tName){
   var checkName=tName||CU.name;
   Object.values(events||{}).forEach(function(ev){
     if(!ev) return;
-    var isMe=ev.author===checkName||(ev.guests&&ev.guests.some(function(g){return g.name===checkName;}));
+    var isAuthor=ev.author===checkName;
+    var isGuest=ev.guests&&ev.guests.some(function(g){return g.name===checkName&&g.status==='confirmed';});
     var isSucesso=ev.resultado==='sucesso';
     var isCliente=!ev.tipo_atendimento||ev.tipo_atendimento==='cliente';
-    if(isMe&&isSucesso&&isCliente) count++;
+    if((isAuthor||isGuest)&&isSucesso&&isCliente) count++;
   });
   return count;
 }
@@ -1836,7 +1837,17 @@ function countMeta(list,id,_uid,_uName){
   }
   if(id==='atendimentos'){
     var todayKey=window._metaDataSel||new Date().toISOString().slice(0,10);
-    return agCountAtendCliente(agEvs[todayKey],_en);
+    var dayEvents=agEvs[todayKey]||{};
+    var count=0;
+    Object.values(dayEvents).forEach(function(ev){
+      if(!ev) return;
+      var isAuthor=ev.author===_en;
+      var isGuest=ev.guests&&ev.guests.some(function(g){return g.name===_en&&g.status==='confirmed';});
+      var isSucesso=ev.resultado==='sucesso';
+      var isCliente=!ev.tipo_atendimento||ev.tipo_atendimento==='cliente';
+      if((isAuthor||isGuest)&&isSucesso&&isCliente) count++;
+    });
+    return count;
   }
   if(id==='atend_mensal'){
     var now=new Date(), count=0;
@@ -1844,7 +1855,15 @@ function countMeta(list,id,_uid,_uName){
       var dt=new Date(now.getFullYear(),now.getMonth(),d);
       if(dt.getMonth()!==now.getMonth()) break;
       var key=dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
-      count+=agCountAtendCliente(agEvs[key],_en);
+      var dayEvs2=agEvs[key]||{};
+      Object.values(dayEvs2).forEach(function(ev){
+        if(!ev) return;
+        var isAuthor=ev.author===_en;
+        var isGuest=ev.guests&&ev.guests.some(function(g){return g.name===_en&&g.status==='confirmed';});
+        var isSucesso=ev.resultado==='sucesso';
+        var isCliente=!ev.tipo_atendimento||ev.tipo_atendimento==='cliente';
+        if((isAuthor||isGuest)&&isSucesso&&isCliente) count++;
+      });
     }
     return count;
   }
@@ -5816,9 +5835,6 @@ window.agRegistrarResultado=async function(evId,res){
     // Reload the day's events immediately so agEvs reflects resultado:'sucesso' before counting
     try{var _rDay=await fetch(DB+'/events/'+agSel+'.json');var _dayEvs=await _rDay.json();agEvs[agSel]=_dayEvs||{};}catch(_re){}
     if(res==='sucesso'){
-      var _evReg=agEvs[agSel]&&agEvs[agSel][evId];
-      var _tipoAt=_evReg&&_evReg.tipo_atendimento;
-      if(!_tipoAt||_tipoAt==='cliente'){try{await fbSet('prospections/'+CU.uid+'/interacoes/atend_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),{ts:Date.now(),tipo:'atendimento',autor:CU.name});}catch(e2){}}
       try{await fbSet('prospections/'+CU.uid+'/interacoes/int_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),{ts:Date.now(),tipo:'interacao',autor:CU.name});}catch(e3){}
     }
     if(res==='insucesso'){
