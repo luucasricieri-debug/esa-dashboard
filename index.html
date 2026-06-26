@@ -787,6 +787,7 @@ let indTab = 'geral';
 // // CRM
 const CRM_FUNIS = {
   venda_ufv: {nome:'Venda UFV', etapas:['Lead','Visita Técnica','Orçamento Bruto','Orçamento Econômico','Apresentação','Negociação','Elaboração do contrato','Contrato enviado','Contrato assinado']},
+  eletromobilidade: {nome:'Eletromobilidade', etapas:['Lead','Visita Técnica','Orçamento Bruto','Orçamento Econômico','Apresentação','Negociação','Elaboração do contrato','Contrato enviado','Contrato assinado']},
   copel: {nome:'Análise Copel', etapas:['Lead','Recebimento de documentos','Elaboração de proposta','Prospecção enviada','Prospecção assinada','Protocolo Copel protocolado','Protocolo em análise','Protocolo finalizado','Apresentação ao cliente','Válido','Inválido']},
   assinatura_energia: {nome:'Assinatura de Energia', etapas:['Lead','Lead Triado','Lead Quarto','Pedido de Documento','Diagnóstico e Cálculo','Envio de Proposta','Termo de Adesão','Conclusão da GD','Início do faturamento']},
   pre_vendas: {nome:'Pré-vendas', etapas:['Lead Desqualificado','Lead Frio','Lead Passando','Lead Quarto','Maduro Aguardando','Maduro Real Validado']},
@@ -1120,6 +1121,9 @@ function checkGroup(id, items, extraOnchange) {
 function prospIsAssinaturaEnergia(produto){
   var p=(produto||'').toLowerCase();
   return p.indexOf('energia por assinatura')>=0 || p.indexOf('assinatura de energia')>=0 || p.indexOf('energia assinatura')>=0;
+}
+function prospIsEletromobilidade(produto){
+  return (produto||'').toLowerCase().indexOf('eletromobilidade')>=0;
 }
 function prospProdutoChange(){
   var produto=getChk('f-produto')||'';
@@ -1569,6 +1573,31 @@ async function saveProsp() {
       await fbSet('crm/deals/'+assDealId, _assDealData);
       crmDeals[assDealId]=_assDealData;
       showToast('✅ Deal Assinatura de Energia criado no CRM!');
+    }
+    // Gatilho CRM: Eletromobilidade + qualificado + agendado → cria deal no Funil Eletromobilidade
+    if(rec.produto && prospIsEletromobilidade(rec.produto) && rec.status && rec.status.includes('Qualificado') && rec.agendado==='Sim'){
+      var emDealId='deal_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+      var _emRespNome=rec.proximo||CU.name;
+      var _emRespUser=Object.values(allUsers).find(function(u){
+        return u.name===_emRespNome||((u.name+' — '+(u.cargo||ROLE_LABELS[u.level]||u.level))===_emRespNome);
+      });
+      var _emRespUid=_emRespUser?_emRespUser.uid:CU.uid;
+      var _emDealHist={};
+      if(rec.followups){Object.entries(rec.followups).forEach(function(e){_emDealHist[e[0]]=e[1];});}
+      var _emInitKey='fu_'+Date.now();
+      _emDealHist[_emInitKey]={ts:Date.now(),autor:CU.name,de:'',para:CRM_FUNIS.eletromobilidade.etapas[0],nota:'Lead qualificado — Eletromobilidade',tipo:'followup'};
+      var _emDealData={
+        nome:rec.nome, empresa:rec.empresa||'', telefone:rec.tel||'', email:rec.email||'',
+        valor:0, produto:rec.produto||'', funil:'eletromobilidade', etapa:CRM_FUNIS.eletromobilidade.etapas[0], status:'Em andamento',
+        responsavelUid:_emRespUid, responsavelNome:_emRespUser?_emRespUser.name:CU.name,
+        captadorUid:CU.uid, captadorNome:CU.name,
+        ts:Date.now(), createdAt:Date.now(), createdBy:CU.uid, etapaTs:Date.now(),
+        origem:'Prospecção '+CU.name,
+        historico:_emDealHist
+      };
+      await fbSet('crm/deals/'+emDealId, _emDealData);
+      crmDeals[emDealId]=_emDealData;
+      showToast('✅ Deal Eletromobilidade criado no CRM!');
     }
     // Agenda: visita agendada — skip when SDR/jackeline/executivo encaminha (event created below)
     var _hasEncam=rec.proximo&&(CU.level==='sdr'||CU.level==='jackeline'||CU.level==='executivo'||_is4Named);
@@ -2746,9 +2775,16 @@ window.saveEditProsp=async function(){
       await fbSet('crm/deals/'+_asId,_asDeal); crmDeals[_asId]=Object.assign({},_asDeal,{_id:_asId});
       showToast('✅ Deal Assinatura de Energia criado no CRM!');
     }
+    if(prospIsEletromobilidade(_cpProd)&&patch.status&&patch.status.includes('Qualificado')&&patch.agendado==='Sim'){
+      var _emId='deal_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
+      var _emH=_cpFu(); _emH['fu_em_'+Date.now()]={ts:Date.now(),autor:CU.name,de:'',para:CRM_FUNIS.eletromobilidade.etapas[0],nota:'Lead qualificado — Eletromobilidade (via edição)',tipo:'followup'};
+      var _emDeal={nome:patch.nome||_cpOrig.nome||'',empresa:patch.empresa||_cpOrig.empresa||'',telefone:patch.tel||_cpOrig.tel||'',email:patch.email||_cpOrig.email||'',valor:0,produto:_cpProd,funil:'eletromobilidade',etapa:CRM_FUNIS.eletromobilidade.etapas[0],status:'Em andamento',responsavelUid:_cpRUid,responsavelNome:_cpRNome,captadorUid:CU.uid,captadorNome:CU.name,ts:Date.now(),createdAt:Date.now(),createdBy:CU.uid,etapaTs:Date.now(),origem:'Prospecção '+CU.name,historico:_emH};
+      await fbSet('crm/deals/'+_emId,_emDeal); crmDeals[_emId]=Object.assign({},_emDeal,{_id:_emId});
+      showToast('✅ Deal Eletromobilidade criado no CRM!');
+    }
     var _epPid=overlay._pid;
     var _jaTemDeal=Object.values(crmDeals||{}).some(function(d){return d&&d.prospId&&(d.prospId===_epPid||d.prospId===('enc_edit_'+_epPid));});
-    if(!prospIsAssinaturaEnergia(_cpProd)&&patch.status&&patch.status.includes('Qualificado')&&patch.agendado==='Sim'&&patch.data_visita&&!_jaTemDeal){
+    if(!prospIsAssinaturaEnergia(_cpProd)&&!prospIsEletromobilidade(_cpProd)&&patch.status&&patch.status.includes('Qualificado')&&patch.agendado==='Sim'&&patch.data_visita&&!_jaTemDeal){
       var _ufvId='deal_'+Date.now()+'_'+Math.random().toString(36).slice(2,7);
       var _ufvH=_cpFu(); _ufvH['fu_ufv_'+Date.now()]={ts:Date.now(),autor:CU.name,de:'',para:CRM_FUNIS.venda_ufv.etapas[0],nota:'Lead qualificado e visita agendada — edição do histórico',tipo:'followup'};
       var _ufvDeal={nome:patch.nome||_cpOrig.nome||'',empresa:patch.empresa||_cpOrig.empresa||'',telefone:patch.tel||_cpOrig.tel||'',email:patch.email||_cpOrig.email||'',valor:0,produto:_cpProd,funil:'venda_ufv',etapa:CRM_FUNIS.venda_ufv.etapas[0],status:'Em andamento',responsavelUid:_cpRUid,responsavelNome:_cpRNome,captadorUid:CU.uid,captadorNome:CU.name,ts:Date.now(),createdAt:Date.now(),createdBy:CU.uid,etapaTs:Date.now(),origem:'Edição Histórico — '+CU.name,prospId:overlay._pid,historico:_ufvH};
