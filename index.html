@@ -1956,14 +1956,25 @@ function countMeta(list,id,_uid,_uName){
   }
   if(id==='kwh_assinatura'){
     var _now6=new Date(), _sumKwh=0;
-    var _etapasGD=crmEtapasContendo('assinatura_energia','Conclusão da GD');
     Object.values(crmDeals||{}).forEach(function(d){
-      if(!d||d.funil!=='assinatura_energia'||_etapasGD.indexOf(d.etapa)<0) return;
+      if(!d||d.funil!=='assinatura_energia') return;
+      if(d.etapa!=='Conclusão da GD'&&d.etapa!=='Início do faturamento') return;
       var _dt=new Date(d.etapaTs||d.createdAt||d.ts||0);
       if(_dt.getMonth()!==_now6.getMonth()||_dt.getFullYear()!==_now6.getFullYear()) return;
       _sumKwh+=Number(d.kwh)||0;
     });
     return _sumKwh;
+  }
+  if(id==='vendas_gestao'||id==='vendas_pessoais'){
+    var _now7=new Date(), _sum7=0;
+    Object.values(crmDeals||{}).forEach(function(d){
+      if(!d||d.funil!=='venda_ufv'&&d.funil!=='eletromobilidade') return;
+      if(d.etapa!=='Contrato assinado') return;
+      var _dt=new Date(d.etapaTs||d.createdAt||d.ts||0);
+      if(_dt.getMonth()!==_now7.getMonth()||_dt.getFullYear()!==_now7.getFullYear()) return;
+      _sum7+=Number(d.valor)||0;
+    });
+    return _sum7;
   }
   return 0;
 }
@@ -1972,7 +1983,7 @@ function metaRow(m,real,meta){
   const cls=pct>=100?'prog-ok':pct>=60?'prog-warn':'prog-bad';
   const badge=pct>=100?'badge-green':pct>=60?'badge-yellow':'badge-red';
   const lbl=pct>=100?'✓ Meta atingida':pct>=60?'Em andamento':'Abaixo da meta';
-  const _isBRL=m.id==='vendas'||m.id==='vendas_mensal'||m.id==='vendas_empresa';
+  const _isBRL=m.id==='vendas'||m.id==='vendas_mensal'||m.id==='vendas_empresa'||m.id==='vendas_gestao'||m.id==='vendas_pessoais';
   const _isKWH=m.id==='kwh_assinatura';
   const displayReal=_isBRL?Number(real).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:0}):_isKWH?Number(real).toLocaleString('pt-BR')+' kWh':real;
   const displayMeta=_isBRL?(meta>0?Number(meta).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:0}):'—'):_isKWH?(meta>0?Number(meta).toLocaleString('pt-BR')+' kWh':'—'):meta;
@@ -2030,10 +2041,11 @@ function renderMetasFor(c, targetUid, targetName, targetLevel) {
     return m;
   });
   if(targetName==='Fernando Fadel'){
-    mensalList=mensalList.concat([
-      {id:'vendas_empresa', label:'Vendas da Empresa (R$)',     meta:2000000},
-      {id:'kwh_assinatura', label:'Meta kWh Assinatura GD',     meta:50000},
-    ]);
+    mensalList=[
+      {id:'vendas_gestao',   label:'Vendas sob Gestão',       meta:1000000},
+      {id:'kwh_assinatura',  label:'Venda de kWh',            meta:50000},
+      {id:'vendas_pessoais', label:'Meta de Vendas Pessoais', meta:500000},
+    ];
   }
   if(mensalList.length) html+=`<div class="card"><div class="card-title">Metas Mensais</div><table class="tbl"><thead><tr><th>Atividade</th><th>Realizado</th><th>Meta</th><th>Progresso</th><th>Status</th></tr></thead><tbody>${mensalList.map(m=>metaRow(m,countMetaFor(targetUid,mes,m.id,window._metaDataSel),m.meta)).join('')}</tbody></table></div>`;
   return html;
