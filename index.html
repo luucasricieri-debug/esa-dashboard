@@ -1906,16 +1906,25 @@ function countMeta(list,id,_uid,_uName){
   }
   if(id==='contratos'){
     var _now2=new Date();
+    var _etapasAssGD=['Conclusão da GD','Início do faturamento'];
     return Object.values(crmDeals||{}).filter(function(d){
-      if(!d||d.captadorUid!==_eu||d.etapa!=='Contrato assinado') return false;
+      if(!d) return false;
+      var _isOwner=d.captadorUid===_eu||d.captadorNome===_en||d.responsavelUid===_eu||d.responsavelNome===_en;
+      if(!_isOwner) return false;
       var _dt=new Date(d.etapaTs||d.createdAt||d.ts||0);
-      return _dt.getMonth()===_now2.getMonth()&&_dt.getFullYear()===_now2.getFullYear();
+      if(_dt.getMonth()!==_now2.getMonth()||_dt.getFullYear()!==_now2.getFullYear()) return false;
+      if(d.funil==='venda_ufv'||d.funil==='eletromobilidade') return d.etapa==='Contrato assinado';
+      if(d.funil==='assinatura_energia') return _etapasAssGD.indexOf(d.etapa)>=0;
+      return false;
     }).length;
   }
   if(id==='vendas'){
     var _now3=new Date(), _sum=0;
     Object.values(crmDeals||{}).forEach(function(d){
-      if(!d||d.captadorUid!==_eu||d.etapa!=='Contrato assinado') return;
+      if(!d||d.funil!=='venda_ufv'&&d.funil!=='eletromobilidade') return;
+      if(d.etapa!=='Contrato assinado') return;
+      var _isOwner=d.captadorUid===_eu||d.captadorNome===_en||d.responsavelUid===_eu||d.responsavelNome===_en;
+      if(!_isOwner) return;
       var _dt=new Date(d.etapaTs||d.createdAt||d.ts||0);
       if(_dt.getMonth()!==_now3.getMonth()||_dt.getFullYear()!==_now3.getFullYear()) return;
       _sum+=Number(d.valor)||0;
@@ -1925,7 +1934,8 @@ function countMeta(list,id,_uid,_uName){
   if(id==='vendas_mensal'){
     var _now4=new Date(), _sum2=0;
     Object.values(crmDeals||{}).forEach(function(d){
-      if(!d||d.etapa!=='Contrato assinado') return;
+      if(!d||d.funil!=='venda_ufv'&&d.funil!=='eletromobilidade') return;
+      if(d.etapa!=='Contrato assinado') return;
       var _isOwner=d.captadorUid===_eu||d.captadorNome===_en||d.responsavelUid===_eu||d.responsavelNome===_en;
       if(!_isOwner) return;
       var _dt=new Date(d.etapaTs||d.createdAt||d.ts||0);
