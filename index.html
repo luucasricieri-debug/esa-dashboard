@@ -1965,7 +1965,7 @@ function countMeta(list,id,_uid,_uName){
     });
     return _sumKwh;
   }
-  if(id==='vendas_gestao'||id==='vendas_pessoais'){
+  if(id==='vendas_gestao'){
     var _now7=new Date(), _sum7=0;
     Object.values(crmDeals||{}).forEach(function(d){
       if(!d||d.funil!=='venda_ufv'&&d.funil!=='eletromobilidade') return;
@@ -1975,6 +1975,19 @@ function countMeta(list,id,_uid,_uName){
       _sum7+=Number(d.valor)||0;
     });
     return _sum7;
+  }
+  if(id==='vendas_pessoais'){
+    var _now8=new Date(), _sum8=0;
+    Object.values(crmDeals||{}).forEach(function(d){
+      if(!d||d.funil!=='venda_ufv'&&d.funil!=='eletromobilidade') return;
+      if(d.etapa!=='Contrato assinado') return;
+      var _isFernando=d.captadorNome==='Fernando Fadel'||d.captadorUid===_eu||d.responsavelNome==='Fernando Fadel'||d.responsavelUid===_eu;
+      if(!_isFernando) return;
+      var _dt=new Date(d.etapaTs||d.createdAt||d.ts||0);
+      if(_dt.getMonth()!==_now8.getMonth()||_dt.getFullYear()!==_now8.getFullYear()) return;
+      _sum8+=Number(d.valor)||0;
+    });
+    return _sum8;
   }
   return 0;
 }
