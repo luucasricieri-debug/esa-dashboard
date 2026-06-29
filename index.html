@@ -2014,7 +2014,8 @@ function metaSetDia(diasAtras){
 }
 function renderMetasFor(c, targetUid, targetName, targetLevel) {
   const metas = METAS[targetLevel] || {diaria:[], mensal:[]};
-  if(!metas.diaria.length&&!metas.mensal.length){
+  const isFernando = targetName === 'Fernando Fadel';
+  if(!metas.diaria.length&&!metas.mensal.length&&!isFernando){
     return `<div class="card" style="text-align:center;padding:48px 24px;color:var(--gr)"><div style="font-size:28px;margin-bottom:10px">—</div><div style="font-size:14px">Este nível não possui metas configuradas.</div></div>`;
   }
   const list  = Object.entries(allProsp[targetUid]||{}).filter(function(e){return e[0]!=='interacoes'&&!!e[1];}).map(function(e){return e[1];}).sort((a,b)=>b.ts-a.ts);
@@ -2053,7 +2054,7 @@ function renderMetasFor(c, targetUid, targetName, targetLevel) {
     }
     return m;
   });
-  if(targetName==='Fernando Fadel'){
+  if(isFernando){
     mensalList=[
       {id:'vendas_gestao',   label:'Vendas sob Gestão',       meta:1000000},
       {id:'kwh_assinatura',  label:'Venda de kWh',            meta:50000},
