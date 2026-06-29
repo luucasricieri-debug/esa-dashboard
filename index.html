@@ -1628,6 +1628,10 @@ async function saveProsp() {
         showToast('✅ Deal Eletromobilidade criado no CRM!');
       }
     }
+    // SDR: registra tipo 'agendamento' para contar nos indicadores
+    if(CU.level==='sdr'&&rec.status&&rec.status.includes('Qualificado')&&rec.agendado==='Sim'&&rec.proximo){
+      try{await fbSet('prospections/'+CU.uid+'/interacoes/agend_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),{ts:Date.now(),tipo:'agendamento',autor:CU.name});}catch(_e4){}
+    }
     // Agenda: visita agendada — skip when SDR/jackeline/executivo encaminha (event created below)
     var _hasEncam=rec.proximo&&(CU.level==='sdr'||CU.level==='jackeline'||CU.level==='executivo'||_is4Named);
     if(rec.agendado === 'Sim' && rec.data_visita && !_hasEncam) {
