@@ -6286,5 +6286,16 @@ var _origInitDash=window.initDashboard||null;
 </div>
 
 <div class="toast" id="toast"></div>
+<!-- ESA OS Core v2 Bootstrap -->
+<script type="module">
+  import { ESA } from './src/core/app.js';
+
+  try {
+    ESA.initialize();
+    window.ESA_OS = ESA;
+  } catch (error) {
+    console.error('[ESA OS] Falha ao inicializar Core v2:', error);
+  }
+</script>
 </body>
 </html>
