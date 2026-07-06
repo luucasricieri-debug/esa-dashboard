@@ -753,6 +753,7 @@ const METAS = {
       {id:'contratos',          label:'Contratos Fechados',   meta:0},
       {id:'vendas',             label:'Vendas (R$)',          meta:0},
       {id:'vendas_mensal',      label:'Meta de Vendas (R$)',  meta:200000},
+      {id:'kwh_exec',           label:'Meta kWh Assinatura',  meta:25000, formato:'kwh'},
     ]
   },
   sdr:{
@@ -1038,15 +1039,13 @@ async function loadAllData() {
       allProsp[CU.uid] = await fbGet('prospections/'+CU.uid) || {};
     }
     var _lvlCrm=(CU.level||'').toLowerCase().trim();
-    if(_lvlCrm==='diretor'||_lvlCrm==='trafego'||_lvlCrm==='gestor'){
+    if(_lvlCrm==='diretor'||_lvlCrm==='trafego'||_lvlCrm==='gestor'||_lvlCrm==='engenharia'||_lvlCrm==='executivo'||_lvlCrm==='sdr'||_lvlCrm==='jackeline'){
       crmDeals = await fbGet('crm/deals') || {};
       try {
         var _funis = await fbGet('crm/funis') || {};
         crmEtapasCustom = {};
         Object.keys(_funis).forEach(function(k){ crmEtapasCustom[k] = (_funis[k]&&_funis[k].etapas)||{}; });
       } catch(e){ crmEtapasCustom = {}; }
-    } else if(_lvlCrm==='executivo'||_lvlCrm==='sdr'||_lvlCrm==='jackeline'){
-      crmDeals = await fbGet('crm/deals') || {};
     }
     // Migração: 'Diagnóstico e Cálculo' → 'Envio de Proposta' no funil assinatura_energia
     Object.entries(crmDeals||{}).forEach(function(e){
@@ -1969,6 +1968,18 @@ function countMeta(list,id,_uid,_uName){
     });
     return _sumKwh;
   }
+  if(id==='kwh_exec'){
+    var _nowKE=new Date(), _sumKE=0;
+    Object.values(crmDeals||{}).forEach(function(d){
+      if(!d||d.funil!=='assinatura_energia') return;
+      if(d.etapa!=='Conclusão da GD'&&d.etapa!=='Início do faturamento') return;
+      if(d.captador!==_en&&d.responsavel!==_en) return;
+      var _dt=new Date(d.etapaTs||d.createdAt||d.ts||0);
+      if(_dt.getMonth()!==_nowKE.getMonth()||_dt.getFullYear()!==_nowKE.getFullYear()) return;
+      _sumKE+=Number(d.kwh)||0;
+    });
+    return _sumKE;
+  }
   if(id==='vendas_gestao'){
     var _now7=new Date(), _sum7=0;
     Object.values(crmDeals||{}).forEach(function(d){
@@ -2001,7 +2012,7 @@ function metaRow(m,real,meta){
   const badge=pct>=100?'badge-green':pct>=60?'badge-yellow':'badge-red';
   const lbl=pct>=100?'✓ Meta atingida':pct>=60?'Em andamento':'Abaixo da meta';
   const _isBRL=m.id==='vendas'||m.id==='vendas_mensal'||m.id==='vendas_empresa'||m.id==='vendas_gestao'||m.id==='vendas_pessoais';
-  const _isKWH=m.id==='kwh_assinatura';
+  const _isKWH=m.id==='kwh_assinatura'||m.id==='kwh_exec';
   const displayReal=_isBRL?Number(real).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:0}):_isKWH?Number(real).toLocaleString('pt-BR')+' kWh':real;
   const displayMeta=_isBRL?(meta>0?Number(meta).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:0}):'—'):_isKWH?(meta>0?Number(meta).toLocaleString('pt-BR')+' kWh':'—'):meta;
   return `<tr><td style="font-weight:500">${m.label}</td>
@@ -3639,8 +3650,8 @@ function renderCRM(c){
       +produtos.map(function(p){return '<option'+(p===crmFiltProduto?' selected':'')+'>'+crmEsc(p)+'</option>';}).join('')+'</select>'
     +'<input type="text" id="crm-search" class="filter-select" placeholder="🔍 Buscar por nome, empresa, telefone..." value="'+crmSearchQuery+'" oninput="crmSearch(this.value)" style="min-width:220px;border-color:#D4CFC6;border-radius:8px;padding:8px 12px">'
     +'<div style="margin-left:auto;display:flex;gap:8px">'
-      +(crmIsAdmin()?'<button class="btn btn-secondary btn-sm" onclick="crmOpenImport()">Importar CSV</button>':'')
-      +((crmIsAdmin()||CU.level==='executivo')?'<button class="btn btn-primary btn-sm" onclick="crmOpenNew()">+ Novo Deal</button>':'')
+      +((crmIsAdmin()||CU.level==='engenharia')?'<button class="btn btn-secondary btn-sm" onclick="crmOpenImport()">Importar CSV</button>':'')
+      +((crmIsAdmin()||CU.level==='executivo'||CU.level==='engenharia')?'<button class="btn btn-primary btn-sm" onclick="crmOpenNew()">+ Novo Deal</button>':'')
     +'</div></div>';
   html+='<div id="crm-view-area"></div>';
   c.innerHTML=html;
@@ -6287,15 +6298,7 @@ var _origInitDash=window.initDashboard||null;
 
 <div class="toast" id="toast"></div>
 <!-- ESA OS Core v2 Bootstrap -->
-<script type="module">
-  import { ESA } from './src/core/app.js';
-
-  try {
-    ESA.initialize();
-    window.ESA_OS = ESA;
-  } catch (error) {
-    console.error('[ESA OS] Falha ao inicializar Core v2:', error);
-  }
+<script type="module" src="./src/bootstrap.js">
 </script>
 </body>
 </html>
