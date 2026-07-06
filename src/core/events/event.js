@@ -94,43 +94,30 @@ export class CoreEvent {
      * TODO: Propagar traceId entre eventos causalmente relacionados
      */
     this.metadata = metadata;
-
-    // Congela o objeto para garantir imutabilidade pós-construção
-    // TODO: Descomentar quando os stubs forem removidos (rompe com Object.freeze em testes de stub)
-    // Object.freeze(this);
   }
 
   /**
    * Retorna o domain de origem extraído do tipo do evento.
    * @returns {string} - Ex: 'crm' para 'crm:deal:created'
-   *
-   * TODO: Implementar extração via split(':')[0]
    */
   getDomain() {
-    // TODO: implementar
-    return '';
+    return this.type.split(':')[0] || '';
   }
 
   /**
    * Retorna a entidade extraída do tipo do evento.
    * @returns {string} - Ex: 'deal' para 'crm:deal:created'
-   *
-   * TODO: Implementar extração via split(':')[1]
    */
   getEntity() {
-    // TODO: implementar
-    return '';
+    return this.type.split(':')[1] || '';
   }
 
   /**
    * Retorna o verbo/ação extraído do tipo do evento.
    * @returns {string} - Ex: 'created' para 'crm:deal:created'
-   *
-   * TODO: Implementar extração via split(':')[2]
    */
   getVerb() {
-    // TODO: implementar
-    return '';
+    return this.type.split(':')[2] || '';
   }
 
   /**
@@ -139,44 +126,52 @@ export class CoreEvent {
    * @returns {boolean}
    */
   isType(type) {
-    // TODO: implementar
-    return false;
+    return this.type === type;
   }
 
   /**
    * Serializa o evento para objeto plano (para log ou transporte).
    * @returns {Object}
-   *
-   * TODO: Usar no AuditService para persistir trilha de eventos
    */
   toJSON() {
-    // TODO: implementar
-    return {};
+    return {
+      id: this.id,
+      type: this.type,
+      payload: this.payload,
+      source: this.source,
+      createdAt: this.createdAt,
+      metadata: this.metadata,
+    };
   }
 
   /**
    * Reconstrói um CoreEvent a partir de objeto serializado.
+   * Preserva id e createdAt originais — não gera novos.
    * @param {Object} data
    * @returns {CoreEvent}
-   *
-   * TODO: Restaurar id e createdAt originais (não gerar novos)
-   * TODO: Validar type contra EVENT_TYPES antes de instanciar
    */
   static fromJSON(data) {
-    // TODO: implementar
-    return new CoreEvent('');
+    const event = new CoreEvent(
+      data.type || '',
+      data.payload || {},
+      data.source || '',
+      data.metadata || {},
+    );
+    event.id = data.id || event.id;
+    event.createdAt = data.createdAt || event.createdAt;
+    return event;
   }
 
   /**
    * Gera um identificador único para o evento.
+   * Usa crypto.randomUUID() quando disponível; fallback seguro para ambientes sem suporte.
    * @returns {string}
-   *
-   * TODO: Usar crypto.randomUUID() quando disponível no ambiente
-   * TODO: Fallback para Date.now() + Math.random() em ambientes sem crypto
    * @private
    */
   static _generateId() {
-    // TODO: implementar com crypto.randomUUID() ou equivalente
-    return '';
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
   }
 }

@@ -12,6 +12,11 @@
  * - Suportar inscrição pontual (once) — auto-remove após primeiro disparo
  * - Prover identificação rastreável para remoção pelo EventBus
  *
+ * Wildcards suportados em eventTypes:
+ *   '*'              — todos os eventos da plataforma
+ *   'domain:*'       — todos os eventos de um domain (ex: 'crm:*')
+ *   'domain:entity:*'— todos os eventos de uma entidade (ex: 'crm:deal:*')
+ *
  * IMPORTANTE:
  * Este arquivo NÃO está conectado ao Dashboard legado (index.html).
  * Não processa eventos reais. Não altera nenhum comportamento da aplicação.
@@ -32,18 +37,12 @@ export class Subscriber {
     /** @type {string} */
     this.id = id;
 
-    /**
-     * @type {string[]} Tipos de evento aceitos — normalizado sempre como array.
-     *
-     * TODO: Suportar wildcards (ex: 'crm:*' para todos os eventos do CRM)
-     */
+    /** @type {string[]} Tipos de evento aceitos — normalizado sempre como array */
     this.eventTypes = Array.isArray(eventTypes) ? eventTypes : [eventTypes];
 
     /**
      * @type {Function} Callback de processamento.
      * Assinatura esperada: (event: CoreEvent) => void | Promise<void>
-     *
-     * TODO: Suportar handlers assíncronos com tratamento de erro isolado
      */
     this.handler = handler;
 
@@ -65,48 +64,46 @@ export class Subscriber {
 
   /**
    * Verifica se este Subscriber aceita um determinado tipo de evento.
+   * Suporta matching exato, '*', 'domain:*' e 'domain:entity:*'.
    * @param {string} eventType
    * @returns {boolean}
-   *
-   * TODO: Implementar matching com wildcards (ex: 'crm:*')
-   * TODO: Suportar prefixos de domínio (ex: 'crm:' corresponde a qualquer evento CRM)
    */
   handles(eventType) {
-    // TODO: implementar includes() + matching de wildcards
-    return false;
+    return this.eventTypes.some((pattern) => {
+      if (pattern === '*') return true;
+      if (pattern === eventType) return true;
+      if (pattern.endsWith(':*')) return eventType.startsWith(pattern.slice(0, -1));
+      return false;
+    });
   }
 
   /**
    * Invoca o handler com o evento recebido.
+   * Suporta handlers síncronos e assíncronos.
+   * Erros propagam para o EventBus — não são engolidos aqui.
    * @param {CoreEvent} event
-   *
-   * TODO: Incrementar invokeCount após cada chamada
-   * TODO: Capturar e logar erros sem propagar (handler isolado)
-   * TODO: Se once === true, chamar deactivate() após o primeiro dispatch
-   * TODO: Suportar handlers assíncronos (await handler(event))
+   * @returns {Promise<void>}
    */
-  dispatch(event) {
-    // TODO: implementar
+  async dispatch(event) {
+    if (!this.active) return;
+    await this.handler(event);
+    this.invokeCount++;
+    if (this.once) this.deactivate();
   }
 
   /**
    * Ativa esta inscrição (reativa após desativação).
-   *
-   * TODO: Registrar log de reativação com timestamp
    */
   activate() {
-    // TODO: implementar this.active = true
+    this.active = true;
   }
 
   /**
    * Desativa esta inscrição sem removê-la do EventBus.
    * Eventos continuam sendo roteados, mas o handler não é invocado.
-   *
-   * TODO: Implementar this.active = false
-   * TODO: Útil para pausar consumo durante operações críticas
    */
   deactivate() {
-    // TODO: implementar this.active = false
+    this.active = false;
   }
 
   /**
@@ -114,8 +111,7 @@ export class Subscriber {
    * @returns {boolean}
    */
   isActive() {
-    // TODO: implementar
-    return false;
+    return this.active;
   }
 
   /**
@@ -124,7 +120,14 @@ export class Subscriber {
    * @returns {Object}
    */
   toJSON() {
-    // TODO: implementar sem expor this.handler
-    return {};
+    return {
+      id: this.id,
+      eventTypes: this.eventTypes,
+      owner: this.owner,
+      once: this.once,
+      active: this.active,
+      invokeCount: this.invokeCount,
+      createdAt: this.createdAt,
+    };
   }
 }

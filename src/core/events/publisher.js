@@ -12,10 +12,9 @@
  * - Prover métodos semânticos para publicação simples e em lote
  * - Isolar o produtor de eventos dos detalhes internos do EventBus
  *
- * Padrão de uso esperado (futuro):
- *   // Em CRM Domain:
+ * Padrão de uso esperado:
  *   const publisher = new Publisher('CRMDomain', eventBus);
- *   publisher.emit('crm:deal:won', { dealId: '123', value: 50000 });
+ *   await publisher.emit('crm:deal:won', { dealId: '123', value: 50000 });
  *
  * IMPORTANTE:
  * Este arquivo NÃO está conectado ao Dashboard legado (index.html).
@@ -38,9 +37,7 @@ export class Publisher {
 
     /**
      * @type {EventBus | null} Referência ao EventBus.
-     * Null até ser injetado — permite construção sem bus disponível.
-     *
-     * TODO: Validar que eventBus é instância de EventBus antes de armazenar
+     * Null até ser injetado via bindTo() — permite construção antes do bus estar disponível.
      */
     this.eventBus = eventBus || null;
 
@@ -54,17 +51,16 @@ export class Publisher {
    * @param {string} type      - Tipo do evento (use EVENT_TYPES.*)
    * @param {Object} payload   - Dados do evento
    * @param {Object} metadata  - Metadados extras (correlationId, traceId, etc.)
-   * @returns {CoreEvent}      - O evento criado e publicado
-   *
-   * TODO: Criar CoreEvent com this.name como source
-   * TODO: Delegar para this.eventBus.publish(event)
-   * TODO: Incrementar this.publishedCount
-   * TODO: Retornar o evento publicado para rastreamento pelo caller
-   * TODO: Logar aviso se this.eventBus for null (publicação sem bus não faz nada)
+   * @returns {Promise<CoreEvent>} - O evento criado e publicado
    */
-  emit(type, payload = {}, metadata = {}) {
-    // TODO: implementar
-    return null;
+  async emit(type, payload = {}, metadata = {}) {
+    if (!this.eventBus) {
+      throw new Error(`[Publisher:${this.name}] EventBus not bound. Call bindTo(eventBus) before emit().`);
+    }
+    const event = new CoreEvent(type, payload, this.name, metadata);
+    await this.eventBus.publish(event);
+    this.publishedCount++;
+    return event;
   }
 
   /**
@@ -72,14 +68,14 @@ export class Publisher {
    * Útil para casos onde uma ação de domínio gera mais de um evento.
    *
    * @param {Array<{ type: string, payload?: Object, metadata?: Object }>} events
-   * @returns {CoreEvent[]} - Eventos criados e publicados
-   *
-   * TODO: Iterar e chamar this.emit() para cada item
-   * TODO: Garantir ordem de publicação (sequencial, não paralelo)
+   * @returns {Promise<CoreEvent[]>} - Eventos criados e publicados, em ordem
    */
-  emitMany(events = []) {
-    // TODO: implementar
-    return [];
+  async emitMany(events = []) {
+    const published = [];
+    for (const { type, payload = {}, metadata = {} } of events) {
+      published.push(await this.emit(type, payload, metadata));
+    }
+    return published;
   }
 
   /**
@@ -87,12 +83,12 @@ export class Publisher {
    * Permite construção antecipada antes do bus estar disponível.
    *
    * @param {EventBus} eventBus
-   *
-   * TODO: Implementar this.eventBus = eventBus
-   * TODO: Validar tipo antes de armazenar
    */
   bindTo(eventBus) {
-    // TODO: implementar
+    if (!eventBus || typeof eventBus.publish !== 'function') {
+      throw new TypeError('[Publisher] eventBus must expose a publish() method');
+    }
+    this.eventBus = eventBus;
   }
 
   /**
@@ -100,8 +96,7 @@ export class Publisher {
    * @returns {boolean}
    */
   isBound() {
-    // TODO: implementar
-    return false;
+    return this.eventBus !== null;
   }
 
   /**
@@ -109,7 +104,10 @@ export class Publisher {
    * @returns {{ name: string, bound: boolean, publishedCount: number }}
    */
   getInfo() {
-    // TODO: implementar
-    return {};
+    return {
+      name: this.name,
+      bound: this.isBound(),
+      publishedCount: this.publishedCount,
+    };
   }
 }
