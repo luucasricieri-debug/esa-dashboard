@@ -68,3 +68,26 @@ export const AUDIT_ACTION_CATEGORY = {
   [AUDIT_ACTION.REJECT]:  'flow',
   [AUDIT_ACTION.EXECUTE]: 'automation',
 };
+
+/**
+ * Verifica se uma ação existe no catálogo de ações auditáveis.
+ * @param {string} action
+ * @returns {boolean}
+ */
+export function isValidAuditAction(action) {
+  return Object.prototype.hasOwnProperty.call(AUDIT_ACTION, action);
+}
+
+/**
+ * Retorna a categoria de uma ação auditável.
+ * @param {string} action
+ * @returns {string}
+ * @throws {Error} Se a ação não existir no catálogo
+ */
+export function getAuditActionCategory(action) {
+  const category = AUDIT_ACTION_CATEGORY[action];
+  if (category === undefined) {
+    throw new Error(`[getAuditActionCategory] Unknown audit action: "${action}"`);
+  }
+  return category;
+}

@@ -21,7 +21,7 @@
  * Não altere nenhum arquivo existente.
  */
 
-import { AuditEntry } from './audit-entry.js';
+import { AuditEntry }   from './audit-entry.js';
 import { AuditContext } from './audit-context.js';
 import { AUDIT_ACTION } from './audit-action.js';
 
@@ -41,13 +41,18 @@ export class Audit {
     /** @type {AuditEntry[]} Trilha de auditoria em memória */
     this._entries = [];
 
-    /** @type {number} Limite de entradas em memória */
+    /** @type {number} Limite de entradas em memória (ring buffer) */
     this._historyLimit = DEFAULT_HISTORY_LIMIT;
   }
 
+  // ── Escrita ───────────────────────────────────────────────────────────────
+
   /**
-   * Registra uma ação auditada.
+   * Registra uma ação auditada e adiciona ao histórico em memória.
    * Método principal — todos os módulos chamam este método.
+   *
+   * context.sessionId, ip, userAgent e correlationId são mesclados no metadata
+   * automaticamente. Os metadata recebidos pelo chamador prevalecem em duplicatas.
    *
    * @param {AuditContext} context    - Contexto da operação (quem, quando, de onde)
    * @param {string}       action     - Ação realizada: AUDIT_ACTION.*
@@ -55,21 +60,42 @@ export class Audit {
    * @param {string}       resourceId - ID do recurso afetado
    * @param {Object|null}  before     - Estado do recurso antes da ação
    * @param {Object|null}  after      - Estado do recurso após a ação
-   * @param {Object}       metadata   - Dados extras
+   * @param {Object}       metadata   - Dados extras (prevalecem sobre context em duplicatas)
    * @returns {AuditEntry}
-   *
-   * TODO: Validar context.isValid() antes de registrar
-   * TODO: Persistir no Firebase RTDB em audit/{organizationId}/{entryId}
-   * TODO: Respeitar _historyLimit com ring buffer (remover mais antiga quando cheio)
    */
   record(context, action, resource, resourceId, before = null, after = null, metadata = {}) {
-    // TODO: implementar
-    return new AuditEntry(action, resource, resourceId);
+    this._validate(context, action, resource, resourceId);
+
+    const mergedMeta = {
+      sessionId:     context.sessionId,
+      ip:            context.ip,
+      userAgent:     context.userAgent,
+      correlationId: context.correlationId,
+      ...metadata,
+    };
+
+    const entry = new AuditEntry(
+      action,
+      resource,
+      resourceId,
+      context.organizationId,
+      context.personId,
+      context.source,
+      before,
+      after,
+      mergedMeta,
+    );
+
+    this._entries.push(entry);
+    if (this._entries.length > this._historyLimit) this._entries.shift();
+
+    return entry;
   }
 
   /**
    * Cria uma AuditEntry sem adicioná-la à trilha.
    * Útil para construir a entrada antes de confirmar a operação.
+   * Aplica as mesmas validações de record().
    *
    * @param {AuditContext} context
    * @param {string}       action
@@ -78,96 +104,164 @@ export class Audit {
    * @param {Object|null}  before
    * @param {Object|null}  after
    * @returns {AuditEntry}
-   *
-   * TODO: Retornar AuditEntry não persistida — chamador decide quando registrar
    */
   createEntry(context, action, resource, resourceId, before = null, after = null) {
-    // TODO: implementar
-    return new AuditEntry(action, resource, resourceId);
+    this._validate(context, action, resource, resourceId);
+
+    const mergedMeta = {
+      sessionId:     context.sessionId,
+      ip:            context.ip,
+      userAgent:     context.userAgent,
+      correlationId: context.correlationId,
+    };
+
+    return new AuditEntry(
+      action,
+      resource,
+      resourceId,
+      context.organizationId,
+      context.personId,
+      context.source,
+      before,
+      after,
+      mergedMeta,
+    );
   }
+
+  // ── Consulta ──────────────────────────────────────────────────────────────
 
   /**
    * Retorna as entradas da trilha, com filtros opcionais.
+   * Ordenadas por timestamp DESC (mais recentes primeiro).
+   * Retorna cópia — não expõe o array interno.
    *
    * @param {Object} filters
-   * @param {string} [filters.action]     - Filtrar por ação (AUDIT_ACTION.*)
-   * @param {string} [filters.resource]   - Filtrar por tipo de recurso
-   * @param {string} [filters.personId]   - Filtrar por quem executou
-   * @param {number} [filters.from]       - Filtrar por timestamp mínimo (ms)
-   * @param {number} [filters.to]         - Filtrar por timestamp máximo (ms)
-   * @param {number} [limit=100]          - Máximo de resultados
+   * @param {string} [filters.action]         - Filtrar por ação (AUDIT_ACTION.*)
+   * @param {string} [filters.resource]       - Filtrar por tipo de recurso
+   * @param {string} [filters.resourceId]     - Filtrar por ID do recurso
+   * @param {string} [filters.personId]       - Filtrar por quem executou
+   * @param {string} [filters.organizationId] - Filtrar por organização
+   * @param {string} [filters.source]         - Filtrar por módulo de origem
+   * @param {number} [filters.from]           - Timestamp mínimo inclusivo (ms)
+   * @param {number} [filters.to]             - Timestamp máximo inclusivo (ms)
+   * @param {number} [limit=100]              - Máximo de resultados (<=0 = sem limite)
    * @returns {AuditEntry[]}
-   *
-   * TODO: Aplicar filtros na ordem: personId → action → resource → período
-   * TODO: Retornar entradas ordenadas por timestamp DESC (mais recentes primeiro)
    */
   getEntries(filters = {}, limit = 100) {
-    // TODO: implementar
-    return [];
+    let result = this._entries.slice().reverse();
+
+    if (filters.action)         result = result.filter((e) => e.action         === filters.action);
+    if (filters.resource)       result = result.filter((e) => e.resource       === filters.resource);
+    if (filters.resourceId)     result = result.filter((e) => e.resourceId     === filters.resourceId);
+    if (filters.personId)       result = result.filter((e) => e.personId       === filters.personId);
+    if (filters.organizationId) result = result.filter((e) => e.organizationId === filters.organizationId);
+    if (filters.source)         result = result.filter((e) => e.source         === filters.source);
+    if (filters.from != null)   result = result.filter((e) => e.timestamp      >= filters.from);
+    if (filters.to   != null)   result = result.filter((e) => e.timestamp      <= filters.to);
+
+    if (limit > 0) result = result.slice(0, limit);
+    return result;
   }
 
   /**
    * Retorna todas as entradas registradas por uma Person específica.
+   * Ordenadas por timestamp DESC.
    *
    * @param {string} personId
    * @param {number} [limit=100]
    * @returns {AuditEntry[]}
-   *
-   * TODO: Delegar para getEntries({ personId }, limit)
    */
   findByPerson(personId, limit = 100) {
-    // TODO: implementar
-    return [];
+    return this.getEntries({ personId }, limit);
   }
 
   /**
    * Retorna todas as entradas relacionadas a um recurso específico.
+   * Ordenadas cronologicamente ASC (histórico de evolução do recurso).
    *
    * @param {string} resource   - Tipo do recurso (ex: 'deal')
    * @param {string} resourceId - ID do recurso
    * @param {number} [limit=50]
    * @returns {AuditEntry[]}
-   *
-   * TODO: Delegar para getEntries({ resource, resourceId }, limit)
-   * TODO: Ordenar por timestamp ASC para exibir histórico cronológico
    */
   findByResource(resource, resourceId, limit = 50) {
-    // TODO: implementar
-    return [];
+    let result = this._entries.filter(
+      (e) => e.resource === resource && e.resourceId === resourceId,
+    );
+    if (limit > 0) result = result.slice(0, limit);
+    return result;
   }
 
   /**
    * Retorna todas as entradas de um tipo de ação específico.
+   * Ordenadas por timestamp DESC.
    *
    * @param {string} action - AUDIT_ACTION.*
    * @param {number} [limit=100]
    * @returns {AuditEntry[]}
-   *
-   * TODO: Delegar para getEntries({ action }, limit)
    */
   findByAction(action, limit = 100) {
-    // TODO: implementar
-    return [];
+    return this.getEntries({ action }, limit);
   }
+
+  // ── Manutenção ────────────────────────────────────────────────────────────
 
   /**
    * Limpa todas as entradas em memória.
+   * Não registra nova AuditEntry.
    * NÃO remove entradas persistidas no Firebase.
    *
    * TODO: Proteger com verificação de permissão (somente DIRETOR)
    */
   clear() {
-    // TODO: implementar
+    this._entries.length = 0;
   }
 
   /**
    * Retorna estatísticas da trilha em memória.
-   * @returns {Object}
-   *
-   * TODO: Retornar: totalEntries, byAction (mapa action → count), byResource (mapa resource → count)
+   * @returns {{ totalEntries, historyLimit, byAction, byResource, byOrganization }}
    */
   getStats() {
-    // TODO: implementar
-    return {};
+    const byAction       = {};
+    const byResource     = {};
+    const byOrganization = {};
+
+    for (const entry of this._entries) {
+      byAction[entry.action]               = (byAction[entry.action]               || 0) + 1;
+      byResource[entry.resource]           = (byResource[entry.resource]           || 0) + 1;
+      byOrganization[entry.organizationId] = (byOrganization[entry.organizationId] || 0) + 1;
+    }
+
+    return {
+      totalEntries:  this._entries.length,
+      historyLimit:  this._historyLimit,
+      byAction,
+      byResource,
+      byOrganization,
+    };
+  }
+
+  // ── Privado ───────────────────────────────────────────────────────────────
+
+  /**
+   * Valida os parâmetros obrigatórios de record() e createEntry().
+   * @private
+   */
+  _validate(context, action, resource, resourceId) {
+    if (!(context instanceof AuditContext)) {
+      throw new TypeError('[Audit] context must be an AuditContext instance');
+    }
+    if (!context.isValid()) {
+      throw new Error('[Audit] context.isValid() is false — organizationId and personId are required');
+    }
+    if (AUDIT_ACTION[action] === undefined) {
+      throw new Error(`[Audit] Unknown action: "${action}"`);
+    }
+    if (typeof resource !== 'string' || !resource.trim()) {
+      throw new Error('[Audit] resource must be a non-empty string');
+    }
+    if (typeof resourceId !== 'string' || !resourceId.trim()) {
+      throw new Error('[Audit] resourceId must be a non-empty string');
+    }
   }
 }

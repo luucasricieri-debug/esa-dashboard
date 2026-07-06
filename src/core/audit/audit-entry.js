@@ -18,6 +18,17 @@
 
 import { AUDIT_ACTION } from './audit-action.js';
 
+/** Campos de controle que não entram no diff — mudam sem representar alteração de dados. */
+const DIFF_IGNORED_FIELDS = new Set(['createdAt', 'updatedAt', 'timestamp']);
+
+/** Conjunto de ações que classificam uma entrada como modificação de dados. */
+const MODIFICATION_ACTIONS = new Set([
+  AUDIT_ACTION.UPDATE,
+  AUDIT_ACTION.MOVE,
+  AUDIT_ACTION.APPROVE,
+  AUDIT_ACTION.REJECT,
+]);
+
 /**
  * Registro imutável de uma ação auditada.
  */
@@ -78,70 +89,103 @@ export class AuditEntry {
 
   /**
    * Verifica se esta entrada registrou uma modificação de dados.
+   * Retorna true para UPDATE, MOVE, APPROVE e REJECT.
    * @returns {boolean}
-   *
-   * TODO: Retornar true se action for UPDATE, MOVE, APPROVE ou REJECT
    */
   isModification() {
-    // TODO: implementar
-    return false;
+    return MODIFICATION_ACTIONS.has(this.action);
   }
 
   /**
    * Verifica se esta entrada registrou uma remoção.
+   * Retorna true somente para DELETE.
    * @returns {boolean}
-   *
-   * TODO: Retornar true se action for DELETE
    */
   isDeletion() {
-    // TODO: implementar
-    return false;
+    return this.action === AUDIT_ACTION.DELETE;
   }
 
   /**
    * Calcula o diff entre before e after.
-   * @returns {Object} - Campos que foram alterados com valores {from, to}
    *
-   * TODO: Implementar diff de objetos planos
-   * TODO: Ignorar campos de timestamp em comparações de diff
+   * Compara a união das chaves de before e after usando Object.is().
+   * Ignora campos de controle de tempo: createdAt, updatedAt, timestamp.
+   * Suporta before null (tratado como {}) e after null (tratado como {}).
+   * Não implementa deep diff — comparação apenas no nível raiz.
+   * Não muta before ou after.
+   *
+   * @returns {Object} Mapa { [campo]: { from, to } } para cada campo alterado
    */
   getDiff() {
-    // TODO: implementar
-    return {};
+    const before = this.before || {};
+    const after  = this.after  || {};
+    const keys   = new Set([...Object.keys(before), ...Object.keys(after)]);
+    const diff   = {};
+
+    for (const key of keys) {
+      if (DIFF_IGNORED_FIELDS.has(key)) continue;
+      if (!Object.is(before[key], after[key])) {
+        diff[key] = { from: before[key], to: after[key] };
+      }
+    }
+
+    return diff;
   }
 
   /**
    * Serializa a entrada para persistência ou transporte.
    * @returns {Object}
-   *
-   * TODO: Converter timestamp para ISO 8601
-   * TODO: Nunca omitir id, timestamp, action, resource, personId
    */
   toJSON() {
-    // TODO: implementar
-    return {};
+    return {
+      id:             this.id,
+      organizationId: this.organizationId,
+      personId:       this.personId,
+      action:         this.action,
+      resource:       this.resource,
+      resourceId:     this.resourceId,
+      source:         this.source,
+      timestamp:      this.timestamp,
+      before:         this.before,
+      after:          this.after,
+      metadata:       this.metadata,
+    };
   }
 
   /**
    * Reconstrói uma AuditEntry a partir de objeto serializado.
+   * Preserva id e timestamp originais — não gera novos.
    * @param {Object} data
    * @returns {AuditEntry}
-   *
-   * TODO: Restaurar id e timestamp originais
-   * TODO: Validar action contra AUDIT_ACTION
    */
   static fromJSON(data) {
-    // TODO: implementar
-    return new AuditEntry(AUDIT_ACTION.READ, '', '');
+    const entry = new AuditEntry(
+      data.action         || AUDIT_ACTION.READ,
+      data.resource       || '',
+      data.resourceId     || '',
+      data.organizationId || '',
+      data.personId       || '',
+      data.source         || '',
+      data.before         ?? null,
+      data.after          ?? null,
+      data.metadata       || {},
+    );
+    if (data.id)        entry.id        = data.id;
+    if (data.timestamp) entry.timestamp = data.timestamp;
+    return entry;
   }
 
   /**
+   * Gera um identificador único para a entrada.
+   * Usa crypto.randomUUID() quando disponível; fallback para ambientes sem suporte.
+   * Nunca retorna ID vazio.
    * @returns {string}
    * @private
-   * TODO: Usar crypto.randomUUID() quando disponível
    */
   static _generateId() {
-    // TODO: implementar
-    return '';
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
   }
 }

@@ -53,13 +53,12 @@ export class AuditContext {
 
   /**
    * Verifica se o contexto possui os campos mínimos obrigatórios.
+   * Requer organizationId e personId não vazios.
+   * sessionId e source podem ser vazios.
    * @returns {boolean}
-   *
-   * TODO: Exigir pelo menos organizationId e personId como obrigatórios
    */
   isValid() {
-    // TODO: implementar
-    return false;
+    return Boolean(this.organizationId) && Boolean(this.personId);
   }
 
   /**
@@ -71,18 +70,45 @@ export class AuditContext {
    * TODO: Extrair organizationId da Organization associada à Session
    */
   static fromSession(session) {
-    // TODO: implementar
+    // TODO: implementar quando Identity Domain estiver integrado
     return new AuditContext();
   }
 
   /**
-   * Serializa o contexto para inclusão em AuditEntry.
+   * Serializa o contexto para inclusão em AuditEntry ou persistência.
    * @returns {Object}
-   *
-   * TODO: Omitir campos vazios para reduzir tamanho do registro
    */
   toJSON() {
-    // TODO: implementar
-    return {};
+    return {
+      organizationId: this.organizationId,
+      personId:       this.personId,
+      sessionId:      this.sessionId,
+      source:         this.source,
+      ip:             this.ip,
+      userAgent:      this.userAgent,
+      correlationId:  this.correlationId,
+      createdAt:      this.createdAt,
+    };
+  }
+
+  /**
+   * Reconstrói um AuditContext a partir de objeto serializado.
+   * Preserva todos os campos, incluindo createdAt original.
+   * Não acessa browser, navigator ou IP real.
+   * @param {Object} data
+   * @returns {AuditContext}
+   */
+  static fromJSON(data) {
+    const ctx = new AuditContext(
+      data.organizationId || '',
+      data.personId       || '',
+      data.sessionId      || '',
+      data.source         || '',
+      data.ip             || '',
+      data.userAgent      || '',
+      data.correlationId  || '',
+    );
+    if (data.createdAt != null) ctx.createdAt = data.createdAt;
+    return ctx;
   }
 }

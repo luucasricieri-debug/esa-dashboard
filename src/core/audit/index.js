@@ -12,10 +12,10 @@
  * Este arquivo NÃO está conectado ao Dashboard legado (index.html).
  */
 
-export { AUDIT_ACTION, AUDIT_ACTION_CATEGORY } from './audit-action.js';
-export { AuditContext }                         from './audit-context.js';
-export { AuditEntry }                           from './audit-entry.js';
-export { Audit }                                from './audit.js';
+export { AUDIT_ACTION, AUDIT_ACTION_CATEGORY, isValidAuditAction, getAuditActionCategory } from './audit-action.js';
+export { AuditContext }                                                                       from './audit-context.js';
+export { AuditEntry }                                                                         from './audit-entry.js';
+export { Audit }                                                                              from './audit.js';
 
 import { Audit } from './audit.js';
 
