@@ -1041,12 +1041,12 @@ async function loadAllData() {
     var _lvlCrm=(CU.level||'').toLowerCase().trim();
     if(_lvlCrm==='diretor'||_lvlCrm==='trafego'||_lvlCrm==='gestor'||_lvlCrm==='engenharia'||_lvlCrm==='executivo'||_lvlCrm==='sdr'||_lvlCrm==='jackeline'){
       crmDeals = await fbGet('crm/deals') || {};
-      try {
-        var _funis = await fbGet('crm/funis') || {};
-        crmEtapasCustom = {};
-        Object.keys(_funis).forEach(function(k){ crmEtapasCustom[k] = (_funis[k]&&_funis[k].etapas)||{}; });
-      } catch(e){ crmEtapasCustom = {}; }
     }
+    try {
+      var _funis = await fbGet('crm/funis') || {};
+      crmEtapasCustom = {};
+      Object.keys(_funis).forEach(function(k){ crmEtapasCustom[k] = (_funis[k]&&_funis[k].etapas)||{}; });
+    } catch(e){ crmEtapasCustom = {}; }
     // Migração: 'Diagnóstico e Cálculo' → 'Envio de Proposta' no funil assinatura_energia
     Object.entries(crmDeals||{}).forEach(function(e){
       var d=e[1]; if(!d||d.funil!=='assinatura_energia'||d.etapa!=='Diagnóstico e Cálculo') return;
