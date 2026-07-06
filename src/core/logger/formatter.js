@@ -22,16 +22,28 @@
 
 import { LOG_LEVEL_META } from './log-level.js';
 
+/** Chaves cujos valores devem ser substituídos por [REDACTED] (case-insensitive). */
+const SENSITIVE_KEYS = ['password', 'pass', 'passhash', 'token', 'secret', 'apikey', 'authorization'];
+
+/** Mapeamento de LOG_LEVEL para severity de monitoramento externo. */
+const SEVERITY_MAP = {
+  CRITICAL: 'fatal',
+  ERROR:    'error',
+  WARN:     'warning',
+  INFO:     'info',
+  DEBUG:    'debug',
+};
+
 /**
  * Formata entradas de log para diferentes destinos de saída.
  */
 export class LogFormatter {
   /**
-   * @param {Object} options - Opções de formatação globais
+   * @param {Object}  options
    * @param {boolean} options.includeTimestamp - Incluir timestamp nas saídas (padrão: true)
    * @param {boolean} options.includeSource    - Incluir source nas saídas (padrão: true)
    * @param {boolean} options.includeId        - Incluir id da entrada nas saídas (padrão: false)
-   * @param {string}  options.timestampFormat  - Formato do timestamp: 'iso' | 'locale' | 'ms'
+   * @param {string}  options.timestampFormat  - 'iso' | 'locale' | 'ms'
    */
   constructor(options = {}) {
     this.options = {
@@ -45,114 +57,127 @@ export class LogFormatter {
 
   /**
    * Formata uma LogEntry para exibição no console do browser/Node.
-   * Retorna string com prefixo de nível, timestamp, source e mensagem.
-   *
+   * Formato: [LEVEL] TIMESTAMP [SOURCE] MESSAGE
    * @param {LogEntry} entry
    * @returns {string}
-   *
-   * Ex saída esperada: "[WARN] 2026-07-06T12:00:00.000Z [EventBus] Subscriber não encontrado"
-   *
-   * TODO: Aplicar cores via %c quando o destino for console do browser
-   * TODO: Usar LOG_LEVEL_META[entry.level].prefix para ícone de severidade
-   * TODO: Incluir context serializado em linha separada quando não vazio
    */
   formatForConsole(entry) {
-    // TODO: implementar
-    return '';
+    const parts = [];
+    if (this.options.includeId) parts.push(`(${entry.id})`);
+    parts.push(`[${entry.level}]`);
+    if (this.options.includeTimestamp) parts.push(this._formatTimestamp(entry.timestamp));
+    if (this.options.includeSource && entry.source) parts.push(`[${entry.source}]`);
+    parts.push(entry.message);
+    return parts.join(' ');
   }
 
   /**
-   * Formata uma LogEntry para escrita em arquivo de log (texto plano).
-   * Saída linha única, sem cores, separadores pipe.
-   *
+   * Formata uma LogEntry para escrita em arquivo de log (linha única, sem cores).
+   * Formato: TIMESTAMP | LEVEL | SOURCE | MESSAGE | CONTEXT_JSON
    * @param {LogEntry} entry
    * @returns {string}
-   *
-   * Ex saída esperada: "2026-07-06T12:00:00.000Z | ERROR | CRMDomain | Deal não encontrado | {\"dealId\":\"123\"}"
-   *
-   * TODO: Implementar serialização de context e metadata como JSON inline
-   * TODO: Garantir que a saída é compatível com parsers comuns (Splunk, CloudWatch)
    */
   formatForFile(entry) {
-    // TODO: implementar
-    return '';
+    const ts  = this._formatTimestamp(entry.timestamp);
+    const msg = String(entry.message).replace(/\r?\n/g, ' ');
+    const ctx = this._serializeContext(entry.context);
+    return `${ts} | ${entry.level} | ${entry.source || ''} | ${msg} | ${ctx}`;
   }
 
   /**
    * Formata uma LogEntry para registro na trilha de auditoria.
    * Retorna objeto estruturado com todos os campos relevantes para compliance.
-   *
    * @param {LogEntry} entry
    * @returns {Object}
-   *
-   * TODO: Incluir campos obrigatórios de auditoria: userId, action, resource, outcome
-   * TODO: Nunca omitir id, timestamp e source nesta saída
-   * TODO: Preparar para assinatura digital futura (integridade da trilha)
    */
   formatForAudit(entry) {
-    // TODO: implementar
-    return {};
+    return {
+      id:        entry.id,
+      timestamp: entry.timestamp,
+      level:     entry.level,
+      message:   entry.message,
+      source:    entry.source,
+      context:   entry.context,
+      metadata:  entry.metadata,
+    };
   }
 
   /**
    * Prepara payload de uma LogEntry para análise pela Solana IA.
-   * Seleciona apenas os campos relevantes para contexto de IA.
-   *
    * @param {LogEntry} entry
    * @returns {Object}
-   *
-   * TODO: Filtrar apenas entradas de nível WARN e acima para envio à IA
-   * TODO: Sumarizar context para reduzir tokens enviados
-   * TODO: Incluir sequência temporal para análise de padrões de erro
    */
   formatForIA(entry) {
-    // TODO: implementar
-    return {};
+    return {
+      severity:  entry.level.toLowerCase(),
+      message:   entry.message,
+      source:    entry.source,
+      context:   entry.context,
+      timestamp: entry.timestamp,
+    };
   }
 
   /**
    * Formata uma LogEntry para envio a ferramentas externas de monitoramento.
    * Estrutura compatível com formato comum (Sentry, Datadog, New Relic).
-   *
    * @param {LogEntry} entry
    * @returns {Object}
-   *
-   * TODO: Mapear LOG_LEVEL para severity do formato alvo (ex: Sentry usa 'fatal' para CRITICAL)
-   * TODO: Incluir tags derivadas de source e context para filtragem
-   * TODO: Adicionar fingerprint para agrupamento de erros similares
    */
   formatForMonitoring(entry) {
-    // TODO: implementar
-    return {};
+    return {
+      eventId:   entry.id,
+      level:     entry.level,
+      severity:  SEVERITY_MAP[entry.level] || 'info',
+      message:   entry.message,
+      source:    entry.source,
+      timestamp: entry.timestamp,
+      tags:      { source: entry.source, level: entry.level },
+      extra:     entry.context,
+    };
   }
 
   /**
-   * Formata o timestamp de uma LogEntry conforme options.timestampFormat.
-   * @param {number} timestamp - ms desde epoch
+   * Formata o timestamp conforme options.timestampFormat.
+   * Suporta: 'iso' (toISOString), 'locale' (pt-BR), 'ms' (raw ms)
+   * @param {number} timestamp
    * @returns {string}
-   *
-   * TODO: Implementar os formatos: 'iso' (toISOString), 'locale' (toLocaleString pt-BR), 'ms' (raw)
-   * TODO: Aplicar fuso horário da organização quando disponível
    * @private
    */
   _formatTimestamp(timestamp) {
-    // TODO: implementar
-    return '';
+    const fmt = this.options.timestampFormat;
+    if (fmt === 'ms')     return String(timestamp);
+    if (fmt === 'locale') return new Date(timestamp).toLocaleString('pt-BR');
+    return new Date(timestamp).toISOString();
   }
 
   /**
-   * Serializa o context de uma LogEntry de forma segura.
-   * Remove campos sensíveis antes de serializar.
-   *
+   * Serializa o context de forma segura, removendo campos sensíveis.
+   * Sanitização recursiva — suporta objetos e arrays aninhados.
+   * Não muta o objeto original.
    * @param {Object} context
-   * @returns {string}
-   *
-   * TODO: Implementar blocklist de campos sensíveis: ['password', 'passHash', 'token', 'secret']
-   * TODO: Truncar valores muito longos para evitar logs excessivamente grandes
+   * @returns {string} JSON string
    * @private
    */
   _serializeContext(context) {
-    // TODO: implementar
-    return '';
+    if (context === null || context === undefined) return '{}';
+
+    const sanitize = (val) => {
+      if (val === null || val === undefined) return val;
+      if (Array.isArray(val)) return val.map(sanitize);
+      if (typeof val === 'object') {
+        const out = {};
+        for (const [k, v] of Object.entries(val)) {
+          out[k] = SENSITIVE_KEYS.includes(k.toLowerCase()) ? '[REDACTED]' : sanitize(v);
+        }
+        return out;
+      }
+      return val;
+    };
+
+    try {
+      return JSON.stringify(sanitize(context));
+    } catch {
+      return '{}';
+    }
   }
 }

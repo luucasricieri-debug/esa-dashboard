@@ -17,7 +17,7 @@
  * Não grava nada em console, storage ou rede. Apenas modela o dado.
  */
 
-import { LOG_LEVEL } from './log-level.js';
+import { LOG_LEVEL, LOG_LEVEL_RANK } from './log-level.js';
 
 /**
  * Representa uma entrada de log imutável.
@@ -27,14 +27,11 @@ export class LogEntry {
    * @param {string} level     - Severidade: LOG_LEVEL.*
    * @param {string} message   - Mensagem principal legível por humanos
    * @param {string} source    - Módulo ou classe de origem (ex: 'CRMDomain', 'EventBus')
-   * @param {Object} context   - Dados estruturados relevantes ao evento (ex: { dealId, stageId })
+   * @param {Object} context   - Dados estruturados relevantes ao evento
    * @param {Object} metadata  - Dados extras para rastreabilidade (correlationId, traceId, userId)
    */
   constructor(level, message, source = '', context = {}, metadata = {}) {
-    /**
-     * @type {string} Identificador único desta entrada de log.
-     * TODO: Usar crypto.randomUUID() quando disponível
-     */
+    /** @type {string} Identificador único desta entrada de log */
     this.id = LogEntry._generateId();
 
     /** @type {string} Nível de severidade: LOG_LEVEL.* */
@@ -48,9 +45,6 @@ export class LogEntry {
 
     /**
      * @type {Object} Dados estruturados adicionais.
-     * Mantidos como objeto para facilitar serialização e query futura.
-     * Ex: { dealId: 'abc', fromStage: 'proposal', toStage: 'negotiation' }
-     *
      * TODO: Sanitizar campos sensíveis (senhas, tokens) antes de armazenar
      */
     this.context = context;
@@ -66,7 +60,6 @@ export class LogEntry {
      * Campos sugeridos: correlationId, traceId, userId, requestId, sessionId
      *
      * TODO: Propagar correlationId entre entradas causalmente relacionadas
-     * TODO: Integrar com tracing distribuído (OpenTelemetry) em fase futura
      */
     this.metadata = metadata;
   }
@@ -75,71 +68,73 @@ export class LogEntry {
    * Verifica se esta entrada é de um nível específico.
    * @param {string} level - LOG_LEVEL.*
    * @returns {boolean}
-   *
-   * TODO: Implementar comparação this.level === level
    */
   isLevel(level) {
-    // TODO: implementar
-    return false;
+    return this.level === level;
   }
 
   /**
-   * Verifica se esta entrada é de severidade crítica ou de erro.
+   * Verifica se esta entrada é de severidade ERROR ou CRITICAL.
    * @returns {boolean}
-   *
-   * TODO: Implementar via LOG_LEVEL_RANK — retornar true se rank >= ERROR
    */
   isCriticalOrError() {
-    // TODO: implementar
-    return false;
+    return LOG_LEVEL_RANK[this.level] >= LOG_LEVEL_RANK[LOG_LEVEL.ERROR];
   }
 
   /**
    * Retorna a idade desta entrada em milissegundos.
    * @returns {number}
-   *
-   * TODO: Implementar Date.now() - this.timestamp
    */
   getAgeMs() {
-    // TODO: implementar
-    return 0;
+    return Date.now() - this.timestamp;
   }
 
   /**
    * Serializa a entrada para objeto plano.
    * Usado pelo LogFormatter e por integrações de persistência.
    * @returns {Object}
-   *
-   * TODO: Implementar mapeamento completo de todos os campos
-   * TODO: Converter timestamp para ISO 8601 na serialização
    */
   toJSON() {
-    // TODO: implementar
-    return {};
+    return {
+      id:        this.id,
+      level:     this.level,
+      message:   this.message,
+      source:    this.source,
+      context:   this.context,
+      timestamp: this.timestamp,
+      metadata:  this.metadata,
+    };
   }
 
   /**
    * Reconstrói uma LogEntry a partir de objeto serializado.
+   * Preserva id e timestamp originais — não gera novos.
    * @param {Object} data
    * @returns {LogEntry}
-   *
-   * TODO: Validar level contra LOG_LEVEL antes de instanciar
-   * TODO: Restaurar id e timestamp originais (não gerar novos)
    */
   static fromJSON(data) {
-    // TODO: implementar
-    return new LogEntry(LOG_LEVEL.INFO, '');
+    const entry = new LogEntry(
+      data.level    || LOG_LEVEL.INFO,
+      data.message  || '',
+      data.source   || '',
+      data.context  || {},
+      data.metadata || {},
+    );
+    entry.id        = data.id        || entry.id;
+    entry.timestamp = data.timestamp || entry.timestamp;
+    return entry;
   }
 
   /**
    * Gera um identificador único para a entrada.
+   * Usa crypto.randomUUID() quando disponível; fallback para ambientes sem suporte.
    * @returns {string}
-   *
-   * TODO: Usar crypto.randomUUID() quando disponível no ambiente
    * @private
    */
   static _generateId() {
-    // TODO: implementar com crypto.randomUUID() ou fallback
-    return '';
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
   }
 }

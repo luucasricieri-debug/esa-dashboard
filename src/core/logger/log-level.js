@@ -64,8 +64,6 @@ export const LOG_LEVEL = {
  * Quanto maior o número, mais crítico o evento.
  *
  * Uso: LOG_LEVEL_RANK[LOG_LEVEL.ERROR] > LOG_LEVEL_RANK[LOG_LEVEL.INFO] // true
- *
- * TODO: Usar em Logger para filtrar entradas abaixo do nível mínimo configurado
  */
 export const LOG_LEVEL_RANK = {
   [LOG_LEVEL.DEBUG]:    0,
@@ -84,27 +82,27 @@ export const LOG_LEVEL_RANK = {
 export const LOG_LEVEL_META = {
   [LOG_LEVEL.DEBUG]: {
     label:  'DEBUG',
-    color:  '#6C757D', // cinza
+    color:  '#6C757D',
     prefix: '🔍',
   },
   [LOG_LEVEL.INFO]: {
     label:  'INFO',
-    color:  '#0D6EFD', // azul
+    color:  '#0D6EFD',
     prefix: 'ℹ️',
   },
   [LOG_LEVEL.WARN]: {
     label:  'WARN',
-    color:  '#FFC107', // amarelo
+    color:  '#FFC107',
     prefix: '⚠️',
   },
   [LOG_LEVEL.ERROR]: {
     label:  'ERROR',
-    color:  '#DC3545', // vermelho
+    color:  '#DC3545',
     prefix: '❌',
   },
   [LOG_LEVEL.CRITICAL]: {
     label:  'CRITICAL',
-    color:  '#6F0000', // vermelho escuro
+    color:  '#6F0000',
     prefix: '🚨',
   },
 };
@@ -114,10 +112,14 @@ export const LOG_LEVEL_META = {
  * @param {string} level     - Nível a verificar (LOG_LEVEL.*)
  * @param {string} threshold - Nível mínimo de referência
  * @returns {boolean}
- *
- * TODO: Usar no Logger para suprimir entradas abaixo do threshold configurado
+ * @throws {Error} Se level ou threshold forem desconhecidos
  */
 export function isAtLeast(level, threshold) {
-  // TODO: implementar via LOG_LEVEL_RANK
-  return false;
+  if (LOG_LEVEL_RANK[level] === undefined) {
+    throw new Error(`[isAtLeast] Unknown log level: "${level}"`);
+  }
+  if (LOG_LEVEL_RANK[threshold] === undefined) {
+    throw new Error(`[isAtLeast] Unknown threshold level: "${threshold}"`);
+  }
+  return LOG_LEVEL_RANK[level] >= LOG_LEVEL_RANK[threshold];
 }
