@@ -16,7 +16,8 @@ import { audit }                 from './audit/index.js';
 import { logger }                from './logger/index.js';
 import { integrationRegistry,
          CRMAuditIntegration }   from '../integrations/index.js';
-import { CRMLegacyEventBridge }  from '../legacy/crm-event-bridge.js';
+import { CRMLegacyEventBridge }    from '../legacy/crm-event-bridge.js';
+import { CRMLegacyReadModelHydrator } from '../legacy/crm-read-model-hydrator.js';
 import { CRMReadModelIntegration,
          crmReadModel,
          crmMetrics }            from '../read-models/crm/index.js';
@@ -24,9 +25,10 @@ import { CRMReadModelIntegration,
 class ESAApplication {
 
   constructor() {
-    this.version         = '2.0.0-alpha';
-    this.firebase        = new FirebaseService();
-    this.crmLegacyBridge = null;
+    this.version                = '2.0.0-alpha';
+    this.firebase               = new FirebaseService();
+    this.crmLegacyBridge        = null;
+    this.crmReadModelHydrator   = null;
   }
 
   initialize() {
@@ -58,6 +60,11 @@ class ESAApplication {
     // Bridge para código legado — exposto via window.ESA_OS.crmLegacyBridge
     if (!this.crmLegacyBridge) {
       this.crmLegacyBridge = new CRMLegacyEventBridge(eventBus);
+    }
+
+    // Hydrator de hidratação inicial — snapshot legado → CRM Read Model
+    if (!this.crmReadModelHydrator) {
+      this.crmReadModelHydrator = new CRMLegacyReadModelHydrator(crmReadModel, logger);
     }
 
     console.log('ESA OS iniciada com sucesso.');

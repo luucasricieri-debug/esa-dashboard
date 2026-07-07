@@ -1057,6 +1057,7 @@ async function loadAllData() {
       var _todayStr=new Date().toISOString().slice(0,10);
       allEventsToday = await fbGet('events/'+_todayStr) || {};
     } catch(e){ allEventsToday={}; }
+    try{if(window.ESA_OS&&window.ESA_OS.crmReadModelHydrator){await window.ESA_OS.crmReadModelHydrator.hydrate(crmDeals||{},{replace:true});}}catch(hydrationError){console.error('[ESA OS] Falha ao hidratar CRM Read Model:',hydrationError);}
     setPill('ok','Conectado');
   } catch(e){ setPill('err','Erro: '+e.message); }
 }

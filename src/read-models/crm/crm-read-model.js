@@ -34,6 +34,9 @@ export class CRMReadModel {
   constructor() {
     /** @type {Map<string, Object>} dealId → snapshot derivado */
     this._deals = new Map();
+
+    this._hydrationCount = 0;
+    this._lastHydration  = null;
   }
 
   // ── Projeção ──────────────────────────────────────────────────────────────
@@ -148,18 +151,78 @@ export class CRMReadModel {
   }
 
   /**
-   * Snapshot de diagnóstico do Read Model.
-   * @returns {{ dealCount: number }}
+   * Hidrata o Read Model a partir de um snapshot legado (Object ou Map).
+   * Não publica CoreEvents. Não gera AuditEntries. Não usa Date.now().
+   *
+   * @param {Object|Map} deals   - Mapa dealId → objeto deal
+   * @param {Object}     options
+   * @param {boolean}    [options.replace=true] - Se true, limpa o Map antes de hidratar
+   * @returns {{ received: number, hydrated: number, skipped: number, replaced: boolean }}
    */
-  getStats() {
-    return { dealCount: this._deals.size };
+  hydrate(deals, options = {}) {
+    if (deals === null || typeof deals !== 'object' || Array.isArray(deals)) {
+      throw new TypeError(
+        '[CRMReadModel] hydrate() expects an Object or Map — received: ' +
+          (deals === null ? 'null' : Array.isArray(deals) ? 'Array' : typeof deals),
+      );
+    }
+
+    const { replace = true } = options;
+
+    if (replace) this._deals.clear();
+
+    const entries = deals instanceof Map ? deals.entries() : Object.entries(deals);
+    let received  = 0;
+    let hydrated  = 0;
+    let skipped   = 0;
+
+    for (const [dealId, deal] of entries) {
+      received++;
+
+      if (
+        typeof dealId !== 'string' ||
+        !dealId.trim() ||
+        !deal ||
+        typeof deal !== 'object' ||
+        Array.isArray(deal)
+      ) {
+        skipped++;
+        continue;
+      }
+
+      const createdAt = Number(deal.createdAt || deal.ts) || 0;
+      const updatedAt = Number(deal.updatedAt || deal.etapaTs || deal.ts || deal.createdAt) || 0;
+
+      this._deals.set(dealId, this._normalizeDeal(dealId, deal, createdAt, updatedAt, '', 'crm:deal:hydrated'));
+      hydrated++;
+    }
+
+    this._hydrationCount++;
+    const result       = { received, hydrated, skipped, replaced: replace };
+    this._lastHydration = result;
+
+    return result;
   }
 
   /**
-   * Limpa todo o estado derivado.
+   * Snapshot de diagnóstico do Read Model.
+   * @returns {{ dealCount: number, hydrationCount: number, lastHydration: Object|null }}
+   */
+  getStats() {
+    return {
+      dealCount:      this._deals.size,
+      hydrationCount: this._hydrationCount,
+      lastHydration:  this._lastHydration ? Object.assign({}, this._lastHydration) : null,
+    };
+  }
+
+  /**
+   * Limpa todo o estado derivado, incluindo histórico de hidratação.
    */
   clear() {
     this._deals.clear();
+    this._hydrationCount = 0;
+    this._lastHydration  = null;
   }
 
   // ── Handlers privados ─────────────────────────────────────────────────────
@@ -172,8 +235,20 @@ export class CRMReadModel {
     // snap tem prioridade sobre payload nos campos de dados
     const src  = { ...payload, ...snap };
 
-    this._deals.set(dealId, {
-      id:             dealId,
+    this._deals.set(dealId, this._normalizeDeal(
+      dealId, src,
+      snap.createdAt || createdAt,
+      createdAt,
+      eventId,
+      eventType,
+    ));
+
+    return true;
+  }
+
+  _normalizeDeal(id, src, createdAt, updatedAt, lastEventId, lastEventType) {
+    return {
+      id,
       funil:          src.funil          || '',
       etapa:          src.etapa          || '',
       status:         src.status         || 'Em andamento',
@@ -183,13 +258,11 @@ export class CRMReadModel {
       responsavelUid: src.responsavelUid || '',
       captador:       src.captador       || '',
       captadorUid:    src.captadorUid    || '',
-      createdAt:      snap.createdAt     || createdAt,
-      updatedAt:      createdAt,
-      lastEventId:    eventId,
-      lastEventType:  eventType,
-    });
-
-    return true;
+      createdAt,
+      updatedAt,
+      lastEventId,
+      lastEventType,
+    };
   }
 
   _applyUpdated(payload, createdAt, eventId, eventType) {
