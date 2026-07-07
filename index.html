@@ -994,6 +994,8 @@ function buildNav() {
     ${(_lvl==='diretor'||_lvl==='gestor') ? `
     <div class="sb-section">Solana</div>
     ${navItem('solana','<path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/>','Solana IA')}
+    <div class="sb-section">ESA OS</div>
+    ${navItem('insights','<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>','ESA OS Insights')}
     ` : ''}
     <div class="sb-section">Prospecção</div>
     ${navItem('oportunidades','<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>','Oportunidades')}
@@ -1093,7 +1095,7 @@ function allProspList() {
 }
 
 // // NAVIGATION
-const PAGE_TITLES = {prosp:'Registrar Prospecção',historico:'Histórico',metas:'Minhas Metas',indicadores:'Indicadores',agenda:'Agenda Executiva',marketing:'Marketing',time:'Visão do Time',usuarios:'Usuários',conta:'Minha Conta',relatorios:'Relatórios',crm:'CRM',oportunidades:'Oportunidades',solana:'Solana IA',indcrm:'Indicadores CRM',proposta:'Gerador de Proposta - Energia'};
+const PAGE_TITLES = {prosp:'Registrar Prospecção',historico:'Histórico',metas:'Minhas Metas',indicadores:'Indicadores',agenda:'Agenda Executiva',marketing:'Marketing',time:'Visão do Time',usuarios:'Usuários',conta:'Minha Conta',relatorios:'Relatórios',crm:'CRM',oportunidades:'Oportunidades',solana:'Solana IA',indcrm:'Indicadores CRM',proposta:'Gerador de Proposta - Energia',insights:'ESA OS Insights'};
 let currentPage = 'prosp';
 
 function goPage(page) {
@@ -1124,6 +1126,7 @@ function renderPage(page) {
   else if(page==='solana') renderSolana(c);
   else if(page==='indcrm') renderIndCRM(c);
   else if(page==='proposta') renderProposta(c);
+  else if(page==='insights') renderInsights(c);
 }
 
 // // FORMULÁRIOS
@@ -5123,6 +5126,28 @@ async function renderSolana(c){
     window._solanaLoaded=true;
   }
   solanaRenderShell(c);
+}
+
+var crmInsightsViewInstance = null;
+async function renderInsights(c){
+  var _iLvl=(CU.level||'').toLowerCase().trim();
+  if(_iLvl!=='diretor'&&_iLvl!=='gestor'){
+    c.innerHTML='<div style="padding:2rem;text-align:center;color:var(--gr)">Acesso restrito a Diretoria e Gerência.</div>';
+    return;
+  }
+  c.innerHTML='<div class="page-header"><div class="page-title">◆ ESA OS Insights</div>'
+    +'<div class="page-sub">Inteligência comercial em tempo real</div></div>'
+    +'<div style="text-align:center;padding:48px;color:var(--gr)">Carregando...</div>';
+  try{
+    if(!crmInsightsViewInstance){
+      var mod=await import('./src/ui/insights/crm-insights-view.js');
+      crmInsightsViewInstance=new mod.CRMInsightsView(window.ESA_OS);
+    }
+    crmInsightsViewInstance.render(c);
+  }catch(e){
+    console.error('[ESA OS Insights] Falha ao carregar:',e);
+    c.innerHTML='<div style="padding:2rem;text-align:center;color:var(--danger)">Não foi possível carregar os insights do CRM.</div>';
+  }
 }
 
 function solanaRenderShell(c){
