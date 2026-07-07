@@ -3623,7 +3623,12 @@ function crmProdutosUnicos(){
   return Object.keys(set).sort();
 }
 function crmFilteredDeals(){
+  var _lvl=(CU.level||'').toLowerCase().trim();
+  var verTodos=_lvl==='diretor'||_lvl==='gestor'||_lvl==='trafego'||_lvl==='engenharia';
   var list=crmDealsList().filter(function(d){return d.funil===crmFunilAtual;});
+  if(!verTodos&&!crmFiltResp) list=list.filter(function(d){
+    return d.responsavelUid===CU.uid||d.captadorUid===CU.uid;
+  });
   if(crmFiltResp) list=list.filter(function(d){return d.responsavelUid===crmFiltResp;});
   if(crmFiltStatus) list=list.filter(function(d){return (d.status||'Em andamento')===crmFiltStatus;});
   if(crmFiltProduto) list=list.filter(function(d){return d.produto===crmFiltProduto;});
