@@ -19,8 +19,8 @@ import { integrationRegistry,
 import { CRMLegacyEventBridge }    from '../legacy/crm-event-bridge.js';
 import { CRMLegacyReadModelHydrator } from '../legacy/crm-read-model-hydrator.js';
 import { CRMReadModelIntegration,
-         crmReadModel,
-         crmMetrics }            from '../read-models/crm/index.js';
+         crmReadModel }            from '../read-models/crm/index.js';
+import { crmQueryService }         from '../queries/crm/index.js';
 
 class ESAApplication {
 
@@ -92,21 +92,31 @@ class ESAApplication {
   }
 
   getCRMMetrics(filters = {}) {
-    return {
-      conversion: crmMetrics.getConversionRate(filters),
-      winRate:    crmMetrics.getWinRate(filters),
-      lossRate:   crmMetrics.getLossRate(filters),
-      pausedRate: crmMetrics.getPausedRate(filters),
-      forecast:   crmMetrics.getForecast(filters),
-    };
+    return crmQueryService.getMetrics(filters).toJSON();
   }
 
   getCRMPipeline(filters = {}) {
-    return crmReadModel.getPipeline(filters);
+    return crmQueryService.getPipeline(filters).toJSON();
   }
 
   getCRMStatusSummary(filters = {}) {
-    return crmReadModel.getStatusSummary(filters);
+    return crmQueryService.getStatusSummary(filters).toJSON();
+  }
+
+  queryCRMDeal(dealId) {
+    return crmQueryService.getDeal(dealId).toJSON();
+  }
+
+  searchCRMDeals(filters = {}) {
+    return crmQueryService.searchDeals(filters).toJSON();
+  }
+
+  getCRMForecast(filters = {}) {
+    return crmQueryService.getForecast(filters).toJSON();
+  }
+
+  getCRMExecutiveSummary(filters = {}) {
+    return crmQueryService.getExecutiveSummary(filters).toJSON();
   }
 
 }
