@@ -13,6 +13,7 @@
 import { FirebaseService }       from '../services/firebase.js';
 import { eventBus }              from './events/index.js';
 import { audit }                 from './audit/index.js';
+import { logger }                from './logger/index.js';
 import { integrationRegistry,
          CRMAuditIntegration }   from '../integrations/index.js';
 import { CRMLegacyEventBridge }  from '../legacy/crm-event-bridge.js';
@@ -35,9 +36,9 @@ class ESAApplication {
 
     this.firebase.initialize();
 
-    // Registrar CRMAuditIntegration (idempotente — seguro se initialize() for chamado novamente)
+    // Registrar CRMAuditIntegration com Logger singleton (idempotente — seguro se initialize() for chamado novamente)
     if (!integrationRegistry.get('crmAudit')) {
-      integrationRegistry.register('crmAudit', new CRMAuditIntegration(eventBus, audit));
+      integrationRegistry.register('crmAudit', new CRMAuditIntegration(eventBus, audit, logger));
     }
     if (!integrationRegistry.get('crmAudit').isStarted()) {
       integrationRegistry.start('crmAudit');
@@ -50,6 +51,19 @@ class ESAApplication {
 
     console.log('ESA OS iniciada com sucesso.');
 
+  }
+
+  getCoreStats() {
+    return {
+      version:             this.version,
+      firebaseInitialized: this.firebase.isInitialized(),
+      integrations:        integrationRegistry.getStats(),
+      logger:              logger.getStats(),
+    };
+  }
+
+  getCRMAuditStats() {
+    return integrationRegistry.get('crmAudit')?.getStats() || null;
   }
 
 }
