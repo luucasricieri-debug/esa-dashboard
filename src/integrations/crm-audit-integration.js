@@ -11,6 +11,7 @@
  * - Construir AuditContext a partir dos metadados do evento
  * - Chamar audit.record() quando o contexto for válido
  * - Manter contadores de diagnóstico para observabilidade
+ * - Registrar cada path (sucesso/skip/erro) via Logger opcional
  * - Isolar erros internamente — nunca relançar para o Event Bus
  *
  * Padrão: Integration / Adapter
@@ -18,7 +19,7 @@
  *
  * IMPORTANTE:
  * Este arquivo NÃO está conectado ao Dashboard legado (index.html).
- * Não integra com Logger. Não integra com Firebase.
+ * Não integra com Firebase.
  */
 
 import { AuditContext }   from '../core/audit/audit-context.js';
@@ -29,16 +30,27 @@ const SUBSCRIBER_OWNER = 'CRMAuditIntegration';
 
 /**
  * Integração CRM → Audit via Event Bus.
+ * Logger é opcional — a integração funciona normalmente sem ele.
  */
 export class CRMAuditIntegration {
   /**
-   * @param {EventBus} eventBus - Instância do EventBus da ESA OS (injetada)
-   * @param {Audit}    audit    - Instância do Audit da ESA OS (injetada)
+   * @param {EventBus}    eventBus       - Instância do EventBus da ESA OS (injetada)
+   * @param {Audit}       audit          - Instância do Audit da ESA OS (injetada)
+   * @param {Logger|null} [logger=null]  - Logger opcional para observabilidade (injetado)
    */
-  constructor(eventBus, audit) {
+  constructor(eventBus, audit, logger = null) {
     this._eventBus = eventBus;
     this._audit    = audit;
     this._mapper   = new CRMEventMapper();
+
+    // Logger via dependency injection — child herda histórico do pai (shared _entries)
+    if (logger !== null) {
+      this._logger = typeof logger.child === 'function'
+        ? logger.child(SUBSCRIBER_OWNER)
+        : logger;
+    } else {
+      this._logger = null;
+    }
 
     this._started      = false;
     this._subscriberId = null;
@@ -105,14 +117,15 @@ export class CRMAuditIntegration {
    */
   getStats() {
     return {
-      started:              this._started,
-      subscriberId:         this._subscriberId,
-      receivedCount:        this._receivedCount,
-      auditedCount:         this._auditedCount,
-      skippedUnmapped:      this._skippedUnmapped,
+      started:               this._started,
+      subscriberId:          this._subscriberId,
+      receivedCount:         this._receivedCount,
+      auditedCount:          this._auditedCount,
+      skippedUnmapped:       this._skippedUnmapped,
       skippedInvalidContext: this._skippedInvalidContext,
-      errorCount:           this._errorCount,
-      lastError:            this._lastError,
+      errorCount:            this._errorCount,
+      lastError:             this._lastError,
+      loggerEnabled:         this._logger !== null,
     };
   }
 
@@ -131,6 +144,12 @@ export class CRMAuditIntegration {
 
       if (mapped === null) {
         this._skippedUnmapped++;
+        if (this._logger) {
+          this._logger.debug('CRM audit skipped: unmapped event', {
+            eventId:   event.id,
+            eventType: event.type,
+          });
+        }
         return;
       }
 
@@ -138,10 +157,18 @@ export class CRMAuditIntegration {
 
       if (!context.isValid()) {
         this._skippedInvalidContext++;
+        if (this._logger) {
+          this._logger.warn('CRM audit skipped: invalid context', {
+            eventId:        event.id,
+            eventType:      event.type,
+            organizationId: context.organizationId,
+            personId:       context.personId,
+          });
+        }
         return;
       }
 
-      this._audit.record(
+      const auditEntry = this._audit.record(
         context,
         mapped.action,
         mapped.resource,
@@ -152,9 +179,26 @@ export class CRMAuditIntegration {
       );
 
       this._auditedCount++;
+
+      if (this._logger) {
+        this._logger.info('CRM event audited', {
+          eventId:      event.id,
+          eventType:    event.type,
+          auditEntryId: auditEntry.id,
+          action:       mapped.action,
+          resource:     mapped.resource,
+          resourceId:   mapped.resourceId,
+        });
+      }
     } catch (err) {
       this._errorCount++;
       this._lastError = { name: err.name || 'Error', message: err.message || String(err) };
+      if (this._logger) {
+        this._logger.error('CRM audit integration failed', err, {
+          eventId:   event.id,
+          eventType: event.type,
+        });
+      }
     }
   }
 
