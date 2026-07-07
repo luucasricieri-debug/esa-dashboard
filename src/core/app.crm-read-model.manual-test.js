@@ -181,58 +181,71 @@ section(8, 'getCRMPipeline retorna estrutura funil → etapa com count e totalVa
 
 const pipe8 = ESA.getCRMPipeline();
 assert(typeof pipe8 === 'object',                              '8.1 retorna objeto');
-assert('venda_ufv' in pipe8,                                  '8.2 funil venda_ufv presente');
-assert('Negociação' in pipe8.venda_ufv,                       '8.3 etapa Negociação presente');
-assert(pipe8.venda_ufv.Negociação.count      === 1,           '8.4 count = 1');
-assert(pipe8.venda_ufv.Negociação.totalValue === 100000,      '8.5 totalValue = 100000');
-assert(pipe8.venda_ufv.Negociação.totalKwh   === 0,           '8.6 totalKwh = 0');
+assert('data'     in pipe8,                                   '8.2 campo data presente (CRMQueryResult)');
+assert('metadata' in pipe8,                                   '8.3 campo metadata presente');
+assert(typeof pipe8.generatedAt === 'number',                 '8.4 generatedAt é number');
+assert(pipe8.metadata.query === 'crm.getPipeline',            '8.5 metadata.query = crm.getPipeline');
+assert('venda_ufv' in pipe8.data,                             '8.6 funil venda_ufv presente em data');
+assert('Negociação' in pipe8.data.venda_ufv,                  '8.7 etapa Negociação presente');
+assert(pipe8.data.venda_ufv.Negociação.count      === 1,      '8.8 count = 1');
+assert(pipe8.data.venda_ufv.Negociação.totalValue === 100000, '8.9 totalValue = 100000');
+assert(pipe8.data.venda_ufv.Negociação.totalKwh   === 0,      '8.10 totalKwh = 0');
 
 // ── 9. getCRMStatusSummary retorna resumo derivado ────────────────────────────
 
 section(9, 'getCRMStatusSummary retorna total e byStatus corretos');
 
 const summary9 = ESA.getCRMStatusSummary();
-assert(summary9.total === 1,                '9.1 total = 1');
-assert(summary9.byStatus['Vendido'] === 1,  '9.2 byStatus.Vendido = 1');
-assert(!('Em andamento' in summary9.byStatus),
-  '9.3 Em andamento ausente após status ter mudado para Vendido');
+assert('data'     in summary9,                              '9.1 campo data presente (CRMQueryResult)');
+assert('metadata' in summary9,                              '9.2 campo metadata presente');
+assert(typeof summary9.generatedAt === 'number',            '9.3 generatedAt é number');
+assert(summary9.metadata.query === 'crm.getStatusSummary',  '9.4 metadata.query = crm.getStatusSummary');
+assert(summary9.data.total === 1,                           '9.5 total = 1');
+assert(summary9.data.byStatus['Vendido'] === 1,             '9.6 byStatus.Vendido = 1');
+assert(!('Em andamento' in summary9.data.byStatus),
+  '9.7 Em andamento ausente após status ter mudado para Vendido');
 
-// ── 10. getCRMMetrics retorna conversion/winRate/lossRate/pausedRate/forecast ─
+// ── 10. getCRMMetrics retorna conversion/winRate/lossRate/pausedRate — getCRMForecast retorna forecast ─
 
-section(10, 'getCRMMetrics retorna todas as métricas com valores corretos');
+section(10, 'getCRMMetrics e getCRMForecast retornam métricas com valores corretos');
 
-const metrics10 = ESA.getCRMMetrics();
+const metrics10  = ESA.getCRMMetrics();
+const forecast10 = ESA.getCRMForecast();
 
-assert('conversion' in metrics10,     '10.1 campo conversion presente');
-assert('winRate'    in metrics10,     '10.2 campo winRate presente');
-assert('lossRate'   in metrics10,     '10.3 campo lossRate presente');
-assert('pausedRate' in metrics10,     '10.4 campo pausedRate presente');
-assert('forecast'   in metrics10,     '10.5 campo forecast presente');
+// Estrutura CRMQueryResult de getCRMMetrics
+assert('data'     in metrics10,                             '10.1 metrics10.data presente');
+assert('metadata' in metrics10,                             '10.2 metrics10.metadata presente');
+assert(typeof metrics10.generatedAt === 'number',           '10.3 metrics10.generatedAt é number');
+assert(metrics10.metadata.query === 'crm.getMetrics',       '10.4 metadata.query = crm.getMetrics');
 
 // conversion
-assert(metrics10.conversion.total     === 1,   '10.6 conversion.total = 1');
-assert(metrics10.conversion.converted === 1,   '10.7 conversion.converted = 1');
-assert(metrics10.conversion.rate      === 100, '10.8 conversion.rate = 100');
+assert('conversion' in metrics10.data,                      '10.5 campo conversion presente em data');
+assert(metrics10.data.conversion.total     === 1,           '10.6 conversion.total = 1');
+assert(metrics10.data.conversion.converted === 1,           '10.7 conversion.converted = 1');
+assert(metrics10.data.conversion.rate      === 100,         '10.8 conversion.rate = 100');
 
 // winRate
-assert(metrics10.winRate.decided === 1,   '10.9 winRate.decided = 1');
-assert(metrics10.winRate.won     === 1,   '10.10 winRate.won = 1');
-assert(metrics10.winRate.rate    === 100, '10.11 winRate.rate = 100');
+assert(metrics10.data.winRate.decided === 1,   '10.9 winRate.decided = 1');
+assert(metrics10.data.winRate.won     === 1,   '10.10 winRate.won = 1');
+assert(metrics10.data.winRate.rate    === 100, '10.11 winRate.rate = 100');
 
 // lossRate
-assert(metrics10.lossRate.decided === 1,  '10.12 lossRate.decided = 1');
-assert(metrics10.lossRate.lost    === 0,  '10.13 lossRate.lost = 0');
-assert(metrics10.lossRate.rate    === 0,  '10.14 lossRate.rate = 0');
+assert(metrics10.data.lossRate.decided === 1,  '10.12 lossRate.decided = 1');
+assert(metrics10.data.lossRate.lost    === 0,  '10.13 lossRate.lost = 0');
+assert(metrics10.data.lossRate.rate    === 0,  '10.14 lossRate.rate = 0');
 
 // pausedRate
-assert(metrics10.pausedRate.total  === 1, '10.15 pausedRate.total = 1');
-assert(metrics10.pausedRate.paused === 0, '10.16 pausedRate.paused = 0');
-assert(metrics10.pausedRate.rate   === 0, '10.17 pausedRate.rate = 0');
+assert(metrics10.data.pausedRate.total  === 1, '10.15 pausedRate.total = 1');
+assert(metrics10.data.pausedRate.paused === 0, '10.16 pausedRate.paused = 0');
+assert(metrics10.data.pausedRate.rate   === 0, '10.17 pausedRate.rate = 0');
 
-// forecast — deal Vendido (peso 1.00), valor 100000
-assert(metrics10.forecast.totalValue    === 100000, '10.18 forecast.totalValue = 100000');
-assert(metrics10.forecast.weightedValue === 100000, '10.19 forecast.weightedValue = 100000');
-assert(metrics10.forecast.dealCount     === 1,      '10.20 forecast.dealCount = 1');
+// forecast via getCRMForecast() — deal Vendido (peso 1.00), valor 100000
+assert('data'     in forecast10,                            '10.18 forecast10.data presente');
+assert(typeof forecast10.generatedAt === 'number',          '10.19 forecast10.generatedAt é number');
+assert(forecast10.metadata.query === 'crm.getForecast',     '10.20 metadata.query = crm.getForecast');
+assert(forecast10.data.totalValue    === 100000,            '10.21 forecast.totalValue = 100000');
+assert(forecast10.data.weightedValue === 100000,            '10.22 forecast.weightedValue = 100000');
+assert(forecast10.data.dealCount     === 1,                 '10.23 forecast.dealCount = 1');
 
 // ── 11. getCRMReadModelStats retorna snapshots sem expor integração ou Map ────
 
