@@ -17,6 +17,9 @@ import { logger }                from './logger/index.js';
 import { integrationRegistry,
          CRMAuditIntegration }   from '../integrations/index.js';
 import { CRMLegacyEventBridge }  from '../legacy/crm-event-bridge.js';
+import { CRMReadModelIntegration,
+         crmReadModel,
+         crmMetrics }            from '../read-models/crm/index.js';
 
 class ESAApplication {
 
@@ -44,6 +47,14 @@ class ESAApplication {
       integrationRegistry.start('crmAudit');
     }
 
+    // CRM Read Model Integration — consome crm:deal:* e mantém projeção em memória
+    if (!integrationRegistry.get('crmReadModel')) {
+      integrationRegistry.register('crmReadModel', new CRMReadModelIntegration(eventBus, crmReadModel, logger));
+    }
+    if (!integrationRegistry.get('crmReadModel').isStarted()) {
+      integrationRegistry.start('crmReadModel');
+    }
+
     // Bridge para código legado — exposto via window.ESA_OS.crmLegacyBridge
     if (!this.crmLegacyBridge) {
       this.crmLegacyBridge = new CRMLegacyEventBridge(eventBus);
@@ -64,6 +75,31 @@ class ESAApplication {
 
   getCRMAuditStats() {
     return integrationRegistry.get('crmAudit')?.getStats() || null;
+  }
+
+  getCRMReadModelStats() {
+    return {
+      integration: integrationRegistry.get('crmReadModel')?.getStats() || null,
+      readModel:   crmReadModel.getStats(),
+    };
+  }
+
+  getCRMMetrics(filters = {}) {
+    return {
+      conversion: crmMetrics.getConversionRate(filters),
+      winRate:    crmMetrics.getWinRate(filters),
+      lossRate:   crmMetrics.getLossRate(filters),
+      pausedRate: crmMetrics.getPausedRate(filters),
+      forecast:   crmMetrics.getForecast(filters),
+    };
+  }
+
+  getCRMPipeline(filters = {}) {
+    return crmReadModel.getPipeline(filters);
+  }
+
+  getCRMStatusSummary(filters = {}) {
+    return crmReadModel.getStatusSummary(filters);
   }
 
 }
