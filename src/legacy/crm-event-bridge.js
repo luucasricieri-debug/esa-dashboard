@@ -209,6 +209,129 @@ export class CRMLegacyEventBridge {
   }
 
   /**
+   * Publica crm:deal:won quando um deal muda para status "Vendido".
+   * Usar SOMENTE para essa transição — não publicar crm:deal:updated adicionalmente.
+   *
+   * @param {Object} data
+   * @param {string} data.dealId
+   * @param {Object} [data.before]
+   * @param {Object} [data.after]
+   * @param {string} [data.funil]
+   * @param {string} [data.organizationId]
+   * @param {string} [data.personId]
+   * @param {string} [data.userId]
+   * @param {string} [data.sessionId]
+   * @param {string} [data.userName]
+   * @param {string} [data.userLevel]
+   * @returns {Promise<CoreEvent>}
+   * @throws {Error} Se dealId for inválido
+   */
+  async publishDealWon(data) {
+    const {
+      dealId,
+      before = null,
+      after  = null,
+      funil  = '',
+    } = data || {};
+
+    if (typeof dealId !== 'string' || !dealId.trim()) {
+      throw new Error('[CRMLegacyEventBridge] dealId must be a non-empty string');
+    }
+
+    const event = new CoreEvent(
+      'crm:deal:won',
+      { id: dealId, dealId, before, after, deal: after, funil },
+      'LegacyCRM',
+      this._buildLegacyMetadata(data),
+    );
+
+    await this._eventBus.publish(event);
+    return event;
+  }
+
+  /**
+   * Publica crm:deal:lost quando um deal muda para status "Perdido".
+   * Usar SOMENTE para essa transição — não publicar crm:deal:updated adicionalmente.
+   *
+   * @param {Object} data
+   * @param {string} data.dealId
+   * @param {Object} [data.before]
+   * @param {Object} [data.after]
+   * @param {string} [data.funil]
+   * @param {string} [data.organizationId]
+   * @param {string} [data.personId]
+   * @param {string} [data.userId]
+   * @param {string} [data.sessionId]
+   * @param {string} [data.userName]
+   * @param {string} [data.userLevel]
+   * @returns {Promise<CoreEvent>}
+   * @throws {Error} Se dealId for inválido
+   */
+  async publishDealLost(data) {
+    const {
+      dealId,
+      before = null,
+      after  = null,
+      funil  = '',
+    } = data || {};
+
+    if (typeof dealId !== 'string' || !dealId.trim()) {
+      throw new Error('[CRMLegacyEventBridge] dealId must be a non-empty string');
+    }
+
+    const event = new CoreEvent(
+      'crm:deal:lost',
+      { id: dealId, dealId, before, after, deal: after, funil },
+      'LegacyCRM',
+      this._buildLegacyMetadata(data),
+    );
+
+    await this._eventBus.publish(event);
+    return event;
+  }
+
+  /**
+   * Publica crm:deal:paused quando um deal muda para status "Pausado".
+   * Usar SOMENTE para essa transição — não publicar crm:deal:updated adicionalmente.
+   *
+   * @param {Object} data
+   * @param {string} data.dealId
+   * @param {Object} [data.before]
+   * @param {Object} [data.after]
+   * @param {string} [data.funil]
+   * @param {string} [data.organizationId]
+   * @param {string} [data.personId]
+   * @param {string} [data.userId]
+   * @param {string} [data.sessionId]
+   * @param {string} [data.userName]
+   * @param {string} [data.userLevel]
+   * @returns {Promise<CoreEvent>}
+   * @throws {Error} Se dealId for inválido
+   */
+  async publishDealPaused(data) {
+    const {
+      dealId,
+      before = null,
+      after  = null,
+      funil  = '',
+    } = data || {};
+
+    if (typeof dealId !== 'string' || !dealId.trim()) {
+      throw new Error('[CRMLegacyEventBridge] dealId must be a non-empty string');
+    }
+
+    const event = new CoreEvent(
+      'crm:deal:paused',
+      { id: dealId, dealId, before, after, deal: after, funil },
+      'LegacyCRM',
+      this._buildLegacyMetadata(data),
+    );
+
+    await this._eventBus.publish(event);
+    return event;
+  }
+
+  /**
    * Constrói os metadata canônicos de um evento legado.
    * Todos os campos do usuário são opcionais e defaultam para ''.
    * @param {Object} data - Objeto de dados do chamador

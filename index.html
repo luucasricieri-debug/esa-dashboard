@@ -4283,7 +4283,7 @@ window.crmSaveDeal=async function(){
       crmDeals[id2]=Object.assign({},existing,patch);
       registrarInteracao();
       showToast('Deal atualizado com sucesso!');
-      try{if(window.ESA_OS&&window.ESA_OS.crmLegacyBridge){await window.ESA_OS.crmLegacyBridge.publishDealUpdated({dealId:id2,before:_esaBeforeDeal,after:crmDeals[id2],organizationId:'esa',personId:(CU&&(CU.uid||CU.id||CU.name))||'',userId:(CU&&(CU.uid||CU.id))||'',sessionId:'',userName:(CU&&CU.name)||'',userLevel:(CU&&CU.level)||'',funil:funil||''});}}catch(bridgeError){console.error('[ESA OS] Falha ao publicar evento CRM legado:',bridgeError);}
+      var _esaStatus=patch.status||'Em andamento';var _esaOldStatus=_esaBeforeDeal.status||'Em andamento';var _esaBridgeData={dealId:id2,before:_esaBeforeDeal,after:crmDeals[id2],organizationId:'esa',personId:(CU&&(CU.uid||CU.id||CU.name))||'',userId:(CU&&(CU.uid||CU.id))||'',sessionId:'',userName:(CU&&CU.name)||'',userLevel:(CU&&CU.level)||'',funil:funil||''};try{if(window.ESA_OS&&window.ESA_OS.crmLegacyBridge){var _esaBridge=window.ESA_OS.crmLegacyBridge;if(_esaStatus==='Vendido'&&_esaOldStatus!=='Vendido'){await _esaBridge.publishDealWon(_esaBridgeData);}else if(_esaStatus==='Perdido'&&_esaOldStatus!=='Perdido'){await _esaBridge.publishDealLost(_esaBridgeData);}else if(_esaStatus==='Pausado'&&_esaOldStatus!=='Pausado'){await _esaBridge.publishDealPaused(_esaBridgeData);}else{await _esaBridge.publishDealUpdated(_esaBridgeData);}}}catch(bridgeError){console.error('[ESA OS] Falha ao publicar evento CRM legado:',bridgeError);}
     }
     closeModal('modal-crm-deal');
     crmRenderView();
