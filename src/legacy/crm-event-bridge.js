@@ -59,14 +59,8 @@ export class CRMLegacyEventBridge {
       dealId,
       fromStage,
       toStage,
-      deal        = null,
-      organizationId = '',
-      personId    = '',
-      userId      = '',
-      sessionId   = '',
-      userName    = '',
-      userLevel   = '',
-      funil       = '',
+      deal  = null,
+      funil = '',
     } = data || {};
 
     if (typeof dealId !== 'string' || !dealId.trim()) {
@@ -83,27 +77,154 @@ export class CRMLegacyEventBridge {
 
     const event = new CoreEvent(
       'crm:deal:stage-changed',
-      {
-        id: dealId,
-        dealId,
-        fromStage,
-        toStage,
-        deal,
-        funil,
-      },
+      { id: dealId, dealId, fromStage, toStage, deal, funil },
       'LegacyCRM',
-      {
-        organizationId,
-        personId,
-        userId,
-        sessionId,
-        userName,
-        userLevel,
-        legacy: true,
-      },
+      this._buildLegacyMetadata(data),
     );
 
     await this._eventBus.publish(event);
     return event;
+  }
+
+  /**
+   * Publica um evento de criação de Deal no Event Bus.
+   * Deve ser chamado APÓS o save do Firebase ter sido confirmado.
+   *
+   * @param {Object} data
+   * @param {string} data.dealId         - ID do deal criado (obrigatório, não vazio)
+   * @param {Object} [data.deal]         - Snapshot completo do deal salvo
+   * @param {string} [data.funil]
+   * @param {string} [data.organizationId]
+   * @param {string} [data.personId]
+   * @param {string} [data.userId]
+   * @param {string} [data.sessionId]
+   * @param {string} [data.userName]
+   * @param {string} [data.userLevel]
+   * @returns {Promise<CoreEvent>}
+   * @throws {Error} Se dealId for inválido
+   */
+  async publishDealCreated(data) {
+    const {
+      dealId,
+      deal  = null,
+      funil = '',
+    } = data || {};
+
+    if (typeof dealId !== 'string' || !dealId.trim()) {
+      throw new Error('[CRMLegacyEventBridge] dealId must be a non-empty string');
+    }
+
+    const event = new CoreEvent(
+      'crm:deal:created',
+      { id: dealId, dealId, deal, funil },
+      'LegacyCRM',
+      this._buildLegacyMetadata(data),
+    );
+
+    await this._eventBus.publish(event);
+    return event;
+  }
+
+  /**
+   * Publica um evento de atualização de Deal no Event Bus.
+   * Deve ser chamado APÓS o save do Firebase ter sido confirmado.
+   * O diff é responsabilidade de AuditEntry.getDiff() — não calcular aqui.
+   *
+   * @param {Object} data
+   * @param {string} data.dealId         - ID do deal atualizado (obrigatório, não vazio)
+   * @param {Object} [data.before]       - Snapshot do deal ANTES da edição (capturado pelo chamador)
+   * @param {Object} [data.after]        - Snapshot do deal APÓS a edição
+   * @param {string} [data.funil]
+   * @param {string} [data.organizationId]
+   * @param {string} [data.personId]
+   * @param {string} [data.userId]
+   * @param {string} [data.sessionId]
+   * @param {string} [data.userName]
+   * @param {string} [data.userLevel]
+   * @returns {Promise<CoreEvent>}
+   * @throws {Error} Se dealId for inválido
+   */
+  async publishDealUpdated(data) {
+    const {
+      dealId,
+      before = null,
+      after  = null,
+      funil  = '',
+    } = data || {};
+
+    if (typeof dealId !== 'string' || !dealId.trim()) {
+      throw new Error('[CRMLegacyEventBridge] dealId must be a non-empty string');
+    }
+
+    const event = new CoreEvent(
+      'crm:deal:updated',
+      { id: dealId, dealId, before, after, deal: after, funil },
+      'LegacyCRM',
+      this._buildLegacyMetadata(data),
+    );
+
+    await this._eventBus.publish(event);
+    return event;
+  }
+
+  /**
+   * Publica um evento de adição de Follow-up no Event Bus.
+   * Deve ser chamado APÓS o save do Firebase ter sido confirmado.
+   *
+   * @param {Object} data
+   * @param {string} data.followupId     - ID do follow-up criado (obrigatório, não vazio)
+   * @param {string} [data.dealId]       - ID do deal ao qual o follow-up pertence
+   * @param {Object} [data.followup]     - Dados do follow-up salvo
+   * @param {string} [data.funil]
+   * @param {string} [data.organizationId]
+   * @param {string} [data.personId]
+   * @param {string} [data.userId]
+   * @param {string} [data.sessionId]
+   * @param {string} [data.userName]
+   * @param {string} [data.userLevel]
+   * @returns {Promise<CoreEvent>}
+   * @throws {Error} Se followupId for inválido
+   */
+  async publishFollowUpAdded(data) {
+    const {
+      followupId,
+      dealId   = '',
+      followup = null,
+      funil    = '',
+    } = data || {};
+
+    if (typeof followupId !== 'string' || !followupId.trim()) {
+      throw new Error('[CRMLegacyEventBridge] followupId must be a non-empty string');
+    }
+
+    const event = new CoreEvent(
+      'crm:followup:added',
+      { id: followupId, followupId, dealId, followup, funil },
+      'LegacyCRM',
+      this._buildLegacyMetadata(data),
+    );
+
+    await this._eventBus.publish(event);
+    return event;
+  }
+
+  /**
+   * Constrói os metadata canônicos de um evento legado.
+   * Todos os campos do usuário são opcionais e defaultam para ''.
+   * @param {Object} data - Objeto de dados do chamador
+   * @returns {Object}
+   * @private
+   */
+  _buildLegacyMetadata(data) {
+    const d = data || {};
+    return {
+      organizationId: d.organizationId || '',
+      personId:       d.personId       || '',
+      userId:         d.userId         || '',
+      sessionId:      d.sessionId      || '',
+      userName:       d.userName       || '',
+      userLevel:      d.userLevel      || '',
+      legacy:         true,
+    };
   }
 }

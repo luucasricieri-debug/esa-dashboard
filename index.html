@@ -4259,9 +4259,11 @@ window.crmSaveDeal=async function(){
       await fbSet('crm/deals/'+id,data);
       crmDeals[id]=data;
       showToast('Deal criado com sucesso!');
+      try{if(window.ESA_OS&&window.ESA_OS.crmLegacyBridge){await window.ESA_OS.crmLegacyBridge.publishDealCreated({dealId:id,deal:data,organizationId:'esa',personId:(CU&&(CU.uid||CU.id||CU.name))||'',userId:(CU&&(CU.uid||CU.id))||'',sessionId:'',userName:(CU&&CU.name)||'',userLevel:(CU&&CU.level)||'',funil:funil||''});}}catch(bridgeError){console.error('[ESA OS] Falha ao publicar evento CRM legado:',bridgeError);}
     } else {
       var id2=crmEditId;
       var existing=crmDeals[id2]||{};
+      var _esaBeforeDeal=Object.assign({},existing);
       var patch=Object.assign({},common,{
         captadorUid:existing.captadorUid||respUid,
         captadorNome:existing.captadorNome||(respUser?respUser.name:''),
@@ -4281,6 +4283,7 @@ window.crmSaveDeal=async function(){
       crmDeals[id2]=Object.assign({},existing,patch);
       registrarInteracao();
       showToast('Deal atualizado com sucesso!');
+      try{if(window.ESA_OS&&window.ESA_OS.crmLegacyBridge){await window.ESA_OS.crmLegacyBridge.publishDealUpdated({dealId:id2,before:_esaBeforeDeal,after:crmDeals[id2],organizationId:'esa',personId:(CU&&(CU.uid||CU.id||CU.name))||'',userId:(CU&&(CU.uid||CU.id))||'',sessionId:'',userName:(CU&&CU.name)||'',userLevel:(CU&&CU.level)||'',funil:funil||''});}}catch(bridgeError){console.error('[ESA OS] Falha ao publicar evento CRM legado:',bridgeError);}
     }
     closeModal('modal-crm-deal');
     crmRenderView();
@@ -4359,6 +4362,7 @@ window.crmSaveFollowUp=async function(){
     closeModal('modal-crm-fu');
     registrarInteracao();
     showToast('Follow-up registrado com sucesso!');
+    try{if(window.ESA_OS&&window.ESA_OS.crmLegacyBridge){await window.ESA_OS.crmLegacyBridge.publishFollowUpAdded({followupId:fuKey,dealId:id,followup:entry,organizationId:'esa',personId:(CU&&(CU.uid||CU.id||CU.name))||'',userId:(CU&&(CU.uid||CU.id))||'',sessionId:'',userName:(CU&&CU.name)||'',userLevel:(CU&&CU.level)||'',funil:(crmDeals[id]&&crmDeals[id].funil)||''});}}catch(bridgeError){console.error('[ESA OS] Falha ao publicar evento CRM legado:',bridgeError);}
     crmRenderView();
   }catch(e){
     errEl.textContent='Erro ao salvar: '+e.message;
