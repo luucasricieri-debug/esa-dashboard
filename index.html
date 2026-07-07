@@ -3828,6 +3828,7 @@ async function crmMoveDeal(id,novaEtapa){
     registrarInteracao();
     showToast('Deal movido para "'+novaEtapa+'"');
     crmRenderView();
+    try{if(window.ESA_OS&&window.ESA_OS.crmLegacyBridge){await window.ESA_OS.crmLegacyBridge.publishStageChanged({dealId:id,fromStage:de,toStage:novaEtapa,deal:crmDeals[id],organizationId:'esa',personId:(CU&&(CU.uid||CU.id||CU.name))||'',userId:(CU&&(CU.uid||CU.id))||'',sessionId:'',userName:(CU&&CU.name)||'',userLevel:(CU&&CU.level)||'',funil:d.funil||''});}}catch(bridgeError){console.error('[ESA OS] Falha ao publicar evento CRM legado:',bridgeError);}
   }catch(e){ showToast('Erro ao mover deal: '+e.message,false); }
 }
 

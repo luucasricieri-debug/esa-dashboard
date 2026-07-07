@@ -2,37 +2,55 @@
  * ESA OS
  * Core Bootstrap
  *
- * Primeira versão do núcleo da plataforma.
+ * Núcleo da plataforma ESA OS.
+ * Orquestra a inicialização dos módulos core e das integrações.
  *
  * IMPORTANTE:
- * Ainda não está conectado ao Dashboard.
+ * Não conectar diretamente ao Dashboard legado (index.html).
+ * O bridge de integração (CRMLegacyEventBridge) é o único ponto de contato controlado.
  */
 
-import { FirebaseService } from "../services/firebase.js";
+import { FirebaseService }       from '../services/firebase.js';
+import { eventBus }              from './events/index.js';
+import { audit }                 from './audit/index.js';
+import { integrationRegistry,
+         CRMAuditIntegration }   from '../integrations/index.js';
+import { CRMLegacyEventBridge }  from '../legacy/crm-event-bridge.js';
 
 class ESAApplication {
 
-    constructor() {
+  constructor() {
+    this.version         = '2.0.0-alpha';
+    this.firebase        = new FirebaseService();
+    this.crmLegacyBridge = null;
+  }
 
-        this.version = "2.0.0-alpha";
+  initialize() {
 
-        this.firebase = new FirebaseService();
+    console.log('==================================');
+    console.log('ESA OS');
+    console.log('Versão:', this.version);
+    console.log('Inicializando plataforma...');
+    console.log('==================================');
 
+    this.firebase.initialize();
+
+    // Registrar CRMAuditIntegration (idempotente — seguro se initialize() for chamado novamente)
+    if (!integrationRegistry.get('crmAudit')) {
+      integrationRegistry.register('crmAudit', new CRMAuditIntegration(eventBus, audit));
+    }
+    if (!integrationRegistry.get('crmAudit').isStarted()) {
+      integrationRegistry.start('crmAudit');
     }
 
-    initialize() {
-
-        console.log("==================================");
-        console.log("ESA OS");
-        console.log("Versão:", this.version);
-        console.log("Inicializando plataforma...");
-        console.log("==================================");
-
-        this.firebase.initialize();
-
-        console.log("ESA OS iniciada com sucesso.");
-
+    // Bridge para código legado — exposto via window.ESA_OS.crmLegacyBridge
+    if (!this.crmLegacyBridge) {
+      this.crmLegacyBridge = new CRMLegacyEventBridge(eventBus);
     }
+
+    console.log('ESA OS iniciada com sucesso.');
+
+  }
 
 }
 
