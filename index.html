@@ -1045,7 +1045,7 @@ async function loadAllData() {
         crmEtapasCustom = {};
         Object.keys(_funis).forEach(function(k){ crmEtapasCustom[k] = (_funis[k]&&_funis[k].etapas)||{}; });
       } catch(e){ crmEtapasCustom = {}; }
-    } else if(_lvlCrm==='executivo'||_lvlCrm==='sdr'||_lvlCrm==='jackeline'){
+    } else if(_lvlCrm==='executivo'||_lvlCrm==='sdr'||_lvlCrm==='jackeline'||_lvlCrm==='engenharia'){
       crmDeals = await fbGet('crm/deals') || {};
     }
     // Migração: 'Diagnóstico e Cálculo' → 'Envio de Proposta' no funil assinatura_energia
