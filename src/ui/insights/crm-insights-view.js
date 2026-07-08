@@ -2,8 +2,9 @@
  * ESA OS — UI / Insights
  * CRMInsightsView
  *
- * UI gerencial nativa da ESA OS — filtros, drill-down e detalhe de Deal.
- * Fontes permitidas: getCRMExecutiveSummary, searchCRMDeals, queryCRMDeal.
+ * UI gerencial nativa da ESA OS — filtros, drill-down, detalhe de Deal e saúde do pipeline.
+ * Fontes permitidas: getCRMExecutiveSummary, searchCRMDeals, queryCRMDeal,
+ *                   getCRMPipelineHealth, getCRMCriticalDeals, getCRMDealsWithoutNextAction.
  * Não acessa Firebase, Event Bus, Audit, CRMReadModel, CRMMetrics ou crmDeals.
  */
 
@@ -19,6 +20,9 @@ export class CRMInsightsView {
     this._selectedDeal      = null;
     this._dealDetailState   = 'empty';
     this._dealDetailError   = null;
+    this._health            = null;
+    this._criticalDeals     = [];
+    this._healthState       = 'empty';
   }
 
   // ── Filtros ───────────────────────────────────────────────────────────────
@@ -50,6 +54,9 @@ export class CRMInsightsView {
     this._selectedDeal    = null;
     this._dealDetailState = 'empty';
     this._dealDetailError = null;
+    this._health          = null;
+    this._criticalDeals   = [];
+    this._healthState     = 'empty';
     return {};
   }
 
@@ -176,6 +183,56 @@ export class CRMInsightsView {
     return this._dealDetailState;
   }
 
+  // ── Pipeline Health ───────────────────────────────────────────────────────
+
+  /**
+   * Carrega a análise de saúde do pipeline de forma independente.
+   * Falha é isolada: erro na análise não quebra o restante do Insights.
+   * Retorna null em caso de erro ou quando provider não suporta a query.
+   *
+   * @param {Object} [filters={}]
+   * @returns {Object|null}
+   */
+  loadPipelineHealth(filters = {}) {
+    if (!this._queryProvider || typeof this._queryProvider.getCRMPipelineHealth !== 'function') {
+      this._health        = null;
+      this._criticalDeals = [];
+      this._healthState   = 'empty';
+      return null;
+    }
+
+    const normalized = this._normalizeFilters(filters);
+
+    try {
+      const hResult = this._queryProvider.getCRMPipelineHealth(normalized);
+      if (!hResult || !('data' in hResult)) {
+        throw new Error('[CRMInsightsView] Invalid pipeline health result');
+      }
+      this._health      = hResult.data ? Object.assign({}, hResult.data) : null;
+      this._healthState = this._health ? 'loaded' : 'empty';
+    } catch (err) {
+      this._health        = null;
+      this._criticalDeals = [];
+      this._healthState   = 'error';
+      return null;
+    }
+
+    try {
+      if (typeof this._queryProvider.getCRMCriticalDeals === 'function') {
+        const cResult = this._queryProvider.getCRMCriticalDeals(normalized);
+        this._criticalDeals = cResult && Array.isArray(cResult.data) ? cResult.data.slice() : [];
+      }
+    } catch (err) {
+      this._criticalDeals = [];
+    }
+
+    return this._health ? Object.assign({}, this._health) : null;
+  }
+
+  getPipelineHealth() {
+    return this._health ? Object.assign({}, this._health) : null;
+  }
+
   // ── View Model helpers ────────────────────────────────────────────────────
 
   _buildPipelineViewModel(pipeline) {
@@ -243,6 +300,9 @@ export class CRMInsightsView {
       console.error('[ESA OS Insights] Falha ao carregar:', err);
       return null;
     }
+    // Health analysis loaded independently — failure is isolated
+    this.loadPipelineHealth(this._activeFilters);
+
     container.innerHTML = this._buildHTML(viewModel);
     this._renderCount++;
     this._lastGeneratedAt = viewModel.generatedAt;
@@ -254,10 +314,11 @@ export class CRMInsightsView {
   // ── HTML builders ─────────────────────────────────────────────────────────
 
   _buildHTML(viewModel) {
-    const filters  = this._buildFiltersHTML(viewModel);
-    const header   = this._buildHeaderHTML(viewModel.generatedAt);
+    const filters   = this._buildFiltersHTML(viewModel);
+    const header    = this._buildHeaderHTML(viewModel.generatedAt);
     const drilldown = this._buildDrilldownHTML(viewModel.drilldown);
     const detail    = this._buildDealDetailHTML();
+    const health    = this._buildHealthSectionHTML();
     if (viewModel.dealCount === 0) {
       return (
         `<div style="padding:32px">${filters}${header}` +
@@ -269,6 +330,7 @@ export class CRMInsightsView {
       `<div style="padding:24px 32px;background:var(--bg,#F7F5F0);min-height:100%">` +
       filters + header +
       this._buildCardsHTML(viewModel.cards) +
+      health +
       this._buildPipelineHTML(viewModel.pipeline) +
       this._buildStatusSectionHTML(viewModel.status) +
       this._buildForecastSectionHTML(viewModel.forecast) +
@@ -451,6 +513,107 @@ export class CRMInsightsView {
     );
   }
 
+  _buildHealthSectionHTML() {
+    if (this._healthState === 'empty') return '';
+    if (this._healthState === 'error') {
+      return (
+        `<div class="card" style="margin-bottom:18px" data-insights-health>` +
+        `<div class="card-title">Saúde do Pipeline</div>` +
+        `<div style="text-align:center;padding:32px;color:var(--danger,#C0392B);font-size:13px">` +
+        `Não foi possível carregar a análise de saúde do pipeline.</div></div>`
+      );
+    }
+    const h = this._health;
+    return (
+      `<div class="card" style="margin-bottom:18px" data-insights-health>` +
+      `<div class="card-title">◆ Saúde do Pipeline</div>` +
+      this._buildHealthKpisHTML(h) +
+      this._buildAgingDistributionHTML(h.agingDistribution) +
+      this._buildCriticalListHTML(this._criticalDeals) +
+      `</div>`
+    );
+  }
+
+  _buildHealthKpisHTML(h) {
+    const kpi = (key, label, value, isCurrency) => {
+      const formatted = isCurrency ? this._formatCurrency(value) : String(value);
+      return (
+        `<div style="background:var(--gl,#EEF5F1);border-radius:8px;padding:12px 16px;text-align:center" data-health-kpi="${key}">` +
+        `<div style="font-size:18px;font-weight:700;font-family:DM Mono,monospace;color:var(--g,#0D2418)">${formatted}</div>` +
+        `<div style="font-size:11px;color:var(--gr,#4A7A5E);margin-top:4px">${label}</div>` +
+        `</div>`
+      );
+    };
+    return (
+      `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:16px">` +
+      kpi('attention',      'Atenção',          h.attentionDeals) +
+      kpi('risk',           'Risco',            h.riskDeals) +
+      kpi('critical',       'Críticos',         h.criticalDeals) +
+      kpi('without-action', 'Sem Próx. Ação',   h.dealsWithoutNextAction) +
+      kpi('value-at-risk',  'Valor em Risco',   h.valueAtRisk, true) +
+      `</div>`
+    );
+  }
+
+  _buildAgingDistributionHTML(dist) {
+    if (!dist) return '';
+    const total = (dist.fresh.count + dist.attention.count + dist.risk.count + dist.critical.count) || 0;
+    const bar = (level, label, color) => {
+      const b = dist[level] || { count: 0 };
+      const w = total > 0 ? Math.min(100, (b.count / total) * 100) : 0;
+      return (
+        `<div style="margin-bottom:8px" data-health-aging-level="${level}">` +
+        `<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">` +
+        `<span style="color:var(--bk,#1A1A1A);font-weight:500">${label}</span>` +
+        `<span style="font-family:DM Mono,monospace;color:var(--g,#0D2418)">${b.count}</span>` +
+        `</div>` +
+        `<div style="height:6px;background:var(--gl,#EEF5F1);border-radius:3px;overflow:hidden">` +
+        `<div style="height:100%;width:${w.toFixed(1)}%;background:${color};border-radius:3px"></div>` +
+        `</div></div>`
+      );
+    };
+    return (
+      `<div style="margin-bottom:16px" data-health-aging-distribution>` +
+      `<div style="font-size:11px;color:var(--gr,#4A7A5E);font-weight:600;text-transform:uppercase;letter-spacing:.7px;margin-bottom:10px">Distribuição de Aging</div>` +
+      bar('fresh',     'Fresh (0–7 dias)',   '#4A7A5E') +
+      bar('attention', 'Atenção (8–14 dias)','#F39C12') +
+      bar('risk',      'Risco (15–30 dias)', '#E67E22') +
+      bar('critical',  'Crítico (31+ dias)', '#C0392B') +
+      `</div>`
+    );
+  }
+
+  _buildCriticalListHTML(deals) {
+    if (!deals || !deals.length) return '';
+    const th = (label, align = 'left') =>
+      `<th style="padding:6px 10px;font-size:11px;color:var(--gr,#4A7A5E);text-align:${align};` +
+      `font-weight:600;text-transform:uppercase;letter-spacing:.7px">${label}</th>`;
+    const rowsHTML = deals.slice(0, 10).map((d) => {
+      const name  = this._escapeHTML(d.name  || d.id || '—');
+      const stage = this._escapeHTML(d.stage || '—');
+      const resp  = this._escapeHTML(d.responsible || '—');
+      const valor = d.value > 0 ? this._formatCurrency(d.value) : '—';
+      const days  = d.agingDays >= 0 ? d.agingDays + 'd' : '—';
+      return (
+        `<tr data-insights-deal-id="${this._escapeHTML(d.id || '')}" style="cursor:pointer">` +
+        `<td style="padding:6px 10px;font-size:12px;color:var(--bk,#1A1A1A)">${name}</td>` +
+        `<td style="padding:6px 10px;font-size:12px;color:var(--g,#0D2418)">${stage}</td>` +
+        `<td style="padding:6px 10px;font-size:12px;color:var(--g,#0D2418)">${resp}</td>` +
+        `<td style="padding:6px 10px;font-size:12px;font-family:DM Mono,monospace;text-align:right;color:var(--g,#0D2418)">${valor}</td>` +
+        `<td style="padding:6px 10px;font-size:12px;font-family:DM Mono,monospace;text-align:right;color:var(--danger,#C0392B);font-weight:600">${days}</td>` +
+        `</tr>`
+      );
+    }).join('');
+    return (
+      `<div data-health-critical-list>` +
+      `<div style="font-size:11px;color:var(--gr,#4A7A5E);font-weight:600;text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px">Deals Críticos</div>` +
+      `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">` +
+      `<thead><tr style="border-bottom:1.5px solid var(--bd,#E0DBD0)">` +
+      th('Deal / Cliente') + th('Etapa') + th('Responsável') + th('Valor', 'right') + th('Aging', 'right') +
+      `</tr></thead><tbody>${rowsHTML}</tbody></table></div></div>`
+    );
+  }
+
   _buildDrilldownHTML(drilldown) {
     if (!drilldown || !drilldown.active) return '';
     const title = this._escapeHTML(drilldown.title);
@@ -626,6 +789,7 @@ export class CRMInsightsView {
       drilldownDealCount: this._drilldown.deals.length,
       selectedDealId:     this._selectedDeal ? (this._selectedDeal.id || null) : null,
       dealDetailState:    this._dealDetailState,
+      healthState:        this._healthState,
     };
   }
 }

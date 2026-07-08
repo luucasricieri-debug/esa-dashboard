@@ -119,6 +119,18 @@ class ESAApplication {
     return crmQueryService.getExecutiveSummary(filters).toJSON();
   }
 
+  getCRMPipelineHealth(filters = {}, options = {}) {
+    return crmQueryService.getPipelineHealth(filters, options).toJSON();
+  }
+
+  getCRMCriticalDeals(filters = {}, options = {}) {
+    return crmQueryService.getCriticalDeals(filters, options).toJSON();
+  }
+
+  getCRMDealsWithoutNextAction(filters = {}, options = {}) {
+    return crmQueryService.getDealsWithoutNextAction(filters, options).toJSON();
+  }
+
 }
 
 export const ESA = new ESAApplication();

@@ -13,7 +13,8 @@
  * Valida dependências no momento da execução da query, não no constructor.
  */
 
-import { CRMQueryResult } from './crm-query-result.js';
+import { CRMQueryResult }       from './crm-query-result.js';
+import { CRMPipelineAnalyzer }  from './crm-pipeline-analyzer.js';
 
 export class CRMQueryService {
   /**
@@ -21,8 +22,9 @@ export class CRMQueryService {
    * @param {CRMMetrics}   metrics   - Instância de métricas CRM (injetada)
    */
   constructor(readModel, metrics) {
-    this._readModel = readModel;
-    this._metrics   = metrics;
+    this._readModel        = readModel;
+    this._metrics          = metrics;
+    this._pipelineAnalyzer = null;
   }
 
   // ── Queries de Read Model ─────────────────────────────────────────────────
@@ -165,7 +167,66 @@ export class CRMQueryService {
     );
   }
 
+  // ── Pipeline Health / Aging ───────────────────────────────────────────────
+
+  /**
+   * Retorna resumo de saúde do pipeline com distribuição de aging e valores em risco.
+   *
+   * @param {Object} filters
+   * @param {Object} [options={}]
+   * @returns {CRMQueryResult} data: PipelineHealth
+   */
+  getPipelineHealth(filters = {}, options = {}) {
+    this._requireReadModel('getDeals');
+    const health = this._getAnalyzer().getPipelineHealth(filters, options);
+    return new CRMQueryResult(health, {
+      query:   'crm.getPipelineHealth',
+      filters: Object.assign({}, filters),
+    });
+  }
+
+  /**
+   * Retorna lista gerencial de deals críticos (aging > 30 dias).
+   *
+   * @param {Object} filters
+   * @param {Object} [options={}]
+   * @returns {CRMQueryResult} data: DealItem[]
+   */
+  getCriticalDeals(filters = {}, options = {}) {
+    this._requireReadModel('getDeals');
+    const items = this._getAnalyzer().getCriticalDeals(filters, options);
+    return new CRMQueryResult(items, {
+      query:   'crm.getCriticalDeals',
+      filters: Object.assign({}, filters),
+      count:   items.length,
+    });
+  }
+
+  /**
+   * Retorna lista gerencial de deals sem próxima ação registrada.
+   *
+   * @param {Object} filters
+   * @param {Object} [options={}]
+   * @returns {CRMQueryResult} data: DealItem[]
+   */
+  getDealsWithoutNextAction(filters = {}, options = {}) {
+    this._requireReadModel('getDeals');
+    const items = this._getAnalyzer().getDealsWithoutNextAction(filters, options);
+    return new CRMQueryResult(items, {
+      query:   'crm.getDealsWithoutNextAction',
+      filters: Object.assign({}, filters),
+      count:   items.length,
+    });
+  }
+
   // ── Validação privada ─────────────────────────────────────────────────────
+
+  _getAnalyzer() {
+    if (!this._pipelineAnalyzer) {
+      this._pipelineAnalyzer = new CRMPipelineAnalyzer(this._readModel);
+    }
+    return this._pipelineAnalyzer;
+  }
 
   _requireReadModel(method) {
     if (!this._readModel || typeof this._readModel[method] !== 'function') {

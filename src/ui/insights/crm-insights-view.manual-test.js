@@ -1,7 +1,7 @@
 /**
  * ESA OS — UI / Insights
  * Suite de testes de integração — CRMInsightsView
- * 42 cenários obrigatórios
+ * 52 cenários obrigatórios
  *
  * Execução: node src/ui/insights/crm-insights-view.manual-test.js
  *
@@ -29,7 +29,7 @@ function assert(condition, label) {
 }
 
 function section(n, title) {
-  console.log(`\n[${n}/42] ${title}`);
+  console.log(`\n[${n}/52] ${title}`);
 }
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -48,9 +48,12 @@ rm.hydrate(TEST_DEALS);
 
 // queryProvider espelha a interface window.ESA_OS exposta por ESAApplication
 const queryProvider = {
-  getCRMExecutiveSummary: (filters = {}) => svc.getExecutiveSummary(filters).toJSON(),
-  searchCRMDeals:         (filters = {}) => svc.searchDeals(filters).toJSON(),
-  queryCRMDeal:           (dealId)       => svc.getDeal(dealId).toJSON(),
+  getCRMExecutiveSummary:       (filters = {}) => svc.getExecutiveSummary(filters).toJSON(),
+  searchCRMDeals:               (filters = {}) => svc.searchDeals(filters).toJSON(),
+  queryCRMDeal:                 (dealId)       => svc.getDeal(dealId).toJSON(),
+  getCRMPipelineHealth:         (filters = {}) => svc.getPipelineHealth(filters).toJSON(),
+  getCRMCriticalDeals:          (filters = {}) => svc.getCriticalDeals(filters).toJSON(),
+  getCRMDealsWithoutNextAction: (filters = {}) => svc.getDealsWithoutNextAction(filters).toJSON(),
 };
 
 const view      = new CRMInsightsView(queryProvider);
@@ -746,13 +749,200 @@ assert(!html42.includes('" onmouseover="xss()'), '42.4 payload onmouseover não 
 assert(html42.includes('&lt;script'),         '42.5 empresa escapada com &lt;script');
 assert(html42.includes('&lt;b&gt;'),          '42.6 obs escapada com &lt;b&gt;');
 
+// ── 43. loadPipelineHealth → _healthState = 'loaded' ─────────────────────────
+
+section(43, 'loadPipelineHealth() com provider válido → _healthState = "loaded"');
+
+view.clearFilters();
+const h43 = view.loadPipelineHealth({});
+
+assert(h43 !== null,                            '43.1 loadPipelineHealth retorna objeto (não null)');
+assert(view.getPipelineHealth() !== null,        '43.2 getPipelineHealth() retorna objeto');
+assert(view.getStats().healthState === 'loaded', '43.3 getStats().healthState = "loaded"');
+assert('totalDeals'            in h43,           '43.4 data.totalDeals presente');
+assert('attentionDeals'        in h43,           '43.5 data.attentionDeals presente');
+assert('riskDeals'             in h43,           '43.6 data.riskDeals presente');
+assert('criticalDeals'         in h43,           '43.7 data.criticalDeals presente');
+assert('dealsWithoutNextAction' in h43,          '43.8 data.dealsWithoutNextAction presente');
+assert('valueAtRisk'           in h43,           '43.9 data.valueAtRisk presente');
+assert('agingDistribution'     in h43,           '43.10 data.agingDistribution presente');
+
+// ── 44. render inclui seção Saúde do Pipeline ─────────────────────────────────
+
+section(44, 'render() inclui seção "Saúde do Pipeline" (data-insights-health)');
+
+const c44 = { innerHTML: '' };
+view.render(c44);
+
+assert(c44.innerHTML.includes('data-insights-health'),     '44.1 data-insights-health presente no HTML');
+assert(c44.innerHTML.includes('Saúde do Pipeline'),        '44.2 título "Saúde do Pipeline" presente');
+
+// ── 45. Cards gerenciais com data-health-kpi ──────────────────────────────────
+
+section(45, 'cards gerenciais com data-health-kpi presentes no HTML');
+
+const c45 = { innerHTML: '' };
+view.render(c45);
+
+assert(c45.innerHTML.includes('data-health-kpi="attention"'),    '45.1 kpi attention presente');
+assert(c45.innerHTML.includes('data-health-kpi="risk"'),         '45.2 kpi risk presente');
+assert(c45.innerHTML.includes('data-health-kpi="critical"'),     '45.3 kpi critical presente');
+assert(c45.innerHTML.includes('data-health-kpi="without-action"'), '45.4 kpi without-action presente');
+assert(c45.innerHTML.includes('data-health-kpi="value-at-risk"'), '45.5 kpi value-at-risk presente');
+
+// ── 46. Distribuição de aging presente ───────────────────────────────────────
+
+section(46, 'distribuição de aging presente com data-health-aging-distribution');
+
+const c46 = { innerHTML: '' };
+view.render(c46);
+
+assert(c46.innerHTML.includes('data-health-aging-distribution'), '46.1 data-health-aging-distribution presente');
+assert(c46.innerHTML.includes('data-health-aging-level="fresh"'),     '46.2 aging-level fresh presente');
+assert(c46.innerHTML.includes('data-health-aging-level="attention"'), '46.3 aging-level attention presente');
+assert(c46.innerHTML.includes('data-health-aging-level="risk"'),      '46.4 aging-level risk presente');
+assert(c46.innerHTML.includes('data-health-aging-level="critical"'),  '46.5 aging-level critical presente');
+assert(c46.innerHTML.includes('Distribuição de Aging'),               '46.6 label "Distribuição de Aging" presente');
+
+// ── 47. Lista de críticos presente ───────────────────────────────────────────
+
+section(47, 'lista de deals críticos presente com data-health-critical-list');
+
+// Todos os test deals têm timestamps de 1970 → críticos com data atual como referência
+const c47 = { innerHTML: '' };
+view.render(c47);
+
+// Todos os 4 deals são críticos (timestamps de 1970)
+assert(c47.innerHTML.includes('data-health-critical-list'), '47.1 data-health-critical-list presente');
+assert(c47.innerHTML.includes('Deals Críticos'),            '47.2 título "Deals Críticos" presente');
+assert(c47.innerHTML.includes('Aging'),                     '47.3 coluna Aging presente na tabela');
+
+// ── 48. data-insights-deal-id na lista reutiliza selectDeal ──────────────────
+
+section(48, 'deals críticos têm data-insights-deal-id para seleção via selectDeal');
+
+const c48 = { innerHTML: '' };
+view.render(c48);
+
+// Os deals críticos têm data-insights-deal-id para permitir seleção
+assert(c48.innerHTML.includes('data-insights-deal-id="deal-1"') ||
+       c48.innerHTML.includes('data-insights-deal-id="deal-2"') ||
+       c48.innerHTML.includes('data-insights-deal-id="deal-3"') ||
+       c48.innerHTML.includes('data-insights-deal-id="deal-4"'),
+  '48.1 ao menos um data-insights-deal-id de deal crítico presente na lista');
+
+// Confirmação: selectDeal() continua funcionando a partir da lista
+view.selectDeal('deal-1');
+assert(view.getDealDetailState() === 'loaded', '48.2 selectDeal via deal-id da lista ainda funciona');
+assert(view.getSelectedDeal().id === 'deal-1', '48.3 deal correto selecionado');
+
+view.clearFilters();
+
+// ── 49. Escape HTML nos campos da lista de críticos ───────────────────────────
+
+section(49, 'escape HTML em campos da lista de críticos (name, stage, responsible)');
+
+const rmXSS49  = new CRMReadModel();
+const mXSS49   = new CRMMetrics(rmXSS49);
+const svcXSS49 = new CRMQueryService(rmXSS49, mXSS49);
+rmXSS49.hydrate({
+  'xss-49': {
+    funil:       'venda_ufv',
+    etapa:       '<b>Etapa XSS</b>',
+    status:      'Em andamento',
+    valor:       50000,
+    responsavel: '"><script>bad()</script>',
+    createdAt:   1,
+    updatedAt:   1,
+  },
+});
+const pXSS49 = {
+  getCRMExecutiveSummary:  (f = {}) => svcXSS49.getExecutiveSummary(f).toJSON(),
+  searchCRMDeals:          (f = {}) => svcXSS49.searchDeals(f).toJSON(),
+  queryCRMDeal:            (id)     => svcXSS49.getDeal(id).toJSON(),
+  getCRMPipelineHealth:    (f = {}) => svcXSS49.getPipelineHealth(f).toJSON(),
+  getCRMCriticalDeals:     (f = {}) => svcXSS49.getCriticalDeals(f).toJSON(),
+  getCRMDealsWithoutNextAction: (f = {}) => svcXSS49.getDealsWithoutNextAction(f).toJSON(),
+};
+const vXSS49 = new CRMInsightsView(pXSS49);
+const cXSS49 = { innerHTML: '' };
+vXSS49.render(cXSS49);
+const html49 = cXSS49.innerHTML;
+
+assert(!html49.includes('<b>Etapa XSS</b>'),           '49.1 tag <b> em etapa não presente no HTML');
+assert(!html49.includes('<script>bad()'),               '49.2 <script> em responsavel não presente');
+assert(html49.includes('&lt;b&gt;') || html49.includes('&lt;'), '49.3 entidades escapadas presentes');
+
+// ── 50. Moeda pt-BR no valor em risco ────────────────────────────────────────
+
+section(50, 'valueAtRisk formatado em pt-BR no card value-at-risk');
+
+// Com todos os 4 deals críticos (1970), valueAtRisk = soma de todos os valores
+// deal-1=100000, deal-2=200000, deal-3=50000, deal-4=40000 → todos críticos
+const c50 = { innerHTML: '' };
+view.render(c50);
+const html50 = c50.innerHTML;
+
+// O valueAtRisk deve ser formatado com R$
+assert(html50.includes('R$'),    '50.1 símbolo "R$" presente no kpi value-at-risk');
+
+// ── 51. Erro em getCRMPipelineHealth isolado — não quebra restante do HTML ────
+
+section(51, 'erro em getCRMPipelineHealth é isolado; restante do HTML permanece válido');
+
+const providerErr51 = {
+  getCRMExecutiveSummary: (f = {}) => svc.getExecutiveSummary(f).toJSON(),
+  searchCRMDeals:         (f = {}) => svc.searchDeals(f).toJSON(),
+  queryCRMDeal:           (id)     => svc.getDeal(id).toJSON(),
+  getCRMPipelineHealth:   ()       => { throw new Error('Falha de rede simulada'); },
+};
+const view51 = new CRMInsightsView(providerErr51);
+const c51    = { innerHTML: '' };
+
+const vm51 = view51.render(c51);
+
+assert(vm51 !== null,                                            '51.1 render retorna viewModel (não null) mesmo com erro no health');
+assert(c51.innerHTML.includes('ESA OS Insights'),               '51.2 título da página presente (insights não quebrou)');
+assert(c51.innerHTML.includes('data-card-id="deals"'),          '51.3 cards executivos presentes');
+assert(view51.getStats().healthState === 'error',               '51.4 healthState = "error"');
+assert(c51.innerHTML.includes('data-insights-health'),          '51.5 seção health presente mostrando erro');
+assert(c51.innerHTML.includes('Não foi possível carregar a análise'), '51.6 mensagem de erro de health presente');
+
+// ── 52. clearFilters zera healthState para 'empty'; seção ausente no HTML ─────
+
+section(52, 'clearFilters reseta healthState para "empty"; seção Saúde ausente do HTML');
+
+// Precisamos de um view sem getCRMPipelineHealth para testar 'empty' após clearFilters
+const providerNoHealth = {
+  getCRMExecutiveSummary: (f = {}) => svc.getExecutiveSummary(f).toJSON(),
+  searchCRMDeals:         (f = {}) => svc.searchDeals(f).toJSON(),
+  queryCRMDeal:           (id)     => svc.getDeal(id).toJSON(),
+};
+const view52 = new CRMInsightsView(providerNoHealth);
+view52.render({ innerHTML: '' }); // render sem getCRMPipelineHealth → healthState='empty'
+
+assert(view52.getStats().healthState === 'empty', '52.1 healthState = "empty" sem provider de health');
+
+view52.clearFilters();
+assert(view52.getStats().healthState === 'empty', '52.2 healthState = "empty" após clearFilters');
+
+const c52 = { innerHTML: '' };
+view52.render(c52);
+assert(!c52.innerHTML.includes('data-insights-health'), '52.3 seção health ausente quando provider não suporta');
+
+// Estado do main view após clearFilters deve também resetar health
+view.loadPipelineHealth({});
+assert(view.getStats().healthState === 'loaded', '52.4 healthState = "loaded" após loadPipelineHealth');
+view.clearFilters();
+assert(view.getStats().healthState === 'empty',  '52.5 healthState = "empty" após clearFilters no main view');
+
 // ── Resultado final ───────────────────────────────────────────────────────────
 
 console.log('\n' + '─'.repeat(50));
 console.log(`Resultado: ${total - failed}/${total} assertions passaram`);
 
 if (failed === 0) {
-  console.log('✓ TODOS OS 42 CENÁRIOS PASSARAM\n');
+  console.log('✓ TODOS OS 52 CENÁRIOS PASSARAM\n');
 } else {
   console.error(`✗ ${failed} assertion(s) falharam\n`);
   process.exit(1);
