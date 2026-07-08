@@ -1,7 +1,7 @@
 /**
  * ESA OS — UI / Insights
  * Suite de testes de integração — CRMInsightsView
- * 16 cenários obrigatórios
+ * 28 cenários obrigatórios
  *
  * Execução: node src/ui/insights/crm-insights-view.manual-test.js
  *
@@ -29,7 +29,7 @@ function assert(condition, label) {
 }
 
 function section(n, title) {
-  console.log(`\n[${n}/16] ${title}`);
+  console.log(`\n[${n}/28] ${title}`);
 }
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -49,6 +49,8 @@ rm.hydrate(TEST_DEALS);
 // queryProvider espelha a interface window.ESA_OS exposta por ESAApplication
 const queryProvider = {
   getCRMExecutiveSummary: (filters = {}) => svc.getExecutiveSummary(filters).toJSON(),
+  searchCRMDeals:         (filters = {}) => svc.searchDeals(filters).toJSON(),
+  queryCRMDeal:           (dealId)       => svc.getDeal(dealId).toJSON(),
 };
 
 const view      = new CRMInsightsView(queryProvider);
@@ -227,6 +229,8 @@ const metricsEmpty   = new CRMMetrics(rmEmpty);
 const svcEmpty       = new CRMQueryService(rmEmpty, metricsEmpty);
 const providerEmpty  = {
   getCRMExecutiveSummary: (filters = {}) => svcEmpty.getExecutiveSummary(filters).toJSON(),
+  searchCRMDeals:         (filters = {}) => svcEmpty.searchDeals(filters).toJSON(),
+  queryCRMDeal:           (dealId)       => svcEmpty.getDeal(dealId).toJSON(),
 };
 const viewEmpty      = new CRMInsightsView(providerEmpty);
 const containerEmpty = { innerHTML: '' };
@@ -258,13 +262,249 @@ assert(typeof statsErr.lastError.name    === 'string',                '16.5 last
 assert(typeof statsErr.lastError.message === 'string',                '16.6 lastError.message é string');
 assert(statsErr.lastDealCount === null,                               '16.7 lastDealCount continua null após erro');
 
+// ── 17. normalizeFilters remove vazios e converte from/to ─────────────────────
+
+section(17, 'normalizeFilters remove vazios, trim strings e converte from/to para number');
+
+const n17 = view._normalizeFilters({
+  funil:      '  venda_ufv  ',
+  status:     '',
+  responsavel: null,
+  from:       '1000001',
+  to:         NaN,
+});
+
+assert(n17.funil === 'venda_ufv',      '17.1 funil trimado');
+assert(!('status' in n17),             '17.2 status vazio removido');
+assert(!('responsavel' in n17),        '17.3 responsavel null removido');
+assert(n17.from === 1000001,           '17.4 from convertido para number');
+assert(!('to' in n17),                 '17.5 to NaN removido');
+
+const n17b = view._normalizeFilters({ funil: '   ', to: 0 });
+assert(!('funil' in n17b), '17.6 funil somente espaços removido');
+assert(n17b.to === 0,      '17.7 to=0 aceito (número válido — num() retorna 0, não null)');
+
+const n17c = view._normalizeFilters({ from: 9999999, etapa: 'Proposta' });
+assert(n17c.from === 9999999,  '17.8 from positivo aceito');
+assert(!('etapa' in n17c),     '17.9 campo etapa não suportado ignorado');
+
+// ── 18. setFilters e getActiveFilters usam snapshots ─────────────────────────
+
+section(18, 'setFilters normaliza e armazena; getActiveFilters retorna cópia');
+
+const returned18 = view.setFilters({ funil: '  venda_ufv  ', status: '' });
+
+assert(returned18.funil === 'venda_ufv',   '18.1 setFilters retorna filtros normalizados');
+assert(!('status' in returned18),          '18.2 status vazio não incluso no retorno');
+
+const active18 = view.getActiveFilters();
+assert(active18.funil === 'venda_ufv',     '18.3 getActiveFilters reflete filtro ativo');
+
+active18.funil = 'MUTADO';
+assert(view.getActiveFilters().funil === 'venda_ufv', '18.4 mutar retorno não altera estado interno');
+
+// ── 19. clearFilters limpa filtros, drilldown e selectedDeal ─────────────────
+
+section(19, 'clearFilters zera activeFilters, drilldown e selectedDeal');
+
+// estado de entrada: activeFilters = { funil: 'venda_ufv' } (de 18)
+const cleared19 = view.clearFilters();
+
+assert(typeof cleared19 === 'object',                  '19.1 clearFilters retorna objeto');
+assert(Object.keys(cleared19).length === 0,            '19.2 retorno é objeto vazio');
+assert(Object.keys(view.getActiveFilters()).length === 0, '19.3 activeFilters esvaziado');
+assert(view.getDrilldown().active === false,           '19.4 drilldown.active = false após clear');
+assert(view.getSelectedDeal() === null,                '19.5 selectedDeal = null após clear');
+
+// ── 20. View Model expõe activeFilters e filterOptions ───────────────────────
+
+section(20, 'buildViewModel inclui activeFilters, filterOptions, drilldown e selectedDeal');
+
+view.setFilters({ funil: 'venda_ufv' });
+const vm20 = view.load(view.getActiveFilters());
+
+assert('activeFilters' in vm20,                        '20.1 vm tem activeFilters');
+assert('filterOptions' in vm20,                        '20.2 vm tem filterOptions');
+assert('drilldown'     in vm20,                        '20.3 vm tem drilldown');
+assert('selectedDeal'  in vm20,                        '20.4 vm tem selectedDeal');
+assert(vm20.activeFilters.funil === 'venda_ufv',       '20.5 activeFilters.funil = venda_ufv');
+assert(Array.isArray(vm20.filterOptions.funis),        '20.6 filterOptions.funis é array');
+assert(Array.isArray(vm20.filterOptions.statuses),     '20.7 filterOptions.statuses é array');
+assert(vm20.filterOptions.funis.includes('venda_ufv'), '20.8 funis inclui venda_ufv');
+assert(vm20.dealCount === 3,                           '20.9 dealCount=3 com filtro funil=venda_ufv');
+assert(vm20.selectedDeal === null,                     '20.10 selectedDeal null antes de selectDeal');
+
+view.clearFilters();
+
+// ── 21. render gera controles de filtro com data attributes ──────────────────
+
+section(21, 'render gera seção de filtros com todos os data attributes obrigatórios');
+
+const c21 = { innerHTML: '' };
+view.render(c21);
+
+assert(c21.innerHTML.includes('data-insights-filters'),          '21.1 contêiner de filtros presente');
+assert(c21.innerHTML.includes('data-insights-filter="funil"'),   '21.2 select funil presente');
+assert(c21.innerHTML.includes('data-insights-filter="status"'),  '21.3 select status presente');
+assert(c21.innerHTML.includes('data-insights-filter="responsavel"'), '21.4 input responsavel presente');
+assert(c21.innerHTML.includes('data-insights-filter="from"'),    '21.5 input data inicial presente');
+assert(c21.innerHTML.includes('data-insights-filter="to"'),      '21.6 input data final presente');
+assert(c21.innerHTML.includes('data-insights-action="apply-filters"'), '21.7 botão aplicar presente');
+assert(c21.innerHTML.includes('data-insights-action="clear-filters"'), '21.8 botão limpar presente');
+
+// ── 22. cards possuem data-insights-drilldown ─────────────────────────────────
+
+section(22, 'cards possuem data-insights-drilldown corretos');
+
+const c22 = { innerHTML: '' };
+view.render(c22);
+
+assert(c22.innerHTML.includes('data-insights-drilldown="all"'),  '22.1 cards com drilldown=all presentes');
+assert(c22.innerHTML.includes('data-insights-drilldown="won"'),  '22.2 card conversion/winRate têm drilldown=won');
+assert(c22.innerHTML.includes('data-insights-drilldown="lost"'), '22.3 card lossRate tem drilldown=lost');
+// verificar cards individuais
+assert(c22.innerHTML.includes('data-card-id="deals" data-insights-drilldown="all"'),       '22.4 deals → all');
+assert(c22.innerHTML.includes('data-card-id="conversion" data-insights-drilldown="won"'),  '22.5 conversion → won');
+assert(c22.innerHTML.includes('data-card-id="lossRate" data-insights-drilldown="lost"'),   '22.6 lossRate → lost');
+assert(c22.innerHTML.includes('data-card-id="pipelineValue" data-insights-drilldown="all"'), '22.7 pipelineValue → all');
+assert(c22.innerHTML.includes('data-card-id="forecast" data-insights-drilldown="all"'),    '22.8 forecast → all');
+
+// ── 23. pipeline e status possuem data attributes de drill-down ───────────────
+
+section(23, 'pipeline e status possuem data-insights-funil, etapa e status');
+
+const c23 = { innerHTML: '' };
+view.render(c23);
+
+assert(c23.innerHTML.includes('data-insights-funil="venda_ufv"'),              '23.1 data-insights-funil=venda_ufv');
+assert(c23.innerHTML.includes('data-insights-funil="assinatura_energia"'),     '23.2 data-insights-funil=assinatura_energia');
+assert(c23.innerHTML.includes('data-insights-etapa="Proposta"'),               '23.3 data-insights-etapa=Proposta');
+assert(c23.innerHTML.includes('data-insights-etapa="Negociação"'),             '23.4 data-insights-etapa=Negociação');
+assert(c23.innerHTML.includes('data-insights-etapa-funil="venda_ufv"'),        '23.5 data-insights-etapa-funil=venda_ufv');
+assert(c23.innerHTML.includes('data-insights-status="Em andamento"'),          '23.6 data-insights-status=Em andamento');
+assert(c23.innerHTML.includes('data-insights-status="Vendido"'),               '23.7 data-insights-status=Vendido');
+assert(c23.innerHTML.includes('data-insights-status="Perdido"'),               '23.8 data-insights-status=Perdido');
+
+// ── 24. loadDrilldown mescla activeFilters com filtros específicos ────────────
+
+section(24, 'loadDrilldown mescla activeFilters + filtros específicos, prioridade no específico');
+
+view.setFilters({ responsavel: 'Lucas' });
+const dd24 = view.loadDrilldown('Deals Vendidos', { status: 'Vendido' });
+
+assert(dd24.active === true,               '24.1 drilldown.active = true');
+assert(dd24.title  === 'Deals Vendidos',   '24.2 título correto');
+assert(dd24.filters.responsavel === 'Lucas', '24.3 filtro base responsavel mantido');
+assert(dd24.filters.status === 'Vendido',  '24.4 filtro específico status aplicado');
+assert(dd24.deals.length === 1,            '24.5 apenas 1 deal (deal-2: Lucas + Vendido)');
+assert(dd24.deals[0].id === 'deal-2',      '24.6 deal retornado é deal-2');
+
+const stats24 = view.getStats();
+assert(stats24.drilldownDealCount === 1,   '24.7 getStats().drilldownDealCount = 1');
+
+view.clearFilters();
+
+// ── 25. getDrilldown retorna snapshot sem expor referências internas ──────────
+
+section(25, 'getDrilldown retorna snapshot imutável');
+
+view.loadDrilldown('Pipeline venda_ufv', { funil: 'venda_ufv' });
+const dd25 = view.getDrilldown();
+
+assert(dd25.active === true,               '25.1 drilldown.active = true');
+assert(dd25.deals.length === 3,            '25.2 3 deals em venda_ufv');
+assert(dd25.filters.funil === 'venda_ufv', '25.3 filters.funil = venda_ufv');
+
+// mutar deals do snapshot não altera interno
+const prevLen = dd25.deals.length;
+dd25.deals.push({ id: 'fake' });
+assert(view.getDrilldown().deals.length === prevLen, '25.4 mutar deals não altera interno');
+
+// mutar filters do snapshot não altera interno
+dd25.filters.funil = 'MUTADO';
+assert(view.getDrilldown().filters.funil === 'venda_ufv', '25.5 mutar filters não altera interno');
+
+view.clearFilters();
+
+// ── 26. selectDeal consulta queryCRMDeal e preserva selectedDeal ──────────────
+
+section(26, 'selectDeal consulta queryCRMDeal e getSelectedDeal retorna cópia');
+
+view.loadDrilldown('Todos', {});
+const deal26 = view.selectDeal('deal-2');
+
+assert(deal26 !== null,                    '26.1 selectDeal retorna deal (não null)');
+assert(deal26.id     === 'deal-2',         '26.2 deal.id = deal-2');
+assert(deal26.status === 'Vendido',        '26.3 deal.status = Vendido');
+assert(deal26.valor  === 200000,           '26.4 deal.valor = 200000');
+
+// mutar retorno não altera getSelectedDeal()
+deal26.status = 'MUTADO';
+assert(view.getSelectedDeal().status === 'Vendido', '26.5 mutar retorno não altera interno');
+
+const stats26 = view.getStats();
+assert(stats26.selectedDealId === 'deal-2', '26.6 getStats().selectedDealId = deal-2');
+
+// ── 27. render exibe tabela de Deals e detalhe do Deal ───────────────────────
+
+section(27, 'render exibe seção de drilldown e detalhe do Deal quando ativos');
+
+// Estado: drilldown ativo com 4 deals (de loadDrilldown em 26), selectedDeal = deal-2
+const c27 = { innerHTML: '' };
+view.render(c27);
+
+assert(c27.innerHTML.includes('Deals analisados'),              '27.1 HTML contém "Deals analisados"');
+assert(c27.innerHTML.includes('Detalhe do Deal'),               '27.2 HTML contém "Detalhe do Deal"');
+assert(c27.innerHTML.includes('data-insights-deal-id="deal-2"'), '27.3 HTML contém data-insights-deal-id=deal-2');
+assert(c27.innerHTML.includes('Vendido'),                       '27.4 HTML contém status Vendido');
+
+view.clearFilters();
+
+// ── 28. escapeHTML protege textos dinâmicos de XSS ───────────────────────────
+
+section(28, 'escapeHTML impede XSS em funil, etapa, status, responsavel e nome');
+
+const rmXSS     = new CRMReadModel();
+const mXSS      = new CRMMetrics(rmXSS);
+const sXSS      = new CRMQueryService(rmXSS, mXSS);
+rmXSS.hydrate({
+  'deal-xss': {
+    funil:      '<script>bad()</script>',
+    etapa:      '<b>Etapa</b>',
+    status:     'Em andamento',
+    valor:      1000,
+    responsavel: '" onclick="bad()"',
+    nome:       '<img src=x onerror=bad()>',
+    createdAt:  1,
+  },
+});
+const providerXSS = {
+  getCRMExecutiveSummary: (f = {}) => sXSS.getExecutiveSummary(f).toJSON(),
+  searchCRMDeals:         (f = {}) => sXSS.searchDeals(f).toJSON(),
+  queryCRMDeal:           (id)     => sXSS.getDeal(id).toJSON(),
+};
+const viewXSS      = new CRMInsightsView(providerXSS);
+const containerXSS = { innerHTML: '' };
+
+viewXSS.loadDrilldown('XSS Test', {});
+viewXSS.selectDeal('deal-xss');
+viewXSS.render(containerXSS);
+
+const html28 = containerXSS.innerHTML;
+
+assert(!html28.includes('<script>bad()'),          '28.1 script tag não presente no HTML');
+assert(!html28.includes('<img src=x onerror=bad()>'), '28.2 img xss tag não presente');
+assert(!html28.includes('onclick="bad()"'),        '28.3 onclick não presente');
+assert(html28.includes('&lt;'),                    '28.4 entidades HTML escapadas presentes (&lt;)');
+assert(html28.includes('&quot;'),                  '28.5 aspas escapadas (&quot;) presentes');
+
 // ── Resultado final ───────────────────────────────────────────────────────────
 
 console.log('\n' + '─'.repeat(50));
 console.log(`Resultado: ${total - failed}/${total} assertions passaram`);
 
 if (failed === 0) {
-  console.log('✓ TODOS OS 16 CENÁRIOS PASSARAM\n');
+  console.log('✓ TODOS OS 28 CENÁRIOS PASSARAM\n');
 } else {
   console.error(`✗ ${failed} assertion(s) falharam\n`);
   process.exit(1);
