@@ -1,7 +1,7 @@
 /**
  * ESA OS — UI / Insights
  * Suite de testes de integração — CRMInsightsView
- * 28 cenários obrigatórios
+ * 42 cenários obrigatórios
  *
  * Execução: node src/ui/insights/crm-insights-view.manual-test.js
  *
@@ -29,7 +29,7 @@ function assert(condition, label) {
 }
 
 function section(n, title) {
-  console.log(`\n[${n}/28] ${title}`);
+  console.log(`\n[${n}/42] ${title}`);
 }
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -498,13 +498,261 @@ assert(!html28.includes('onclick="bad()"'),        '28.3 onclick não presente')
 assert(html28.includes('&lt;'),                    '28.4 entidades HTML escapadas presentes (&lt;)');
 assert(html28.includes('&quot;'),                  '28.5 aspas escapadas (&quot;) presentes');
 
+// ── 29. Estado vazio: getDealDetailState()='empty', painel ausente ────────────
+
+section(29, 'getDealDetailState()="empty" na construção; painel ausente no HTML');
+
+const view29 = new CRMInsightsView(queryProvider);
+const c29    = { innerHTML: '' };
+
+assert(view29.getDealDetailState() === 'empty', '29.1 getDealDetailState() = "empty" na construção');
+view29.render(c29);
+assert(!c29.innerHTML.includes('data-insights-deal-detail'), '29.2 painel ausente no HTML quando empty');
+
+// ── 30. selectDeal → 'loaded': getDealDetailState, getStats().dealDetailState ─
+
+section(30, 'selectDeal → estado "loaded"; getStats().dealDetailState = "loaded"');
+
+view.clearFilters();
+view.loadDrilldown('Todos', {});
+const deal30 = view.selectDeal('deal-1');
+
+assert(deal30 !== null,                        '30.1 selectDeal retorna objeto (não null)');
+assert(deal30.id === 'deal-1',                 '30.2 deal30.id = "deal-1"');
+assert(view.getDealDetailState() === 'loaded', '30.3 getDealDetailState() = "loaded"');
+const stats30 = view.getStats();
+assert(stats30.dealDetailState === 'loaded',   '30.4 getStats().dealDetailState = "loaded"');
+assert(stats30.selectedDealId  === 'deal-1',   '30.5 getStats().selectedDealId = "deal-1"');
+
+// ── 31. Deal não encontrado: 'not-found', "Deal não encontrado" no HTML ───────
+
+section(31, 'selectDeal com id inexistente → "not-found"; HTML mostra aviso');
+
+const deal31 = view.selectDeal('nonexistent-deal');
+
+assert(deal31 === null,                              '31.1 selectDeal retorna null para id inexistente');
+assert(view.getDealDetailState() === 'not-found',    '31.2 getDealDetailState() = "not-found"');
+assert(view.getSelectedDeal()    === null,           '31.3 getSelectedDeal() = null');
+
+const c31 = { innerHTML: '' };
+view.render(c31);
+assert(c31.innerHTML.includes('Deal não encontrado'),       '31.4 HTML contém "Deal não encontrado"');
+assert(c31.innerHTML.includes('data-insights-deal-detail'), '31.5 atributo data-insights-deal-detail presente no not-found');
+
+// ── 32. Erro da query: provider throws → 'error', "Não foi possível" no HTML ─
+
+section(32, 'queryCRMDeal que lança erro → estado "error"; HTML mostra mensagem de falha');
+
+const providerErr32 = {
+  getCRMExecutiveSummary: (f = {}) => svc.getExecutiveSummary(f).toJSON(),
+  searchCRMDeals:         (f = {}) => svc.searchDeals(f).toJSON(),
+  queryCRMDeal:           ()       => { throw new Error('Falha de rede simulada'); },
+};
+const view32 = new CRMInsightsView(providerErr32);
+view32.loadDrilldown('Todos', {});
+const deal32 = view32.selectDeal('deal-1');
+
+assert(deal32 === null,                          '32.1 selectDeal retorna null quando provider lança');
+assert(view32.getDealDetailState() === 'error',  '32.2 getDealDetailState() = "error"');
+assert(view32.getSelectedDeal()    === null,     '32.3 getSelectedDeal() = null no erro');
+
+const c32 = { innerHTML: '' };
+view32.render(c32);
+assert(c32.innerHTML.includes('Não foi possível carregar o detalhe do deal'), '32.4 HTML contém mensagem de falha');
+assert(c32.innerHTML.includes('data-insights-deal-detail'),                   '32.5 atributo data-insights-deal-detail presente no error');
+
+// ── 33. _buildDealDetailViewModel: shape e mapeamento de campos ───────────────
+
+section(33, '_buildDealDetailViewModel mapeia campos gerenciais corretamente');
+
+const vmDeal33 = view._buildDealDetailViewModel({
+  id: 'deal-x', nome: 'Projeto Alpha', empresa: null,
+  funil: 'venda_ufv', etapa: 'Proposta', status: 'Em andamento',
+  produto: null, responsavel: 'Lucas', captador: null,
+  valor: 150000, kwh: null, createdAt: 1000001, updatedAt: null,
+  proximaAcao: null, obs: null,
+});
+
+assert(vmDeal33.id          === 'deal-x',       '33.1 vm.id correto');
+assert(vmDeal33.nome        === 'Projeto Alpha', '33.2 vm.nome correto');
+assert(vmDeal33.empresa     === null,            '33.3 vm.empresa null quando ausente');
+assert(vmDeal33.produto     === null,            '33.4 vm.produto null quando ausente');
+assert(vmDeal33.valor       === 150000,          '33.5 vm.valor = 150000');
+assert(vmDeal33.kwh         === null,            '33.6 vm.kwh null quando ausente');
+assert(vmDeal33.createdAt   === 1000001,         '33.7 vm.createdAt = 1000001');
+assert(vmDeal33.updatedAt   === null,            '33.8 vm.updatedAt null quando ausente');
+assert(vmDeal33.obs         === null,            '33.9 vm.obs null quando ausente');
+assert(vmDeal33.proximaAcao === null,            '33.10 vm.proximaAcao null quando ausente');
+
+// ── 34. Campos ausentes mostram '—', sem textos inválidos ─────────────────────
+
+section(34, 'campos ausentes mostram "—"; sem "undefined", "[object Object]", ">null<"');
+
+view.clearFilters();
+view.loadDrilldown('Todos', {});
+view.selectDeal('deal-1');
+const c34 = { innerHTML: '' };
+view.render(c34);
+const html34 = c34.innerHTML;
+
+assert(!html34.includes('>undefined<'),      '34.1 "undefined" não visível no painel');
+assert(!html34.includes('[object Object]'),  '34.2 "[object Object]" não visível');
+assert(!html34.includes('>null<'),           '34.3 ">null<" não visível');
+assert(html34.includes('>—<'),              '34.4 "—" presente como fallback para campos ausentes');
+
+// ── 35. Moeda pt-BR formatada no painel ──────────────────────────────────────
+
+section(35, 'valor deal-2 (200000) formatado em pt-BR no painel');
+
+view.clearFilters();
+view.loadDrilldown('Todos', {});
+view.selectDeal('deal-2');
+const c35 = { innerHTML: '' };
+view.render(c35);
+const html35 = c35.innerHTML;
+
+assert(html35.includes('R$'),      '35.1 símbolo "R$" presente no painel');
+assert(html35.includes('200.000'), '35.2 valor "200.000" formatado em pt-BR');
+
+// ── 36. Datas pt-BR via _formatDate ──────────────────────────────────────────
+
+section(36, '_formatDate retorna string com "/" e "1970" para timestamp 1000001');
+
+const ts36   = 1000001;
+const date36  = view._formatDate(ts36);
+const year36  = String(new Date(ts36).getFullYear());
+
+assert(typeof date36 === 'string',    '36.1 _formatDate retorna string');
+assert(date36.length > 0,             '36.2 string não vazia');
+assert(date36.includes('/'),          '36.3 contém "/" (formato dd/mm/yyyy)');
+assert(date36.includes(year36),       '36.4 contém o ano correto (' + year36 + ') no locale local');
+
+view.clearFilters();
+view.loadDrilldown('Todos', {});
+view.selectDeal('deal-1');
+const c36 = { innerHTML: '' };
+view.render(c36);
+assert(c36.innerHTML.includes(year36), '36.5 HTML do painel contém o ano do createdAt');
+
+// ── 37. Painel somente leitura — sem botões de ação ──────────────────────────
+
+section(37, 'painel não contém botões de edição, exclusão, salvamento ou follow-up');
+
+const c37 = { innerHTML: '' };
+view.render(c37);
+const html37 = c37.innerHTML;
+
+assert(!html37.includes('Editar'),    '37.1 sem botão "Editar" no painel');
+assert(!html37.includes('Excluir'),   '37.2 sem botão "Excluir" no painel');
+assert(!html37.includes('Salvar'),    '37.3 sem botão "Salvar" no painel');
+assert(!html37.includes('Mover'),     '37.4 sem botão "Mover" no painel');
+assert(!html37.includes('Follow-up'), '37.5 sem botão "Follow-up" no painel');
+
+// ── 38. Troca de deal — painel exibe o deal mais recentemente selecionado ─────
+
+section(38, 'troca de deal: HTML exibe campos do novo deal selecionado');
+
+view.clearFilters();
+view.loadDrilldown('Todos', {});
+view.selectDeal('deal-1');
+
+assert(view.getDealDetailState() === 'loaded',  '38.1 estado loaded após deal-1');
+assert(view.getSelectedDeal().id === 'deal-1',  '38.2 selectedDeal é deal-1');
+
+view.selectDeal('deal-3');
+
+assert(view.getDealDetailState() === 'loaded',  '38.3 estado loaded após deal-3');
+assert(view.getSelectedDeal().id === 'deal-3',  '38.4 selectedDeal é deal-3');
+
+const c38 = { innerHTML: '' };
+view.render(c38);
+assert(c38.innerHTML.includes('assinatura_energia'), '38.5 HTML mostra funil do deal-3 (assinatura_energia)');
+
+// ── 39. clearFilters zera estado — 'empty', painel ausente ───────────────────
+
+section(39, 'clearFilters reseta dealDetailState para "empty"; painel some do HTML');
+
+view.clearFilters();
+
+assert(view.getDealDetailState() === 'empty', '39.1 getDealDetailState() = "empty" após clearFilters');
+assert(view.getSelectedDeal()    === null,    '39.2 getSelectedDeal() = null após clearFilters');
+
+const c39 = { innerHTML: '' };
+view.render(c39);
+assert(!c39.innerHTML.includes('data-insights-deal-detail'), '39.3 painel ausente no HTML após clear');
+
+// ── 40. data-insights-deal-detail presente; sem actions de edição ─────────────
+
+section(40, 'data-insights-deal-detail presente; sem data-insights-action de edição/exclusão');
+
+view.loadDrilldown('Todos', {});
+view.selectDeal('deal-1');
+const c40 = { innerHTML: '' };
+view.render(c40);
+const html40 = c40.innerHTML;
+
+assert(html40.includes('data-insights-deal-detail'),        '40.1 data-insights-deal-detail presente no HTML');
+assert(!html40.includes('data-insights-action="edit"'),     '40.2 sem data-insights-action="edit"');
+assert(!html40.includes('data-insights-action="delete"'),   '40.3 sem data-insights-action="delete"');
+assert(!html40.includes('data-insights-action="save"'),     '40.4 sem data-insights-action="save"');
+assert(!html40.includes('data-insights-action="move"'),     '40.5 sem data-insights-action="move"');
+
+view.clearFilters();
+
+// ── 41. getStats inclui dealDetailState; vira "empty" após clearFilters ───────
+
+section(41, 'getStats().dealDetailState reflete estado atual; "empty" após clear');
+
+view.loadDrilldown('Todos', {});
+view.selectDeal('deal-2');
+const stats41a = view.getStats();
+
+assert(stats41a.dealDetailState === 'loaded', '41.1 dealDetailState = "loaded" em getStats após selectDeal');
+assert(stats41a.selectedDealId  === 'deal-2', '41.2 selectedDealId = "deal-2" em getStats');
+
+view.clearFilters();
+const stats41b = view.getStats();
+
+assert(stats41b.dealDetailState === 'empty', '41.3 dealDetailState = "empty" após clearFilters');
+assert(stats41b.selectedDealId  === null,    '41.4 selectedDealId = null após clearFilters');
+
+// ── 42. XSS em empresa, produto, obs, proximaAcao — entidades escapadas ───────
+// Testa diretamente _buildDealDetailPanelHTML porque CRMReadModel armazena apenas
+// um conjunto fixo de campos (funil, etapa, status, valor, etc.) e não persiste
+// campos gerenciais estendidos como empresa/produto/obs/proximaAcao.
+// O contrato do painel é escapar qualquer valor recebido — testamos isso aqui.
+
+section(42, 'XSS em empresa, produto, obs e proximaAcao é escapado por _buildDealDetailPanelHTML');
+
+const vmXSS42 = view._buildDealDetailViewModel({
+  id:          'deal-xss42',
+  funil:       'venda_ufv',
+  etapa:       'Proposta',
+  status:      'Em andamento',
+  valor:       1000,
+  responsavel: 'Lucas',
+  empresa:     '<script>xss()</script>',
+  produto:     '"><img onerror=x>',
+  obs:         '<b>observacao</b>',
+  proximaAcao: '" onmouseover="xss()',
+  createdAt:   1,
+});
+const html42 = view._buildDealDetailPanelHTML(vmXSS42);
+
+assert(!html42.includes('<script>xss()'),     '42.1 script em empresa não presente no HTML');
+assert(!html42.includes('<img onerror=x>'),   '42.2 img XSS em produto não presente');
+assert(!html42.includes('<b>observacao</b>'), '42.3 tag b em obs não presente');
+assert(!html42.includes('" onmouseover="xss()'), '42.4 payload onmouseover não presente sem escaping (aspas escapadas)');
+assert(html42.includes('&lt;script'),         '42.5 empresa escapada com &lt;script');
+assert(html42.includes('&lt;b&gt;'),          '42.6 obs escapada com &lt;b&gt;');
+
 // ── Resultado final ───────────────────────────────────────────────────────────
 
 console.log('\n' + '─'.repeat(50));
 console.log(`Resultado: ${total - failed}/${total} assertions passaram`);
 
 if (failed === 0) {
-  console.log('✓ TODOS OS 28 CENÁRIOS PASSARAM\n');
+  console.log('✓ TODOS OS 42 CENÁRIOS PASSARAM\n');
 } else {
   console.error(`✗ ${failed} assertion(s) falharam\n`);
   process.exit(1);

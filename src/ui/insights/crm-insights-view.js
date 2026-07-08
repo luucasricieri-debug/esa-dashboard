@@ -16,7 +16,9 @@ export class CRMInsightsView {
     this._lastError       = null;
     this._activeFilters   = {};
     this._drilldown       = { active: false, title: '', filters: {}, deals: [] };
-    this._selectedDeal    = null;
+    this._selectedDeal      = null;
+    this._dealDetailState   = 'empty';
+    this._dealDetailError   = null;
   }
 
   // ── Filtros ───────────────────────────────────────────────────────────────
@@ -43,9 +45,11 @@ export class CRMInsightsView {
   }
 
   clearFilters() {
-    this._activeFilters = {};
-    this._drilldown     = { active: false, title: '', filters: {}, deals: [] };
-    this._selectedDeal  = null;
+    this._activeFilters   = {};
+    this._drilldown       = { active: false, title: '', filters: {}, deals: [] };
+    this._selectedDeal    = null;
+    this._dealDetailState = 'empty';
+    this._dealDetailError = null;
     return {};
   }
 
@@ -119,7 +123,9 @@ export class CRMInsightsView {
       filters: Object.assign({}, merged),
       deals:   result.data.map((d) => Object.assign({}, d)),
     };
-    this._selectedDeal = null;
+    this._selectedDeal    = null;
+    this._dealDetailState = 'empty';
+    this._dealDetailError = null;
     return this.getDrilldown();
   }
 
@@ -138,16 +144,36 @@ export class CRMInsightsView {
     if (!this._queryProvider || typeof this._queryProvider.queryCRMDeal !== 'function') {
       throw new TypeError('[CRMInsightsView] queryProvider must expose queryCRMDeal()');
     }
-    const result = this._queryProvider.queryCRMDeal(dealId);
+    let result;
+    try {
+      result = this._queryProvider.queryCRMDeal(dealId);
+    } catch (err) {
+      this._selectedDeal    = null;
+      this._dealDetailState = 'error';
+      this._dealDetailError = { name: err.name || 'Error', message: err.message || String(err) };
+      return null;
+    }
     if (!result || !result.metadata || result.generatedAt === undefined || !('data' in result)) {
       throw new Error('[CRMInsightsView] Invalid CRM deal query result');
     }
-    this._selectedDeal = result.data ? Object.assign({}, result.data) : null;
-    return this._selectedDeal ? Object.assign({}, this._selectedDeal) : null;
+    if (result.data === null) {
+      this._selectedDeal    = null;
+      this._dealDetailState = 'not-found';
+      this._dealDetailError = null;
+      return null;
+    }
+    this._selectedDeal    = Object.assign({}, result.data);
+    this._dealDetailState = 'loaded';
+    this._dealDetailError = null;
+    return Object.assign({}, this._selectedDeal);
   }
 
   getSelectedDeal() {
     return this._selectedDeal ? Object.assign({}, this._selectedDeal) : null;
+  }
+
+  getDealDetailState() {
+    return this._dealDetailState;
   }
 
   // ── View Model helpers ────────────────────────────────────────────────────
@@ -231,7 +257,7 @@ export class CRMInsightsView {
     const filters  = this._buildFiltersHTML(viewModel);
     const header   = this._buildHeaderHTML(viewModel.generatedAt);
     const drilldown = this._buildDrilldownHTML(viewModel.drilldown);
-    const detail    = this._buildDealDetailHTML(viewModel.selectedDeal);
+    const detail    = this._buildDealDetailHTML();
     if (viewModel.dealCount === 0) {
       return (
         `<div style="padding:32px">${filters}${header}` +
@@ -463,30 +489,75 @@ export class CRMInsightsView {
     );
   }
 
-  _buildDealDetailHTML(deal) {
-    if (!deal) return '';
+  _buildDealDetailHTML() {
+    if (this._dealDetailState === 'empty') return '';
+    if (this._dealDetailState === 'not-found') {
+      return (
+        `<div class="card" style="margin-bottom:18px" data-insights-deal-detail>` +
+        `<div class="card-title">Detalhe do Deal</div>` +
+        `<div style="text-align:center;padding:32px;color:var(--gr,#4A7A5E);font-size:13px">` +
+        `Deal não encontrado.</div></div>`
+      );
+    }
+    if (this._dealDetailState === 'error') {
+      return (
+        `<div class="card" style="margin-bottom:18px" data-insights-deal-detail>` +
+        `<div class="card-title">Detalhe do Deal</div>` +
+        `<div style="text-align:center;padding:32px;color:var(--danger,#C0392B);font-size:13px">` +
+        `Não foi possível carregar o detalhe do deal.</div></div>`
+      );
+    }
+    return this._buildDealDetailPanelHTML(this._buildDealDetailViewModel(this._selectedDeal));
+  }
+
+  _buildDealDetailViewModel(deal) {
+    return {
+      id:          deal.id           || null,
+      nome:        deal.nome         || deal.cliente || null,
+      empresa:     deal.empresa      || null,
+      funil:       deal.funil        || null,
+      etapa:       deal.etapa        || null,
+      status:      deal.status       || null,
+      produto:     deal.produto      || null,
+      responsavel: deal.responsavel  || null,
+      captador:    deal.captador     || null,
+      valor:       typeof deal.valor === 'number'     ? deal.valor     : null,
+      kwh:         typeof deal.kwh   === 'number'     ? deal.kwh       : null,
+      createdAt:   typeof deal.createdAt === 'number' ? deal.createdAt : null,
+      updatedAt:   typeof deal.updatedAt === 'number' ? deal.updatedAt : null,
+      proximaAcao: deal.proximaAcao  || null,
+      obs:         deal.obs          || null,
+    };
+  }
+
+  _buildDealDetailPanelHTML(vm) {
     const row = (label, value) => {
-      const v = value !== undefined && value !== null && value !== ''
+      const v = value !== null && value !== undefined && value !== ''
         ? this._escapeHTML(String(value)) : '—';
       return (
         `<div style="display:flex;gap:12px;padding:8px 0;border-bottom:1px solid var(--bd,#E0DBD0);font-size:12px">` +
-        `<span style="color:var(--gr,#4A7A5E);min-width:120px;font-weight:500">${label}</span>` +
+        `<span style="color:var(--gr,#4A7A5E);min-width:140px;font-weight:500">${label}</span>` +
         `<span style="color:var(--bk,#1A1A1A)">${v}</span></div>`
       );
     };
     return (
-      `<div class="card" style="margin-bottom:18px">` +
+      `<div class="card" style="margin-bottom:18px" data-insights-deal-detail>` +
       `<div class="card-title">Detalhe do Deal</div>` +
-      row('Nome / Cliente', deal.nome || deal.cliente || null) +
-      row('ID', deal.id) +
-      row('Funil', deal.funil) +
-      row('Etapa', deal.etapa) +
-      row('Status', deal.status) +
-      row('Responsável', deal.responsavel) +
-      row('Captador', deal.captador) +
-      row('Valor', deal.valor != null ? this._formatCurrency(deal.valor) : null) +
-      row('kWh', deal.kwh ? this._formatKwh(deal.kwh) : null) +
-      row('Atualizado em', deal.updatedAt ? this._formatDateInput(deal.updatedAt) : null) +
+      row('Nome / Cliente', vm.nome) +
+      row('Empresa',        vm.empresa) +
+      row('ID',             vm.id) +
+      row('Funil',          vm.funil) +
+      row('Etapa',          vm.etapa) +
+      row('Status',         vm.status) +
+      row('Produto',        vm.produto) +
+      row('Responsável',    vm.responsavel) +
+      row('Captador',       vm.captador) +
+      row('Valor',          vm.valor !== null ? this._formatCurrency(vm.valor) : null) +
+      row('kWh',            vm.kwh   !== null ? this._formatKwh(vm.kwh)       : null) +
+      row('Criado em',      vm.createdAt !== null ? this._formatDate(vm.createdAt) : null) +
+      row('Atualizado em',  vm.updatedAt !== null ? this._formatDate(vm.updatedAt) : null) +
+      row('Próxima ação',   vm.proximaAcao) +
+      row('Observações',    vm.obs) +
       `</div>`
     );
   }
@@ -521,6 +592,18 @@ export class CRMInsightsView {
     try { return new Date(n).toISOString().slice(0, 10); } catch (e) { return ''; }
   }
 
+  _formatDate(timestamp) {
+    if (timestamp === undefined || timestamp === null) return '';
+    const n = Number(timestamp);
+    if (isNaN(n) || n <= 0) return '';
+    try {
+      return new Date(n).toLocaleString('pt-BR', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+      });
+    } catch (e) { return ''; }
+  }
+
   _escapeHTML(value) {
     if (value === undefined || value === null) return '';
     return String(value)
@@ -542,6 +625,7 @@ export class CRMInsightsView {
       activeFilterCount:  Object.keys(this._activeFilters).length,
       drilldownDealCount: this._drilldown.deals.length,
       selectedDealId:     this._selectedDeal ? (this._selectedDeal.id || null) : null,
+      dealDetailState:    this._dealDetailState,
     };
   }
 }
