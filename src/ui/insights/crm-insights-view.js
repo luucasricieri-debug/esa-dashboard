@@ -5,7 +5,7 @@
  * UI gerencial nativa da ESA OS — filtros, drill-down, detalhe de Deal e saúde do pipeline.
  * Fontes permitidas: getCRMExecutiveSummary, searchCRMDeals, queryCRMDeal,
  *                   getCRMPipelineHealth, getCRMCriticalDeals, getCRMDealsWithoutNextAction,
- *                   getCRMRiskSignalSummary.
+ *                   getCRMRiskSignalSummary, getCRMActionPrioritySummary.
  * Não acessa Firebase, Event Bus, Audit, CRMReadModel, CRMMetrics ou crmDeals.
  */
 
@@ -24,8 +24,10 @@ export class CRMInsightsView {
     this._health            = null;
     this._criticalDeals     = [];
     this._healthState       = 'empty';
-    this._riskSummary       = null;
-    this._riskSignalsState  = 'empty';
+    this._riskSummary             = null;
+    this._riskSignalsState        = 'empty';
+    this._actionPrioritySummary   = null;
+    this._actionPriorityState     = 'empty';
   }
 
   // ── Filtros ───────────────────────────────────────────────────────────────
@@ -60,8 +62,10 @@ export class CRMInsightsView {
     this._health           = null;
     this._criticalDeals    = [];
     this._healthState      = 'empty';
-    this._riskSummary      = null;
-    this._riskSignalsState = 'empty';
+    this._riskSummary            = null;
+    this._riskSignalsState       = 'empty';
+    this._actionPrioritySummary  = null;
+    this._actionPriorityState    = 'empty';
     return {};
   }
 
@@ -277,6 +281,42 @@ export class CRMInsightsView {
     return this._riskSummary ? Object.assign({}, this._riskSummary) : null;
   }
 
+  // ── Action Priorities ─────────────────────────────────────────────────────
+
+  /**
+   * Carrega o resumo de prioridades de ação comercial de forma independente.
+   * Falha é isolada: erro aqui não quebra nenhuma outra seção do Insights.
+   * Retorna null em caso de erro ou quando provider não suporta a query.
+   *
+   * @param {Object} [filters={}]
+   * @returns {Object|null}
+   */
+  loadActionPriorities(filters = {}) {
+    if (!this._queryProvider || typeof this._queryProvider.getCRMActionPrioritySummary !== 'function') {
+      this._actionPrioritySummary = null;
+      this._actionPriorityState   = 'empty';
+      return null;
+    }
+    const normalized = this._normalizeFilters(filters);
+    try {
+      const result = this._queryProvider.getCRMActionPrioritySummary(normalized);
+      if (!result || !('data' in result)) {
+        throw new Error('[CRMInsightsView] Invalid action priority summary result');
+      }
+      this._actionPrioritySummary = result.data ? Object.assign({}, result.data) : null;
+      this._actionPriorityState   = this._actionPrioritySummary ? 'loaded' : 'empty';
+    } catch (err) {
+      this._actionPrioritySummary = null;
+      this._actionPriorityState   = 'error';
+      return null;
+    }
+    return this._actionPrioritySummary ? Object.assign({}, this._actionPrioritySummary) : null;
+  }
+
+  getActionPrioritySummary() {
+    return this._actionPrioritySummary ? Object.assign({}, this._actionPrioritySummary) : null;
+  }
+
   // ── View Model helpers ────────────────────────────────────────────────────
 
   _buildPipelineViewModel(pipeline) {
@@ -344,9 +384,10 @@ export class CRMInsightsView {
       console.error('[ESA OS Insights] Falha ao carregar:', err);
       return null;
     }
-    // Health and risk analyses loaded independently — failures are isolated
+    // Health, risk and action-priority analyses loaded independently — failures are isolated
     this.loadPipelineHealth(this._activeFilters);
     this.loadRiskSignals(this._activeFilters);
+    this.loadActionPriorities(this._activeFilters);
 
     container.innerHTML = this._buildHTML(viewModel);
     this._renderCount++;
@@ -363,8 +404,9 @@ export class CRMInsightsView {
     const header    = this._buildHeaderHTML(viewModel.generatedAt);
     const drilldown = this._buildDrilldownHTML(viewModel.drilldown);
     const detail    = this._buildDealDetailHTML();
-    const health      = this._buildHealthSectionHTML();
-    const riskSignals = this._buildRiskSignalsSectionHTML();
+    const health         = this._buildHealthSectionHTML();
+    const riskSignals    = this._buildRiskSignalsSectionHTML();
+    const actionPriority = this._buildActionPrioritySection();
     if (viewModel.dealCount === 0) {
       return (
         `<div style="padding:32px">${filters}${header}` +
@@ -378,6 +420,7 @@ export class CRMInsightsView {
       this._buildCardsHTML(viewModel.cards) +
       health +
       riskSignals +
+      actionPriority +
       this._buildPipelineHTML(viewModel.pipeline) +
       this._buildStatusSectionHTML(viewModel.status) +
       this._buildForecastSectionHTML(viewModel.forecast) +
@@ -746,6 +789,96 @@ export class CRMInsightsView {
     return parts.join('');
   }
 
+  _buildActionPrioritySection() {
+    if (this._actionPriorityState === 'empty') return '';
+    if (this._actionPriorityState === 'error') {
+      return (
+        `<div class="card" style="margin-bottom:18px" data-insights-action-priorities>` +
+        `<div class="card-title">Prioridades de Ação</div>` +
+        `<div style="text-align:center;padding:32px;color:var(--danger,#C0392B);font-size:13px">` +
+        `Não foi possível carregar as prioridades de ação.</div></div>`
+      );
+    }
+    const s = this._actionPrioritySummary;
+    return (
+      `<div class="card" style="margin-bottom:18px" data-insights-action-priorities>` +
+      `<div class="card-title">◆ Prioridades de Ação</div>` +
+      this._buildActionPriorityKpisHTML(s) +
+      this._buildActionPriorityListHTML(s.priorities || []) +
+      `</div>`
+    );
+  }
+
+  _buildActionPriorityKpisHTML(s) {
+    const kpi = (key, label, value, isCurrency) => {
+      const formatted = isCurrency ? this._formatCurrency(value || 0) : String(value ?? 0);
+      return (
+        `<div style="background:var(--gl,#EEF5F1);border-radius:8px;padding:12px 16px;text-align:center" data-action-kpi="${key}">` +
+        `<div style="font-size:18px;font-weight:700;font-family:DM Mono,monospace;color:var(--g,#0D2418)">${formatted}</div>` +
+        `<div style="font-size:11px;color:var(--gr,#4A7A5E);margin-top:4px">${label}</div>` +
+        `</div>`
+      );
+    };
+    return (
+      `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:16px">` +
+      kpi('urgent',            'Urgentes',         s.urgentDeals)             +
+      kpi('high',              'Alta Prioridade',  s.highPriorityDeals)       +
+      kpi('prioritized-value', 'Valor Priorizado', s.prioritizedValue, true)  +
+      kpi('average-score',     'Score Médio',      s.averagePriorityScore)    +
+      `</div>`
+    );
+  }
+
+  _buildActionPriorityListHTML(priorities) {
+    if (!priorities || !priorities.length) {
+      return (
+        `<div data-action-priorities-list style="text-align:center;padding:24px;color:var(--gr,#4A7A5E);font-size:13px">` +
+        `Nenhuma prioridade de ação identificada.</div>`
+      );
+    }
+    const rows = priorities.slice(0, 20).map((p) => this._buildActionPriorityItemHTML(p)).join('');
+    return `<div data-action-priorities-list>${rows}</div>`;
+  }
+
+  _buildActionPriorityItemHTML(item) {
+    const LEVEL_COLOR = { urgent: '#C0392B', high: '#E67E22', medium: '#F39C12', low: '#4A7A5E' };
+    const LEVEL_LABEL = { urgent: 'Urgente', high: 'Alta', medium: 'Média', low: 'Baixa' };
+    const lv     = String(item.priorityLevel || 'low');
+    const color  = LEVEL_COLOR[lv] || '#4A7A5E';
+    const label  = LEVEL_LABEL[lv] || lv;
+    const name   = this._escapeHTML(item.dealName   || item.dealId || '—');
+    const resp   = this._escapeHTML(item.responsible || '—');
+    const value  = item.value > 0 ? this._formatCurrency(item.value) : '—';
+    const aging  = item.agingDays >= 0 ? `${item.agingDays}d` : '—';
+    const score  = String(item.priorityScore ?? 0);
+    const dealId = item.dealId ? this._escapeHTML(String(item.dealId)) : null;
+    const reasons = this._buildActionPriorityReasonsHTML(item.reasons || []);
+    const clickable = dealId ? ` data-insights-deal-id="${dealId}" style="cursor:pointer"` : '';
+    return (
+      `<div style="border-bottom:1px solid var(--bd,#E0DBD0);padding:10px 0;display:flex;gap:12px;align-items:flex-start"` +
+      ` data-action-priority-id="${this._escapeHTML(String(item.id || ''))}"` +
+      ` data-action-priority-level="${this._escapeHTML(lv)}"` +
+      ` data-action-priority-score="${this._escapeHTML(score)}"${clickable}>` +
+      `<div style="min-width:60px;text-align:center;padding:3px 6px;border-radius:4px;font-size:10px;font-weight:700;color:#fff;background:${color};flex-shrink:0">${label}</div>` +
+      `<div style="flex:1;min-width:0">` +
+      `<div style="font-size:13px;font-weight:600;color:var(--bk,#1A1A1A)">${name}</div>` +
+      `<div style="font-size:11px;color:var(--gr,#4A7A5E);margin-top:2px;font-family:DM Mono,monospace">` +
+      `Resp.: ${resp} · ${value} · ${aging} · Score: ${score}</div>` +
+      (reasons ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">${reasons}</div>` : '') +
+      `</div></div>`
+    );
+  }
+
+  _buildActionPriorityReasonsHTML(reasons) {
+    return reasons
+      .slice(0, 4)
+      .map((r) => (
+        `<span style="font-size:10px;padding:2px 6px;background:var(--gl,#EEF5F1);border-radius:3px;color:var(--g,#0D2418)"` +
+        ` data-action-reason-code="${this._escapeHTML(String(r.code || ''))}">${this._escapeHTML(String(r.label || r.code || ''))}</span>`
+      ))
+      .join('');
+  }
+
   _buildDrilldownHTML(drilldown) {
     if (!drilldown || !drilldown.active) return '';
     const title = this._escapeHTML(drilldown.title);
@@ -920,9 +1053,10 @@ export class CRMInsightsView {
       activeFilterCount:  Object.keys(this._activeFilters).length,
       drilldownDealCount: this._drilldown.deals.length,
       selectedDealId:     this._selectedDeal ? (this._selectedDeal.id || null) : null,
-      dealDetailState:    this._dealDetailState,
-      healthState:        this._healthState,
-      riskSignalsState:   this._riskSignalsState,
+      dealDetailState:      this._dealDetailState,
+      healthState:          this._healthState,
+      riskSignalsState:     this._riskSignalsState,
+      actionPriorityState:  this._actionPriorityState,
     };
   }
 }

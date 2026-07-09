@@ -1,7 +1,7 @@
 /**
  * ESA OS — UI / Insights
  * Suite de testes de integração — CRMInsightsView
- * 67 cenários obrigatórios
+ * 83 cenários obrigatórios
  *
  * Execução: node src/ui/insights/crm-insights-view.manual-test.js
  *
@@ -29,7 +29,7 @@ function assert(condition, label) {
 }
 
 function section(n, title) {
-  console.log(`\n[${n}/67] ${title}`);
+  console.log(`\n[${n}/83] ${title}`);
 }
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -55,6 +55,7 @@ const queryProvider = {
   getCRMCriticalDeals:          (filters = {}) => svc.getCriticalDeals(filters).toJSON(),
   getCRMDealsWithoutNextAction: (filters = {}) => svc.getDealsWithoutNextAction(filters).toJSON(),
   getCRMRiskSignalSummary:      (filters = {}) => svc.getRiskSignalSummary(filters).toJSON(),
+  getCRMActionPrioritySummary:  (filters = {}) => svc.getActionPrioritySummary(filters).toJSON(),
 };
 
 const view      = new CRMInsightsView(queryProvider);
@@ -1157,13 +1158,240 @@ assert(!c67.innerHTML.includes('[object Object]'), '67.2 "[object Object]" não 
 assert(!c67.innerHTML.includes('>null<'),          '67.3 ">null<" não visível');
 assert(!c67.innerHTML.includes('>NaN<'),           '67.4 ">NaN<" não visível');
 
+// ── 68. loadActionPriorities → loaded state + shape correta ─────────────────
+
+section(68, 'loadActionPriorities() com provider válido → _actionPriorityState = "loaded" + shape correta');
+
+view.clearFilters();
+const ap68 = view.loadActionPriorities({});
+
+assert(ap68 !== null,                                       '68.1 loadActionPriorities retorna objeto (não null)');
+assert(view.getActionPrioritySummary() !== null,            '68.2 getActionPrioritySummary() retorna objeto');
+assert(view.getStats().actionPriorityState === 'loaded',    '68.3 getStats().actionPriorityState = "loaded"');
+assert(typeof ap68.totalPriorities      === 'number',       '68.4 totalPriorities é number');
+assert(typeof ap68.urgentDeals          === 'number',       '68.5 urgentDeals é number');
+assert(typeof ap68.highPriorityDeals    === 'number',       '68.6 highPriorityDeals é number');
+assert(typeof ap68.mediumPriorityDeals  === 'number',       '68.7 mediumPriorityDeals é number');
+assert(typeof ap68.lowPriorityDeals     === 'number',       '68.8 lowPriorityDeals é number');
+assert(typeof ap68.prioritizedValue     === 'number',       '68.9 prioritizedValue é number');
+assert(typeof ap68.averagePriorityScore === 'number',       '68.10 averagePriorityScore é number');
+
+// ── 69. render inclui seção Prioridades de Ação ──────────────────────────────
+
+section(69, 'render() inclui seção "Prioridades de Ação" (data-insights-action-priorities)');
+
+const c69 = { innerHTML: '' };
+view.render(c69);
+
+assert(c69.innerHTML.includes('data-insights-action-priorities'), '69.1 data-insights-action-priorities presente no HTML');
+assert(c69.innerHTML.includes('Prioridades de Ação'),             '69.2 título "Prioridades de Ação" presente');
+
+// ── 70. KPI cards com data-action-kpi ────────────────────────────────────────
+
+section(70, 'cards gerenciais data-action-kpi presentes no HTML da seção');
+
+const c70 = { innerHTML: '' };
+view.render(c70);
+
+assert(c70.innerHTML.includes('data-action-kpi="urgent"'),            '70.1 kpi urgent presente');
+assert(c70.innerHTML.includes('data-action-kpi="high"'),              '70.2 kpi high presente');
+assert(c70.innerHTML.includes('data-action-kpi="prioritized-value"'), '70.3 kpi prioritized-value presente');
+assert(c70.innerHTML.includes('data-action-kpi="average-score"'),     '70.4 kpi average-score presente');
+
+// ── 71. Lista com data-action-priorities-list ─────────────────────────────────
+
+section(71, 'lista de prioridades com data-action-priorities-list presente no HTML');
+
+const c71 = { innerHTML: '' };
+view.render(c71);
+
+assert(c71.innerHTML.includes('data-action-priorities-list'), '71.1 data-action-priorities-list presente');
+
+// ── 72. Itens têm data-action-priority-level ──────────────────────────────────
+
+section(72, 'itens de prioridade têm atributo data-action-priority-level');
+
+const c72 = { innerHTML: '' };
+view.render(c72);
+
+assert(c72.innerHTML.includes('data-action-priority-level='), '72.1 data-action-priority-level presente nos itens');
+
+// ── 73. Labels pt-BR "Urgente" presente ──────────────────────────────────────
+
+// TEST_DEALS são críticos sem próxima ação → todos urgent → label "Urgente"
+section(73, 'label pt-BR "Urgente" presente nos itens de prioridade');
+
+const c73 = { innerHTML: '' };
+view.render(c73);
+
+assert(c73.innerHTML.includes('Urgente'), '73.1 label "Urgente" presente no HTML de prioridades');
+
+// ── 74. Score presente na meta line dos itens ─────────────────────────────────
+
+section(74, 'Score: presente na linha meta dos itens de prioridade');
+
+const c74 = { innerHTML: '' };
+view.render(c74);
+
+assert(c74.innerHTML.includes('Score:'), '74.1 "Score:" presente na meta line dos itens');
+
+// ── 75. Reason tags com data-action-reason-code ───────────────────────────────
+
+section(75, 'tags de reason com data-action-reason-code presentes nos itens');
+
+const c75 = { innerHTML: '' };
+view.render(c75);
+
+assert(c75.innerHTML.includes('data-action-reason-code='), '75.1 data-action-reason-code presente nos itens');
+
+// ── 76. R$ no KPI prioritized-value ──────────────────────────────────────────
+
+// TEST_DEALS: todos críticos urgentes → prioritizedValue = soma de todos os valores
+section(76, 'prioritizedValue formatado com R$ no kpi prioritized-value');
+
+const c76 = { innerHTML: '' };
+view.render(c76);
+
+assert(c76.innerHTML.includes('R$'), '76.1 símbolo "R$" presente (prioritizedValue formatado)');
+
+// ── 77. Aging em dias (Nd) presente nos itens ────────────────────────────────
+
+section(77, 'agingDays em dias (padrão Nd) presente nos meta dos itens');
+
+// TEST_DEALS têm timestamps de 1970 → agingDays >> 0 → aparece como "Nd"
+const c77 = { innerHTML: '' };
+view.render(c77);
+
+assert(/\d+d/.test(c77.innerHTML), '77.1 padrão "Nd" (ex: 20000d) presente no HTML de prioridades');
+
+// ── 78. XSS em dealName/responsible escapado ──────────────────────────────────
+
+section(78, 'XSS em campos dos itens de prioridade (responsible com payload) é escapado');
+
+const rmXSS78  = new CRMReadModel();
+const mXSS78   = new CRMMetrics(rmXSS78);
+const svcXSS78 = new CRMQueryService(rmXSS78, mXSS78);
+rmXSS78.hydrate({
+  'xss-78': {
+    funil:       'venda_ufv',
+    etapa:       'Proposta',
+    status:      'Em andamento',
+    valor:       50000,
+    responsavel: '"><script>xss()</script>',
+    createdAt:   1,
+    updatedAt:   1,
+  },
+});
+const pXSS78 = {
+  getCRMExecutiveSummary:      (f = {}) => svcXSS78.getExecutiveSummary(f).toJSON(),
+  searchCRMDeals:              (f = {}) => svcXSS78.searchDeals(f).toJSON(),
+  queryCRMDeal:                (id)     => svcXSS78.getDeal(id).toJSON(),
+  getCRMPipelineHealth:        (f = {}) => svcXSS78.getPipelineHealth(f).toJSON(),
+  getCRMCriticalDeals:         (f = {}) => svcXSS78.getCriticalDeals(f).toJSON(),
+  getCRMDealsWithoutNextAction:(f = {}) => svcXSS78.getDealsWithoutNextAction(f).toJSON(),
+  getCRMRiskSignalSummary:     (f = {}) => svcXSS78.getRiskSignalSummary(f).toJSON(),
+  getCRMActionPrioritySummary: (f = {}) => svcXSS78.getActionPrioritySummary(f).toJSON(),
+};
+const vXSS78 = new CRMInsightsView(pXSS78);
+const cXSS78 = { innerHTML: '' };
+vXSS78.render(cXSS78);
+const html78 = cXSS78.innerHTML;
+
+assert(!html78.includes('<script>xss()'),    '78.1 <script> em responsavel não presente no HTML de prioridades');
+assert(!html78.includes('" onclick='),       '78.2 onclick não presente');
+assert(html78.includes('&lt;') || html78.includes('&quot;'), '78.3 entidades HTML escapadas presentes');
+
+// ── 79. Erro em getCRMActionPrioritySummary é isolado ────────────────────────
+
+section(79, 'erro em getCRMActionPrioritySummary é isolado; restante do HTML permanece válido');
+
+const providerErr79 = {
+  getCRMExecutiveSummary:      (f = {}) => svc.getExecutiveSummary(f).toJSON(),
+  searchCRMDeals:              (f = {}) => svc.searchDeals(f).toJSON(),
+  queryCRMDeal:                (id)     => svc.getDeal(id).toJSON(),
+  getCRMPipelineHealth:        (f = {}) => svc.getPipelineHealth(f).toJSON(),
+  getCRMCriticalDeals:         (f = {}) => svc.getCriticalDeals(f).toJSON(),
+  getCRMDealsWithoutNextAction:(f = {}) => svc.getDealsWithoutNextAction(f).toJSON(),
+  getCRMRiskSignalSummary:     (f = {}) => svc.getRiskSignalSummary(f).toJSON(),
+  getCRMActionPrioritySummary: ()       => { throw new Error('Falha de prioridades simulada'); },
+};
+const view79 = new CRMInsightsView(providerErr79);
+const c79    = { innerHTML: '' };
+const vm79   = view79.render(c79);
+
+assert(vm79 !== null,                                             '79.1 render retorna viewModel (não null) com erro em action-priority');
+assert(c79.innerHTML.includes('ESA OS Insights'),                 '79.2 título da página presente');
+assert(view79.getStats().actionPriorityState === 'error',         '79.3 actionPriorityState = "error"');
+assert(c79.innerHTML.includes('data-insights-action-priorities'), '79.4 seção action-priority presente exibindo erro');
+
+// ── 80. clearFilters reseta actionPriorityState para 'empty' ─────────────────
+
+section(80, 'clearFilters reseta actionPriorityState para "empty"');
+
+view.loadActionPriorities({});
+assert(view.getStats().actionPriorityState === 'loaded', '80.1 actionPriorityState = "loaded" após loadActionPriorities');
+view.clearFilters();
+assert(view.getStats().actionPriorityState === 'empty',  '80.2 actionPriorityState = "empty" após clearFilters');
+
+// ── 81. Provider sem getCRMActionPrioritySummary → seção ausente ──────────────
+
+section(81, 'provider sem getCRMActionPrioritySummary → actionPriorityState = "empty"; seção ausente do HTML');
+
+const providerNoAP81 = {
+  getCRMExecutiveSummary: (f = {}) => svc.getExecutiveSummary(f).toJSON(),
+  searchCRMDeals:         (f = {}) => svc.searchDeals(f).toJSON(),
+  queryCRMDeal:           (id)     => svc.getDeal(id).toJSON(),
+};
+const view81 = new CRMInsightsView(providerNoAP81);
+const c81    = { innerHTML: '' };
+view81.render(c81);
+
+assert(view81.getStats().actionPriorityState === 'empty',           '81.1 actionPriorityState = "empty" sem provider');
+assert(!c81.innerHTML.includes('data-insights-action-priorities'),   '81.2 seção action-priority ausente quando provider não suporta');
+
+// ── 82. data-insights-deal-id nos itens → selectDeal() reutilizável ──────────
+
+section(82, 'itens de prioridade com dealId têm data-insights-deal-id; selectDeal() ainda funciona');
+
+view.clearFilters();
+const c82 = { innerHTML: '' };
+view.render(c82);
+
+// TEST_DEALS têm IDs e geram prioridades com dealId → data-insights-deal-id deve estar presente
+assert(
+  c82.innerHTML.includes('data-insights-deal-id="deal-1"') ||
+  c82.innerHTML.includes('data-insights-deal-id="deal-2"') ||
+  c82.innerHTML.includes('data-insights-deal-id="deal-3"') ||
+  c82.innerHTML.includes('data-insights-deal-id="deal-4"'),
+  '82.1 ao menos um data-insights-deal-id de item de prioridade presente no HTML'
+);
+
+view.loadDrilldown('Todos', {});
+view.selectDeal('deal-2');
+assert(view.getDealDetailState() === 'loaded', '82.2 selectDeal() funciona via deal-id de priority item');
+assert(view.getSelectedDeal().id === 'deal-2', '82.3 deal correto carregado');
+
+view.clearFilters();
+
+// ── 83. Ausência de undefined/null/NaN/[object Object] na seção de prioridades
+
+section(83, 'HTML da seção de prioridades não contém undefined, null, NaN ou [object Object]');
+
+const c83 = { innerHTML: '' };
+view.render(c83);
+
+assert(!c83.innerHTML.includes('>undefined<'),    '83.1 "undefined" não visível no HTML de prioridades');
+assert(!c83.innerHTML.includes('[object Object]'), '83.2 "[object Object]" não visível');
+assert(!c83.innerHTML.includes('>null<'),          '83.3 ">null<" não visível');
+assert(!c83.innerHTML.includes('>NaN<'),           '83.4 ">NaN<" não visível');
+
 // ── Resultado final ───────────────────────────────────────────────────────────
 
 console.log('\n' + '─'.repeat(50));
 console.log(`Resultado: ${total - failed}/${total} assertions passaram`);
 
 if (failed === 0) {
-  console.log('✓ TODOS OS 67 CENÁRIOS PASSARAM\n');
+  console.log('✓ TODOS OS 83 CENÁRIOS PASSARAM\n');
 } else {
   console.error(`✗ ${failed} assertion(s) falharam\n`);
   process.exit(1);

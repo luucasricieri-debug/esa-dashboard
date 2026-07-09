@@ -20,6 +20,9 @@ export { CRMPipelineAnalyzer,
 export { CRMRiskSignalAnalyzer,
          SIGNAL_TYPES, SEVERITY_LEVELS,
          HIGH_VALUE_THRESHOLD, RISK_THRESHOLDS }                      from './crm-risk-signal-analyzer.js';
+export { CRMActionPriorityAnalyzer,
+         PRIORITY_LEVELS, SCORE_WEIGHTS,
+         VALUE_THRESHOLDS, PRIORITY_SCORE_THRESHOLDS }                from './crm-action-priority-analyzer.js';
 
 import { CRMQueryService }          from './crm-query-service.js';
 import { crmReadModel, crmMetrics } from '../../read-models/crm/index.js';

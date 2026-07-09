@@ -13,9 +13,10 @@
  * Valida dependências no momento da execução da query, não no constructor.
  */
 
-import { CRMQueryResult }          from './crm-query-result.js';
-import { CRMPipelineAnalyzer }     from './crm-pipeline-analyzer.js';
-import { CRMRiskSignalAnalyzer }   from './crm-risk-signal-analyzer.js';
+import { CRMQueryResult }              from './crm-query-result.js';
+import { CRMPipelineAnalyzer }         from './crm-pipeline-analyzer.js';
+import { CRMRiskSignalAnalyzer }       from './crm-risk-signal-analyzer.js';
+import { CRMActionPriorityAnalyzer }   from './crm-action-priority-analyzer.js';
 
 export class CRMQueryService {
   /**
@@ -25,8 +26,9 @@ export class CRMQueryService {
   constructor(readModel, metrics) {
     this._readModel        = readModel;
     this._metrics          = metrics;
-    this._pipelineAnalyzer = null;
-    this._riskAnalyzer     = null;
+    this._pipelineAnalyzer        = null;
+    this._riskAnalyzer            = null;
+    this._actionPriorityAnalyzer  = null;
   }
 
   // ── Queries de Read Model ─────────────────────────────────────────────────
@@ -273,6 +275,58 @@ export class CRMQueryService {
     });
   }
 
+  // ── Action Priorities ─────────────────────────────────────────────────────
+
+  /**
+   * Retorna lista priorizada de ações comerciais por deal.
+   *
+   * @param {Object} filters
+   * @param {Object} [options={}]
+   * @returns {CRMQueryResult} data: ActionPriority[]
+   */
+  getActionPriorities(filters = {}, options = {}) {
+    this._requireReadModel('getDeals');
+    const items = this._getActionPriorityAnalyzer().getActionPriorities(filters, options);
+    return new CRMQueryResult(items, {
+      query:   'crm.getActionPriorities',
+      filters: Object.assign({}, filters),
+      count:   items.length,
+    });
+  }
+
+  /**
+   * Retorna apenas prioridades com nível 'urgent'.
+   *
+   * @param {Object} filters
+   * @param {Object} [options={}]
+   * @returns {CRMQueryResult} data: ActionPriority[]
+   */
+  getUrgentActionPriorities(filters = {}, options = {}) {
+    this._requireReadModel('getDeals');
+    const items = this._getActionPriorityAnalyzer().getUrgentActionPriorities(filters, options);
+    return new CRMQueryResult(items, {
+      query:   'crm.getUrgentActionPriorities',
+      filters: Object.assign({}, filters),
+      count:   items.length,
+    });
+  }
+
+  /**
+   * Retorna resumo gerencial de prioridades de ação com contagens e fila.
+   *
+   * @param {Object} filters
+   * @param {Object} [options={}]
+   * @returns {CRMQueryResult} data: ActionPrioritySummary
+   */
+  getActionPrioritySummary(filters = {}, options = {}) {
+    this._requireReadModel('getDeals');
+    const summary = this._getActionPriorityAnalyzer().getActionPrioritySummary(filters, options);
+    return new CRMQueryResult(summary, {
+      query:   'crm.getActionPrioritySummary',
+      filters: Object.assign({}, filters),
+    });
+  }
+
   // ── Validação privada ─────────────────────────────────────────────────────
 
   _getAnalyzer() {
@@ -287,6 +341,13 @@ export class CRMQueryService {
       this._riskAnalyzer = new CRMRiskSignalAnalyzer(this._readModel);
     }
     return this._riskAnalyzer;
+  }
+
+  _getActionPriorityAnalyzer() {
+    if (!this._actionPriorityAnalyzer) {
+      this._actionPriorityAnalyzer = new CRMActionPriorityAnalyzer(this._readModel);
+    }
+    return this._actionPriorityAnalyzer;
   }
 
   _requireReadModel(method) {

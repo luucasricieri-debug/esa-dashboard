@@ -143,6 +143,18 @@ class ESAApplication {
     return crmQueryService.getRiskSignalSummary(filters, options).toJSON();
   }
 
+  getCRMActionPriorities(filters = {}, options = {}) {
+    return crmQueryService.getActionPriorities(filters, options).toJSON();
+  }
+
+  getCRMUrgentActionPriorities(filters = {}, options = {}) {
+    return crmQueryService.getUrgentActionPriorities(filters, options).toJSON();
+  }
+
+  getCRMActionPrioritySummary(filters = {}, options = {}) {
+    return crmQueryService.getActionPrioritySummary(filters, options).toJSON();
+  }
+
 }
 
 export const ESA = new ESAApplication();
