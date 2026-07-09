@@ -1,0 +1,56 @@
+// Firebase Storage Rules — ESA Dashboard
+//
+// ATENÇÃO — IMPLANTAÇÃO OBRIGATÓRIA:
+//   Este arquivo precisa ser implantado manualmente via Firebase CLI:
+//     firebase deploy --only storage
+//   OU colando o conteúdo em Firebase Console → Storage → Rules.
+//
+// CONTEXTO:
+//   O dashboard usa autenticação legada própria (sessionStorage/localStorage).
+//   A biblioteca firebase-auth-compat.js NÃO está carregada no cliente.
+//   Portanto request.auth é sempre null e regras que exigem request.auth != null
+//   recusam todos os uploads com storage/unauthorized.
+//
+// DECISÃO DE SEGURANÇA:
+//   - NÃO liberamos o bucket inteiro (/{allPaths=**}).
+//   - NÃO usamos allow read, write: if true no bucket completo.
+//   - Liberamos APENAS o path crm/{dealId}/{fileName} usado pelos anexos de deals.
+//   - Escrita exige content-type dentro dos tipos permitidos pelo modal
+//     (PDF, imagens, Word, Excel) e tamanho máximo de 10 MB.
+//   - Todo o restante do bucket permanece bloqueado por padrão.
+//
+// IMPACTO:
+//   Qualquer usuário não autenticado tecnicamente poderia escrever em crm/
+//   respeitando os filtros de tipo e tamanho. Este é o tradeoff inevitável
+//   enquanto o sistema não migrar para Firebase Auth. A alternativa segura
+//   de longo prazo é implementar Firebase Auth e restringir por request.auth.
+//
+// PATHS AFETADOS:
+//   WRITE  crm/{dealId}/{fileName}   (apenas tipos e tamanho verificados)
+//   READ   crm/{dealId}/{fileName}   (download via token já funciona; regra belt-and-suspenders)
+//   RESTO  /{allPaths=**}            permanece bloqueado (allow = false)
+
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Anexos de deals do CRM
+    match /crm/{dealId}/{fileName} {
+      allow read: if true;
+      allow write: if request.resource.size <= 10 * 1024 * 1024
+                   && request.resource.contentType.matches(
+                        'application/pdf'
+                        + '|image/(png|jpeg|gif|webp)'
+                        + '|application/msword'
+                        + '|application/vnd\\.ms-excel'
+                        + '|application/vnd\\.openxmlformats-officedocument\\.(wordprocessingml\\.document|spreadsheetml\\.sheet)'
+                      );
+    }
+
+    // Todo o restante permanece bloqueado
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+  }
+}
