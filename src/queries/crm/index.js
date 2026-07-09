@@ -23,6 +23,9 @@ export { CRMRiskSignalAnalyzer,
 export { CRMActionPriorityAnalyzer,
          PRIORITY_LEVELS, SCORE_WEIGHTS,
          VALUE_THRESHOLDS, PRIORITY_SCORE_THRESHOLDS }                from './crm-action-priority-analyzer.js';
+export { CRMManagementBriefBuilder,
+         HIGH_EXPOSURE_THRESHOLD, SECTION_STATUS,
+         HIGHLIGHT_CODES, HIGHLIGHT_SEVERITY }                        from './crm-management-brief-builder.js';
 
 import { CRMQueryService }          from './crm-query-service.js';
 import { crmReadModel, crmMetrics } from '../../read-models/crm/index.js';

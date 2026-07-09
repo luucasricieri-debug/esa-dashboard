@@ -5,7 +5,7 @@
  * UI gerencial nativa da ESA OS — filtros, drill-down, detalhe de Deal e saúde do pipeline.
  * Fontes permitidas: getCRMExecutiveSummary, searchCRMDeals, queryCRMDeal,
  *                   getCRMPipelineHealth, getCRMCriticalDeals, getCRMDealsWithoutNextAction,
- *                   getCRMRiskSignalSummary, getCRMActionPrioritySummary.
+ *                   getCRMRiskSignalSummary, getCRMActionPrioritySummary, getCRMManagementBrief.
  * Não acessa Firebase, Event Bus, Audit, CRMReadModel, CRMMetrics ou crmDeals.
  */
 
@@ -28,6 +28,8 @@ export class CRMInsightsView {
     this._riskSignalsState        = 'empty';
     this._actionPrioritySummary   = null;
     this._actionPriorityState     = 'empty';
+    this._managementBrief         = null;
+    this._managementBriefState    = 'empty';
   }
 
   // ── Filtros ───────────────────────────────────────────────────────────────
@@ -66,6 +68,8 @@ export class CRMInsightsView {
     this._riskSignalsState       = 'empty';
     this._actionPrioritySummary  = null;
     this._actionPriorityState    = 'empty';
+    this._managementBrief        = null;
+    this._managementBriefState   = 'empty';
     return {};
   }
 
@@ -384,7 +388,8 @@ export class CRMInsightsView {
       console.error('[ESA OS Insights] Falha ao carregar:', err);
       return null;
     }
-    // Health, risk and action-priority analyses loaded independently — failures are isolated
+    // All section analyses loaded independently — failures are isolated
+    this.loadManagementBrief(this._activeFilters);
     this.loadPipelineHealth(this._activeFilters);
     this.loadRiskSignals(this._activeFilters);
     this.loadActionPriorities(this._activeFilters);
@@ -404,9 +409,10 @@ export class CRMInsightsView {
     const header    = this._buildHeaderHTML(viewModel.generatedAt);
     const drilldown = this._buildDrilldownHTML(viewModel.drilldown);
     const detail    = this._buildDealDetailHTML();
-    const health         = this._buildHealthSectionHTML();
-    const riskSignals    = this._buildRiskSignalsSectionHTML();
-    const actionPriority = this._buildActionPrioritySection();
+    const managementBrief = this._buildManagementBriefSectionHTML();
+    const health          = this._buildHealthSectionHTML();
+    const riskSignals     = this._buildRiskSignalsSectionHTML();
+    const actionPriority  = this._buildActionPrioritySection();
     if (viewModel.dealCount === 0) {
       return (
         `<div style="padding:32px">${filters}${header}` +
@@ -418,6 +424,7 @@ export class CRMInsightsView {
       `<div style="padding:24px 32px;background:var(--bg,#F7F5F0);min-height:100%">` +
       filters + header +
       this._buildCardsHTML(viewModel.cards) +
+      managementBrief +
       health +
       riskSignals +
       actionPriority +
@@ -600,6 +607,100 @@ export class CRMInsightsView {
       `<thead><tr style="border-bottom:1.5px solid var(--bd,#E0DBD0)">` +
       th('Status') + th('Deals', 'right') + th('Valor Total', 'right') + th('Peso', 'right') + th('Forecast', 'right') +
       `</tr></thead><tbody>${rowsHTML}</tbody></table></div></div>`
+    );
+  }
+
+  // ── Management Brief ──────────────────────────────────────────────────────
+
+  /**
+   * Carrega o briefing gerencial consolidado de forma independente.
+   * Falha é isolada: erro aqui não quebra nenhuma outra seção do Insights.
+   * Retorna null em caso de erro ou quando provider não suporta a query.
+   *
+   * @param {Object} [filters={}]
+   * @returns {Object|null}
+   */
+  loadManagementBrief(filters = {}) {
+    if (!this._queryProvider || typeof this._queryProvider.getCRMManagementBrief !== 'function') {
+      this._managementBrief      = null;
+      this._managementBriefState = 'empty';
+      return null;
+    }
+    const normalized = this._normalizeFilters(filters);
+    try {
+      const result = this._queryProvider.getCRMManagementBrief(normalized);
+      if (!result || !('data' in result)) {
+        throw new Error('[CRMInsightsView] Invalid management brief result');
+      }
+      this._managementBrief      = result.data ? Object.assign({}, result.data) : null;
+      this._managementBriefState = this._managementBrief ? 'loaded' : 'empty';
+    } catch (err) {
+      this._managementBrief      = null;
+      this._managementBriefState = 'error';
+      return null;
+    }
+    return this._managementBrief ? Object.assign({}, this._managementBrief) : null;
+  }
+
+  getManagementBrief() {
+    return this._managementBrief ? Object.assign({}, this._managementBrief) : null;
+  }
+
+  _buildManagementBriefSectionHTML() {
+    if (this._managementBriefState === 'empty') return '';
+    if (this._managementBriefState === 'error') {
+      return (
+        `<div class="card" style="margin-bottom:18px" data-insights-management-brief>` +
+        `<div class="card-title">Briefing Gerencial</div>` +
+        `<div style="text-align:center;padding:32px;color:var(--danger,#C0392B);font-size:13px">` +
+        `Não foi possível carregar o briefing gerencial.</div></div>`
+      );
+    }
+    const b = this._managementBrief;
+    const narrative = this._escapeHTML(b.managementNarrative || '');
+    const highlights = Array.isArray(b.highlights) ? b.highlights.slice(0, 5) : [];
+    const highlightsHTML = highlights.length
+      ? highlights.map((h) => this._buildManagementBriefHighlightHTML(h)).join('')
+      : `<div style="text-align:center;padding:16px;color:var(--gr,#4A7A5E);font-size:13px">Nenhum highlight gerencial.</div>`;
+    return (
+      `<div class="card" style="margin-bottom:18px" data-insights-management-brief>` +
+      `<div class="card-title">◆ Briefing Gerencial</div>` +
+      (narrative
+        ? `<div style="font-size:13px;color:var(--bk,#1A1A1A);line-height:1.6;margin-bottom:16px;padding:12px 16px;` +
+          `background:var(--gl,#EEF5F1);border-radius:8px" data-brief-narrative>${narrative}</div>`
+        : '') +
+      `<div data-brief-highlights>${highlightsHTML}</div>` +
+      `</div>`
+    );
+  }
+
+  _buildManagementBriefHighlightHTML(h) {
+    const SEV_COLOR = { critical: '#C0392B', risk: '#E67E22', attention: '#F39C12', info: '#4A7A5E' };
+    const SEV_LABEL = { critical: 'Crítico', risk: 'Risco', attention: 'Atenção', info: 'Informativo' };
+    const sev     = String(h.severity || 'info');
+    const color   = SEV_COLOR[sev]  || '#4A7A5E';
+    const sevText = SEV_LABEL[sev]  || sev;
+    const title   = this._escapeHTML(h.title       || '');
+    const desc    = this._escapeHTML(h.description || '');
+    const dealId  = h.dealId != null ? this._escapeHTML(String(h.dealId)) : null;
+    const clickable = dealId ? ` data-insights-deal-id="${dealId}" style="cursor:pointer"` : '';
+    const valuePart = (typeof h.value === 'number' && !isNaN(h.value))
+      ? `<span style="font-family:DM Mono,monospace;color:var(--g,#0D2418)">${this._formatCurrency(h.value)}</span>`
+      : '';
+    const countPart = (typeof h.count === 'number' && !isNaN(h.count))
+      ? `<span style="color:var(--g,#0D2418)">${h.count} deal${h.count !== 1 ? 's' : ''}</span>`
+      : '';
+    const metaParts = [valuePart, countPart].filter(Boolean).join(' · ');
+    return (
+      `<div style="border-bottom:1px solid var(--bd,#E0DBD0);padding:10px 0;display:flex;gap:12px;align-items:flex-start"` +
+      ` data-brief-highlight-code="${this._escapeHTML(String(h.code || ''))}"` +
+      ` data-brief-highlight-severity="${this._escapeHTML(sev)}"${clickable}>` +
+      `<div style="min-width:72px;text-align:center;padding:3px 6px;border-radius:4px;font-size:10px;font-weight:700;color:#fff;background:${color};flex-shrink:0">${sevText}</div>` +
+      `<div style="flex:1;min-width:0">` +
+      `<div style="font-size:13px;font-weight:600;color:var(--bk,#1A1A1A)">${title}</div>` +
+      `<div style="font-size:11px;color:var(--gr,#4A7A5E);margin-top:2px">${desc}</div>` +
+      (metaParts ? `<div style="display:flex;gap:12px;margin-top:6px;font-size:11px">${metaParts}</div>` : '') +
+      `</div></div>`
     );
   }
 
@@ -1053,10 +1154,11 @@ export class CRMInsightsView {
       activeFilterCount:  Object.keys(this._activeFilters).length,
       drilldownDealCount: this._drilldown.deals.length,
       selectedDealId:     this._selectedDeal ? (this._selectedDeal.id || null) : null,
-      dealDetailState:      this._dealDetailState,
-      healthState:          this._healthState,
-      riskSignalsState:     this._riskSignalsState,
-      actionPriorityState:  this._actionPriorityState,
+      dealDetailState:       this._dealDetailState,
+      healthState:           this._healthState,
+      riskSignalsState:      this._riskSignalsState,
+      actionPriorityState:   this._actionPriorityState,
+      managementBriefState:  this._managementBriefState,
     };
   }
 }

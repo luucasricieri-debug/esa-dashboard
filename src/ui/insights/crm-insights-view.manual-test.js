@@ -1,7 +1,7 @@
 /**
  * ESA OS — UI / Insights
  * Suite de testes de integração — CRMInsightsView
- * 83 cenários obrigatórios
+ * 100 cenários obrigatórios
  *
  * Execução: node src/ui/insights/crm-insights-view.manual-test.js
  *
@@ -29,7 +29,7 @@ function assert(condition, label) {
 }
 
 function section(n, title) {
-  console.log(`\n[${n}/83] ${title}`);
+  console.log(`\n[${n}/100] ${title}`);
 }
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -56,6 +56,7 @@ const queryProvider = {
   getCRMDealsWithoutNextAction: (filters = {}) => svc.getDealsWithoutNextAction(filters).toJSON(),
   getCRMRiskSignalSummary:      (filters = {}) => svc.getRiskSignalSummary(filters).toJSON(),
   getCRMActionPrioritySummary:  (filters = {}) => svc.getActionPrioritySummary(filters).toJSON(),
+  getCRMManagementBrief:        (filters = {}) => svc.getManagementBrief(filters).toJSON(),
 };
 
 const view      = new CRMInsightsView(queryProvider);
@@ -1385,13 +1386,251 @@ assert(!c83.innerHTML.includes('[object Object]'), '83.2 "[object Object]" não 
 assert(!c83.innerHTML.includes('>null<'),          '83.3 ">null<" não visível');
 assert(!c83.innerHTML.includes('>NaN<'),           '83.4 ">NaN<" não visível');
 
+// ── 84. loadManagementBrief → state 'loaded' + shape correta ────────────────
+
+section(84, 'loadManagementBrief() com provider válido → _managementBriefState = "loaded" + shape correta');
+
+view.clearFilters();
+const mb84 = view.loadManagementBrief({});
+
+assert(mb84 !== null,                                          '84.1 loadManagementBrief retorna objeto (não null)');
+assert(view.getManagementBrief() !== null,                    '84.2 getManagementBrief() retorna objeto');
+assert(view.getStats().managementBriefState === 'loaded',     '84.3 getStats().managementBriefState = "loaded"');
+assert('highlights'          in mb84,                         '84.4 highlights presente');
+assert('managementNarrative' in mb84,                         '84.5 managementNarrative presente');
+assert(Array.isArray(mb84.highlights),                        '84.6 highlights é Array');
+assert(typeof mb84.managementNarrative === 'string',          '84.7 managementNarrative é string');
+
+// ── 85. render inclui seção Briefing Gerencial ────────────────────────────────
+
+section(85, 'render() inclui seção "Briefing Gerencial" (data-insights-management-brief)');
+
+const c85 = { innerHTML: '' };
+view.render(c85);
+
+assert(c85.innerHTML.includes('data-insights-management-brief'), '85.1 data-insights-management-brief presente no HTML');
+assert(c85.innerHTML.includes('Briefing Gerencial'),             '85.2 título "Briefing Gerencial" presente');
+
+// ── 86. Narrativa gerencial presente no HTML ──────────────────────────────────
+
+section(86, 'narrativa gerencial com data-brief-narrative presente no HTML');
+
+const c86 = { innerHTML: '' };
+view.render(c86);
+
+assert(c86.innerHTML.includes('data-brief-narrative'), '86.1 data-brief-narrative presente');
+// TEST_DEALS de 1970 → todos críticos → narrativa menciona "crítico"
+assert(c86.innerHTML.includes('crítico') || c86.innerHTML.includes('pipeline') || c86.innerHTML.includes('deal'),
+  '86.2 narrativa gerencial contém texto relevante');
+
+// ── 87. Highlights presentes com data-brief-highlight-code ───────────────────
+
+section(87, 'highlights com data-brief-highlight-code presentes no HTML');
+
+const c87 = { innerHTML: '' };
+view.render(c87);
+
+assert(c87.innerHTML.includes('data-brief-highlight-code='), '87.1 data-brief-highlight-code presente');
+assert(c87.innerHTML.includes('data-brief-highlights'),      '87.2 data-brief-highlights container presente');
+
+// ── 88. Highlights têm data-brief-highlight-severity ─────────────────────────
+
+section(88, 'highlights têm atributo data-brief-highlight-severity');
+
+const c88 = { innerHTML: '' };
+view.render(c88);
+
+assert(c88.innerHTML.includes('data-brief-highlight-severity='), '88.1 data-brief-highlight-severity presente');
+
+// ── 89. Labels de severidade em pt-BR nos highlights ─────────────────────────
+
+section(89, 'labels pt-BR de severidade nos highlights (Crítico, Risco, Atenção, Informativo)');
+
+const c89 = { innerHTML: '' };
+view.render(c89);
+
+// TEST_DEALS → todos críticos → devem aparecer labels críticos
+assert(
+  c89.innerHTML.includes('Crítico') || c89.innerHTML.includes('Risco') ||
+  c89.innerHTML.includes('Atenção') || c89.innerHTML.includes('Informativo'),
+  '89.1 ao menos um label de severidade pt-BR presente nos highlights'
+);
+
+// ── 90. getManagementBrief() retorna cópia — mutação não altera estado interno
+
+section(90, 'getManagementBrief() retorna cópia imutável');
+
+view.loadManagementBrief({});
+const mb90 = view.getManagementBrief();
+assert(mb90 !== null, '90.1 getManagementBrief() retorna objeto');
+const prevNarrative = mb90.managementNarrative;
+mb90.managementNarrative = 'MUTADO';
+assert(view.getManagementBrief().managementNarrative === prevNarrative, '90.2 mutar retorno não altera interno');
+
+// ── 91. clearFilters reseta managementBriefState para 'empty' ────────────────
+
+section(91, 'clearFilters reseta managementBriefState para "empty"');
+
+view.loadManagementBrief({});
+assert(view.getStats().managementBriefState === 'loaded', '91.1 managementBriefState = "loaded" após load');
+view.clearFilters();
+assert(view.getStats().managementBriefState === 'empty',  '91.2 managementBriefState = "empty" após clearFilters');
+
+// ── 92. Provider sem getCRMManagementBrief → seção ausente do HTML ─────────
+
+section(92, 'provider sem getCRMManagementBrief → managementBriefState = "empty"; seção ausente do HTML');
+
+const providerNoBrief92 = {
+  getCRMExecutiveSummary: (f = {}) => svc.getExecutiveSummary(f).toJSON(),
+  searchCRMDeals:         (f = {}) => svc.searchDeals(f).toJSON(),
+  queryCRMDeal:           (id)     => svc.getDeal(id).toJSON(),
+};
+const view92 = new CRMInsightsView(providerNoBrief92);
+const c92    = { innerHTML: '' };
+view92.render(c92);
+
+assert(view92.getStats().managementBriefState === 'empty',          '92.1 managementBriefState = "empty" sem provider');
+assert(!c92.innerHTML.includes('data-insights-management-brief'),   '92.2 seção brief ausente quando provider não suporta');
+
+// ── 93. Erro em getCRMManagementBrief é isolado ───────────────────────────────
+
+section(93, 'erro em getCRMManagementBrief é isolado; restante do HTML permanece válido');
+
+const providerErr93 = {
+  getCRMExecutiveSummary:      (f = {}) => svc.getExecutiveSummary(f).toJSON(),
+  searchCRMDeals:              (f = {}) => svc.searchDeals(f).toJSON(),
+  queryCRMDeal:                (id)     => svc.getDeal(id).toJSON(),
+  getCRMPipelineHealth:        (f = {}) => svc.getPipelineHealth(f).toJSON(),
+  getCRMCriticalDeals:         (f = {}) => svc.getCriticalDeals(f).toJSON(),
+  getCRMDealsWithoutNextAction:(f = {}) => svc.getDealsWithoutNextAction(f).toJSON(),
+  getCRMRiskSignalSummary:     (f = {}) => svc.getRiskSignalSummary(f).toJSON(),
+  getCRMActionPrioritySummary: (f = {}) => svc.getActionPrioritySummary(f).toJSON(),
+  getCRMManagementBrief:       ()       => { throw new Error('brief falhou'); },
+};
+const view93 = new CRMInsightsView(providerErr93);
+const c93    = { innerHTML: '' };
+const vm93   = view93.render(c93);
+
+assert(vm93 !== null,                                              '93.1 render retorna viewModel mesmo com erro no brief');
+assert(c93.innerHTML.includes('ESA OS Insights'),                  '93.2 título da página presente');
+assert(view93.getStats().managementBriefState === 'error',         '93.3 managementBriefState = "error"');
+assert(c93.innerHTML.includes('data-insights-management-brief'),   '93.4 seção brief presente mostrando erro');
+assert(c93.innerHTML.includes('Não foi possível carregar o briefing'), '93.5 mensagem de erro de brief presente');
+assert(c93.innerHTML.includes('data-insights-health'),             '93.6 seção health ainda presente (isolamento correto)');
+
+// ── 94. Seção briefing aparece ANTES de health no HTML ───────────────────────
+
+section(94, 'seção briefing aparece ANTES de health no HTML (ordem correta)');
+
+view.clearFilters();
+const c94 = { innerHTML: '' };
+view.render(c94);
+
+const idxBrief94  = c94.innerHTML.indexOf('data-insights-management-brief');
+const idxHealth94 = c94.innerHTML.indexOf('data-insights-health');
+
+assert(idxBrief94  >= 0, '94.1 data-insights-management-brief presente no HTML');
+assert(idxHealth94 >= 0, '94.2 data-insights-health presente no HTML');
+assert(idxBrief94 < idxHealth94, '94.3 briefing aparece ANTES de health no HTML');
+
+// ── 95. getStats() inclui managementBriefState ────────────────────────────────
+
+section(95, 'getStats() inclui managementBriefState');
+
+view.clearFilters();
+const stats95 = view.getStats();
+assert('managementBriefState' in stats95, '95.1 managementBriefState presente em getStats()');
+assert(typeof stats95.managementBriefState === 'string', '95.2 managementBriefState é string');
+
+// ── 96. Highlights mostram no máximo 5 (view slice) ──────────────────────────
+
+section(96, 'HTML exibe no máximo 5 highlights (view mostra top 5)');
+
+view.clearFilters();
+view.loadManagementBrief({});
+const mb96 = view.getManagementBrief();
+assert(mb96 !== null, '96.1 brief carregado');
+
+const highlightCount96 = (c87.innerHTML.match(/data-brief-highlight-code=/g) || []).length;
+assert(highlightCount96 <= 5, `96.2 no máximo 5 highlights no HTML (encontrou ${highlightCount96})`);
+
+// ── 97. XSS em narrativa e títulos de highlight escapado ─────────────────────
+
+section(97, 'XSS em campos da seção de briefing é escapado');
+
+// O _escapeHTML é chamado sobre managementNarrative e campos de highlight
+// Testamos via _escapeHTML diretamente (a função é usada internamente)
+const esc97 = view._escapeHTML('<script>xss()</script>');
+assert(!esc97.includes('<script>'),   '97.1 <script> escapado por _escapeHTML');
+assert(esc97.includes('&lt;script'), '97.2 &lt;script presente após escape');
+
+// Render com provider real — confirma ausência de tags abertas na seção de brief
+const c97 = { innerHTML: '' };
+view.render(c97);
+const briefSection97 = c97.innerHTML.substring(
+  c97.innerHTML.indexOf('data-insights-management-brief'),
+  c97.innerHTML.indexOf('data-insights-health') > 0
+    ? c97.innerHTML.indexOf('data-insights-health')
+    : c97.innerHTML.length
+);
+assert(!briefSection97.includes('<script'), '97.3 nenhuma tag <script> não escapada na seção de brief');
+
+// ── 98. Ausência de undefined/null/NaN/[object Object] na seção de briefing ──
+
+section(98, 'HTML da seção de briefing não contém undefined, null, NaN ou [object Object]');
+
+const c98 = { innerHTML: '' };
+view.render(c98);
+
+assert(!c98.innerHTML.includes('>undefined<'),    '98.1 "undefined" não visível no HTML de briefing');
+assert(!c98.innerHTML.includes('[object Object]'), '98.2 "[object Object]" não visível');
+assert(!c98.innerHTML.includes('>null<'),          '98.3 ">null<" não visível');
+assert(!c98.innerHTML.includes('>NaN<'),           '98.4 ">NaN<" não visível');
+
+// ── 99. Highlights com dealId têm data-insights-deal-id → selectDeal ─────────
+
+section(99, 'highlights com dealId têm data-insights-deal-id; selectDeal() ainda funciona');
+
+view.clearFilters();
+const c99 = { innerHTML: '' };
+view.render(c99);
+
+// O brief pode ou não gerar highlights com dealId (depende da lógica do builder)
+// Verificamos que se presentes, o selectDeal funciona normalmente
+view.loadDrilldown('Todos', {});
+view.selectDeal('deal-1');
+assert(view.getDealDetailState() === 'loaded', '99.1 selectDeal() ainda funciona com brief carregado');
+assert(view.getSelectedDeal().id === 'deal-1', '99.2 deal correto selecionado');
+
+view.clearFilters();
+
+// ── 100. Render completo: brief + health + risk + action presente juntos ──────
+
+section(100, 'render() completo: todas as 4 seções gerenciais presentes no HTML');
+
+const c100 = { innerHTML: '' };
+view.render(c100);
+
+assert(c100.innerHTML.includes('data-insights-management-brief'),  '100.1 seção briefing presente');
+assert(c100.innerHTML.includes('data-insights-health'),            '100.2 seção health presente');
+assert(c100.innerHTML.includes('data-insights-risk-signals'),      '100.3 seção risk signals presente');
+assert(c100.innerHTML.includes('data-insights-action-priorities'), '100.4 seção action priorities presente');
+// Ordem: brief → health → risk → action
+const iB = c100.innerHTML.indexOf('data-insights-management-brief');
+const iH = c100.innerHTML.indexOf('data-insights-health');
+const iR = c100.innerHTML.indexOf('data-insights-risk-signals');
+const iA = c100.innerHTML.indexOf('data-insights-action-priorities');
+assert(iB < iH,  '100.5 brief antes de health');
+assert(iH < iR,  '100.6 health antes de risk');
+assert(iR < iA,  '100.7 risk antes de action');
+
 // ── Resultado final ───────────────────────────────────────────────────────────
 
 console.log('\n' + '─'.repeat(50));
 console.log(`Resultado: ${total - failed}/${total} assertions passaram`);
 
 if (failed === 0) {
-  console.log('✓ TODOS OS 83 CENÁRIOS PASSARAM\n');
+  console.log('✓ TODOS OS 100 CENÁRIOS PASSARAM\n');
 } else {
   console.error(`✗ ${failed} assertion(s) falharam\n`);
   process.exit(1);

@@ -155,6 +155,10 @@ class ESAApplication {
     return crmQueryService.getActionPrioritySummary(filters, options).toJSON();
   }
 
+  getCRMManagementBrief(filters = {}, options = {}) {
+    return crmQueryService.getManagementBrief(filters, options).toJSON();
+  }
+
 }
 
 export const ESA = new ESAApplication();

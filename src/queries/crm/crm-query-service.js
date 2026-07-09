@@ -17,6 +17,7 @@ import { CRMQueryResult }              from './crm-query-result.js';
 import { CRMPipelineAnalyzer }         from './crm-pipeline-analyzer.js';
 import { CRMRiskSignalAnalyzer }       from './crm-risk-signal-analyzer.js';
 import { CRMActionPriorityAnalyzer }   from './crm-action-priority-analyzer.js';
+import { CRMManagementBriefBuilder }   from './crm-management-brief-builder.js';
 
 export class CRMQueryService {
   /**
@@ -29,6 +30,7 @@ export class CRMQueryService {
     this._pipelineAnalyzer        = null;
     this._riskAnalyzer            = null;
     this._actionPriorityAnalyzer  = null;
+    this._briefBuilder            = null;
   }
 
   // ── Queries de Read Model ─────────────────────────────────────────────────
@@ -327,6 +329,26 @@ export class CRMQueryService {
     });
   }
 
+  // ── Management Brief ─────────────────────────────────────────────────────
+
+  /**
+   * Constrói o briefing gerencial consolidado.
+   * Orquestra Executive Summary, Pipeline Health, Risk Signals e Action Priority.
+   * Seções com falha ficam null — o brief sempre retorna estrutura completa.
+   *
+   * @param {Object} [filters={}]
+   * @param {Object} [options={}]
+   * @returns {CRMQueryResult} data: ManagementBrief
+   */
+  getManagementBrief(filters = {}, options = {}) {
+    this._requireReadModel('getDeals');
+    const brief = this._getBriefBuilder().buildBrief(filters, options);
+    return new CRMQueryResult(brief, {
+      query:   'crm.getManagementBrief',
+      filters: Object.assign({}, filters),
+    });
+  }
+
   // ── Validação privada ─────────────────────────────────────────────────────
 
   _getAnalyzer() {
@@ -348,6 +370,13 @@ export class CRMQueryService {
       this._actionPriorityAnalyzer = new CRMActionPriorityAnalyzer(this._readModel);
     }
     return this._actionPriorityAnalyzer;
+  }
+
+  _getBriefBuilder() {
+    if (!this._briefBuilder) {
+      this._briefBuilder = new CRMManagementBriefBuilder(this);
+    }
+    return this._briefBuilder;
   }
 
   _requireReadModel(method) {
