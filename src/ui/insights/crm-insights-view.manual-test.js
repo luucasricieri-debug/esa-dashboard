@@ -1,7 +1,7 @@
 /**
  * ESA OS — UI / Insights
  * Suite de testes de integração — CRMInsightsView
- * 52 cenários obrigatórios
+ * 67 cenários obrigatórios
  *
  * Execução: node src/ui/insights/crm-insights-view.manual-test.js
  *
@@ -29,7 +29,7 @@ function assert(condition, label) {
 }
 
 function section(n, title) {
-  console.log(`\n[${n}/52] ${title}`);
+  console.log(`\n[${n}/67] ${title}`);
 }
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -54,6 +54,7 @@ const queryProvider = {
   getCRMPipelineHealth:         (filters = {}) => svc.getPipelineHealth(filters).toJSON(),
   getCRMCriticalDeals:          (filters = {}) => svc.getCriticalDeals(filters).toJSON(),
   getCRMDealsWithoutNextAction: (filters = {}) => svc.getDealsWithoutNextAction(filters).toJSON(),
+  getCRMRiskSignalSummary:      (filters = {}) => svc.getRiskSignalSummary(filters).toJSON(),
 };
 
 const view      = new CRMInsightsView(queryProvider);
@@ -936,13 +937,233 @@ assert(view.getStats().healthState === 'loaded', '52.4 healthState = "loaded" ap
 view.clearFilters();
 assert(view.getStats().healthState === 'empty',  '52.5 healthState = "empty" após clearFilters no main view');
 
+// ── 53. loadRiskSignals → _riskSignalsState = 'loaded' + shape correta ────────
+
+section(53, 'loadRiskSignals() com provider válido → _riskSignalsState = "loaded" + shape correta');
+
+view.clearFilters();
+const h53 = view.loadRiskSignals({});
+
+assert(h53 !== null,                                    '53.1 loadRiskSignals retorna objeto (não null)');
+assert(view.getRiskSignalSummary() !== null,            '53.2 getRiskSignalSummary() retorna objeto');
+assert(view.getStats().riskSignalsState === 'loaded',   '53.3 getStats().riskSignalsState = "loaded"');
+assert('totalSignals'    in h53,                        '53.4 data.totalSignals presente');
+assert('criticalSignals' in h53,                        '53.5 data.criticalSignals presente');
+assert('riskSignals'     in h53,                        '53.6 data.riskSignals presente');
+assert('affectedDeals'   in h53,                        '53.7 data.affectedDeals presente');
+assert('valueExposed'    in h53,                        '53.8 data.valueExposed presente');
+assert(Array.isArray(h53.signals),                      '53.9 data.signals é array');
+assert(!isNaN(h53.valueExposed),                        '53.10 data.valueExposed não é NaN');
+
+// ── 54. render inclui seção Sinais de Risco Comercial ────────────────────────
+
+section(54, 'render() inclui seção "Sinais de Risco Comercial" (data-insights-risk-signals)');
+
+const c54 = { innerHTML: '' };
+view.render(c54);
+
+assert(c54.innerHTML.includes('data-insights-risk-signals'),  '54.1 data-insights-risk-signals presente no HTML');
+assert(c54.innerHTML.includes('Sinais de Risco Comercial'),   '54.2 título "Sinais de Risco Comercial" presente');
+
+// ── 55. Cards KPI com data-risk-kpi presentes ────────────────────────────────
+
+section(55, 'cards gerenciais data-risk-kpi presentes no HTML da seção');
+
+const c55 = { innerHTML: '' };
+view.render(c55);
+
+assert(c55.innerHTML.includes('data-risk-kpi="critical"'),       '55.1 kpi critical presente');
+assert(c55.innerHTML.includes('data-risk-kpi="risk"'),           '55.2 kpi risk presente');
+assert(c55.innerHTML.includes('data-risk-kpi="affected-deals"'), '55.3 kpi affected-deals presente');
+assert(c55.innerHTML.includes('data-risk-kpi="value-exposed"'),  '55.4 kpi value-exposed presente');
+
+// ── 56. Lista de sinais com data-risk-signals-list presente ──────────────────
+
+section(56, 'lista de sinais com data-risk-signals-list presente no HTML');
+
+const c56 = { innerHTML: '' };
+view.render(c56);
+
+assert(c56.innerHTML.includes('data-risk-signals-list'), '56.1 data-risk-signals-list presente');
+
+// ── 57. Itens de sinal têm data-risk-signal-severity ─────────────────────────
+
+section(57, 'itens de sinal têm atributo data-risk-signal-severity');
+
+const c57 = { innerHTML: '' };
+view.render(c57);
+
+assert(c57.innerHTML.includes('data-risk-signal-severity='), '57.1 data-risk-signal-severity presente nos itens');
+
+// ── 58. Labels de severidade em pt-BR ────────────────────────────────────────
+
+section(58, 'labels de severidade em pt-BR presentes nos itens da lista');
+
+// TEST_DEALS são todos críticos → CRITICAL_NO_NEXT_ACTION → label "Crítico"
+const c58 = { innerHTML: '' };
+view.render(c58);
+
+assert(c58.innerHTML.includes('Crítico') || c58.innerHTML.includes('Risco'),  '58.1 label pt-BR "Crítico" ou "Risco" presente');
+assert(c58.innerHTML.includes('data-risk-signal-type='),                       '58.2 data-risk-signal-type presente nos itens');
+
+// ── 59. Escape HTML nos campos dos sinais ─────────────────────────────────────
+
+section(59, 'escape HTML em campos dos sinais (responsavel, etapa com XSS)');
+
+const rmXSS59  = new CRMReadModel();
+const mXSS59   = new CRMMetrics(rmXSS59);
+const svcXSS59 = new CRMQueryService(rmXSS59, mXSS59);
+rmXSS59.hydrate({
+  'xss-59': {
+    funil: 'venda_ufv', etapa: '<b>XSS Etapa</b>', status: 'Em andamento',
+    valor: 50000, responsavel: '"><script>alert(1)</script>', createdAt: 1, updatedAt: 1,
+  },
+});
+const pXSS59 = {
+  getCRMExecutiveSummary:       (f = {}) => svcXSS59.getExecutiveSummary(f).toJSON(),
+  searchCRMDeals:               (f = {}) => svcXSS59.searchDeals(f).toJSON(),
+  queryCRMDeal:                 (id)     => svcXSS59.getDeal(id).toJSON(),
+  getCRMPipelineHealth:         (f = {}) => svcXSS59.getPipelineHealth(f).toJSON(),
+  getCRMCriticalDeals:          (f = {}) => svcXSS59.getCriticalDeals(f).toJSON(),
+  getCRMDealsWithoutNextAction: (f = {}) => svcXSS59.getDealsWithoutNextAction(f).toJSON(),
+  getCRMRiskSignalSummary:      (f = {}) => svcXSS59.getRiskSignalSummary(f).toJSON(),
+};
+const vXSS59 = new CRMInsightsView(pXSS59);
+const cXSS59 = { innerHTML: '' };
+vXSS59.render(cXSS59);
+const html59 = cXSS59.innerHTML;
+
+assert(!html59.includes('<script>alert(1)'),      '59.1 <script> em responsavel não presente no HTML');
+assert(!html59.includes('<b>XSS Etapa</b>'),      '59.2 tag <b> em etapa não presente');
+assert(html59.includes('&lt;') || html59.includes('&gt;'), '59.3 entidades HTML escapadas presentes nos sinais');
+
+// ── 60. R$ no kpi value-exposed ──────────────────────────────────────────────
+
+section(60, 'valueExposed formatado com R$ no kpi value-exposed');
+
+// TEST_DEALS: 4 deals críticos → valueExposed = 100000+200000+50000+40000 = 390000
+const c60 = { innerHTML: '' };
+view.render(c60);
+
+assert(c60.innerHTML.includes('R$'), '60.1 símbolo "R$" presente no HTML (incluso no kpi value-exposed)');
+
+// ── 61. Aging em dias nos meta dos sinais ─────────────────────────────────────
+
+section(61, 'agingDays em dias presentes nos meta dos sinais (padrão: Nd)');
+
+// TEST_DEALS têm timestamps de 1970 → agingDays >> 0 → deve aparecer como "Nd"
+const c61 = { innerHTML: '' };
+view.render(c61);
+
+assert(/\d+d/.test(c61.innerHTML), '61.1 padrão "Nd" (ex: 20000d) presente no HTML dos sinais');
+
+// ── 62. Erro em getCRMRiskSignalSummary é isolado ────────────────────────────
+
+section(62, 'erro em getCRMRiskSignalSummary é isolado; restante do HTML permanece válido');
+
+const providerErr62 = {
+  getCRMExecutiveSummary:       (f = {}) => svc.getExecutiveSummary(f).toJSON(),
+  searchCRMDeals:               (f = {}) => svc.searchDeals(f).toJSON(),
+  queryCRMDeal:                 (id)     => svc.getDeal(id).toJSON(),
+  getCRMPipelineHealth:         (f = {}) => svc.getPipelineHealth(f).toJSON(),
+  getCRMCriticalDeals:          (f = {}) => svc.getCriticalDeals(f).toJSON(),
+  getCRMDealsWithoutNextAction: (f = {}) => svc.getDealsWithoutNextAction(f).toJSON(),
+  getCRMRiskSignalSummary:      ()       => { throw new Error('Falha de sinais simulada'); },
+};
+const view62 = new CRMInsightsView(providerErr62);
+const c62    = { innerHTML: '' };
+const vm62   = view62.render(c62);
+
+assert(vm62 !== null,                                             '62.1 render retorna viewModel (não null)');
+assert(c62.innerHTML.includes('ESA OS Insights'),                 '62.2 título da página presente');
+assert(view62.getStats().riskSignalsState === 'error',            '62.3 riskSignalsState = "error"');
+assert(c62.innerHTML.includes('data-insights-risk-signals'),      '62.4 seção risk presente exibindo erro');
+
+// ── 63. Ambas health e risk falhando → página ainda renderiza ─────────────────
+
+section(63, 'health e risk signals ambos falhando → página ainda renderiza com conteúdo principal');
+
+const providerBothErr63 = {
+  getCRMExecutiveSummary:  (f = {}) => svc.getExecutiveSummary(f).toJSON(),
+  searchCRMDeals:          (f = {}) => svc.searchDeals(f).toJSON(),
+  queryCRMDeal:            (id)     => svc.getDeal(id).toJSON(),
+  getCRMPipelineHealth:    ()       => { throw new Error('health fail'); },
+  getCRMRiskSignalSummary: ()       => { throw new Error('risk fail'); },
+};
+const view63 = new CRMInsightsView(providerBothErr63);
+const c63    = { innerHTML: '' };
+const vm63   = view63.render(c63);
+
+assert(vm63 !== null,                               '63.1 render retorna viewModel mesmo com ambos falhando');
+assert(c63.innerHTML.includes('ESA OS Insights'),   '63.2 título da página presente');
+
+// ── 64. clearFilters reseta riskSignalsState para 'empty' ─────────────────────
+
+section(64, 'clearFilters reseta riskSignalsState para "empty"');
+
+view.loadRiskSignals({});
+assert(view.getStats().riskSignalsState === 'loaded', '64.1 riskSignalsState = "loaded" após loadRiskSignals');
+view.clearFilters();
+assert(view.getStats().riskSignalsState === 'empty',  '64.2 riskSignalsState = "empty" após clearFilters');
+
+// ── 65. Provider sem getCRMRiskSignalSummary → seção ausente do HTML ──────────
+
+section(65, 'provider sem getCRMRiskSignalSummary → riskSignalsState = "empty"; seção ausente do HTML');
+
+const providerNoRisk65 = {
+  getCRMExecutiveSummary: (f = {}) => svc.getExecutiveSummary(f).toJSON(),
+  searchCRMDeals:         (f = {}) => svc.searchDeals(f).toJSON(),
+  queryCRMDeal:           (id)     => svc.getDeal(id).toJSON(),
+};
+const view65 = new CRMInsightsView(providerNoRisk65);
+const c65    = { innerHTML: '' };
+view65.render(c65);
+
+assert(view65.getStats().riskSignalsState === 'empty',       '65.1 riskSignalsState = "empty" sem provider');
+assert(!c65.innerHTML.includes('data-insights-risk-signals'), '65.2 seção risk ausente quando provider não suporta');
+
+// ── 66. data-insights-deal-id nos sinais → selectDeal reutilizável ───────────
+
+section(66, 'sinais de deal têm data-insights-deal-id; selectDeal() ainda funciona a partir deles');
+
+view.clearFilters();
+const c66 = { innerHTML: '' };
+view.render(c66);
+
+// TEST_DEALS geram CRITICAL_NO_NEXT_ACTION com dealIds dos 4 deals
+assert(
+  c66.innerHTML.includes('data-insights-deal-id="deal-1"') ||
+  c66.innerHTML.includes('data-insights-deal-id="deal-2"') ||
+  c66.innerHTML.includes('data-insights-deal-id="deal-3"') ||
+  c66.innerHTML.includes('data-insights-deal-id="deal-4"'),
+  '66.1 ao menos um data-insights-deal-id de sinal de risco presente no HTML'
+);
+
+view.selectDeal('deal-2');
+assert(view.getDealDetailState() === 'loaded', '66.2 selectDeal() ainda funciona via deal-id de sinal');
+assert(view.getSelectedDeal().id === 'deal-2', '66.3 deal correto carregado');
+
+view.clearFilters();
+
+// ── 67. Ausência de undefined/null/NaN/[object Object] na seção de sinais ─────
+
+section(67, 'HTML da seção de sinais não contém undefined, null, NaN ou [object Object]');
+
+const c67 = { innerHTML: '' };
+view.render(c67);
+
+assert(!c67.innerHTML.includes('>undefined<'),    '67.1 "undefined" não visível no HTML');
+assert(!c67.innerHTML.includes('[object Object]'), '67.2 "[object Object]" não visível');
+assert(!c67.innerHTML.includes('>null<'),          '67.3 ">null<" não visível');
+assert(!c67.innerHTML.includes('>NaN<'),           '67.4 ">NaN<" não visível');
+
 // ── Resultado final ───────────────────────────────────────────────────────────
 
 console.log('\n' + '─'.repeat(50));
 console.log(`Resultado: ${total - failed}/${total} assertions passaram`);
 
 if (failed === 0) {
-  console.log('✓ TODOS OS 52 CENÁRIOS PASSARAM\n');
+  console.log('✓ TODOS OS 67 CENÁRIOS PASSARAM\n');
 } else {
   console.error(`✗ ${failed} assertion(s) falharam\n`);
   process.exit(1);

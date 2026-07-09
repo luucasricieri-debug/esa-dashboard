@@ -131,6 +131,18 @@ class ESAApplication {
     return crmQueryService.getDealsWithoutNextAction(filters, options).toJSON();
   }
 
+  getCRMRiskSignals(filters = {}, options = {}) {
+    return crmQueryService.getRiskSignals(filters, options).toJSON();
+  }
+
+  getCRMCriticalRiskSignals(filters = {}, options = {}) {
+    return crmQueryService.getCriticalRiskSignals(filters, options).toJSON();
+  }
+
+  getCRMRiskSignalSummary(filters = {}, options = {}) {
+    return crmQueryService.getRiskSignalSummary(filters, options).toJSON();
+  }
+
 }
 
 export const ESA = new ESAApplication();

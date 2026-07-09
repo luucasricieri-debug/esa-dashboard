@@ -4,7 +4,8 @@
  *
  * UI gerencial nativa da ESA OS — filtros, drill-down, detalhe de Deal e saúde do pipeline.
  * Fontes permitidas: getCRMExecutiveSummary, searchCRMDeals, queryCRMDeal,
- *                   getCRMPipelineHealth, getCRMCriticalDeals, getCRMDealsWithoutNextAction.
+ *                   getCRMPipelineHealth, getCRMCriticalDeals, getCRMDealsWithoutNextAction,
+ *                   getCRMRiskSignalSummary.
  * Não acessa Firebase, Event Bus, Audit, CRMReadModel, CRMMetrics ou crmDeals.
  */
 
@@ -23,6 +24,8 @@ export class CRMInsightsView {
     this._health            = null;
     this._criticalDeals     = [];
     this._healthState       = 'empty';
+    this._riskSummary       = null;
+    this._riskSignalsState  = 'empty';
   }
 
   // ── Filtros ───────────────────────────────────────────────────────────────
@@ -54,9 +57,11 @@ export class CRMInsightsView {
     this._selectedDeal    = null;
     this._dealDetailState = 'empty';
     this._dealDetailError = null;
-    this._health          = null;
-    this._criticalDeals   = [];
-    this._healthState     = 'empty';
+    this._health           = null;
+    this._criticalDeals    = [];
+    this._healthState      = 'empty';
+    this._riskSummary      = null;
+    this._riskSignalsState = 'empty';
     return {};
   }
 
@@ -233,6 +238,45 @@ export class CRMInsightsView {
     return this._health ? Object.assign({}, this._health) : null;
   }
 
+  // ── Risk Signals ──────────────────────────────────────────────────────────
+
+  /**
+   * Carrega o resumo de sinais de risco comercial de forma independente.
+   * Falha é isolada: erro aqui não quebra o Insights nem a seção de Pipeline Health.
+   * Retorna null em caso de erro ou quando provider não suporta a query.
+   *
+   * @param {Object} [filters={}]
+   * @returns {Object|null}
+   */
+  loadRiskSignals(filters = {}) {
+    if (!this._queryProvider || typeof this._queryProvider.getCRMRiskSignalSummary !== 'function') {
+      this._riskSummary      = null;
+      this._riskSignalsState = 'empty';
+      return null;
+    }
+
+    const normalized = this._normalizeFilters(filters);
+
+    try {
+      const result = this._queryProvider.getCRMRiskSignalSummary(normalized);
+      if (!result || !('data' in result)) {
+        throw new Error('[CRMInsightsView] Invalid risk signal summary result');
+      }
+      this._riskSummary      = result.data ? Object.assign({}, result.data) : null;
+      this._riskSignalsState = this._riskSummary ? 'loaded' : 'empty';
+    } catch (err) {
+      this._riskSummary      = null;
+      this._riskSignalsState = 'error';
+      return null;
+    }
+
+    return this._riskSummary ? Object.assign({}, this._riskSummary) : null;
+  }
+
+  getRiskSignalSummary() {
+    return this._riskSummary ? Object.assign({}, this._riskSummary) : null;
+  }
+
   // ── View Model helpers ────────────────────────────────────────────────────
 
   _buildPipelineViewModel(pipeline) {
@@ -300,8 +344,9 @@ export class CRMInsightsView {
       console.error('[ESA OS Insights] Falha ao carregar:', err);
       return null;
     }
-    // Health analysis loaded independently — failure is isolated
+    // Health and risk analyses loaded independently — failures are isolated
     this.loadPipelineHealth(this._activeFilters);
+    this.loadRiskSignals(this._activeFilters);
 
     container.innerHTML = this._buildHTML(viewModel);
     this._renderCount++;
@@ -318,7 +363,8 @@ export class CRMInsightsView {
     const header    = this._buildHeaderHTML(viewModel.generatedAt);
     const drilldown = this._buildDrilldownHTML(viewModel.drilldown);
     const detail    = this._buildDealDetailHTML();
-    const health    = this._buildHealthSectionHTML();
+    const health      = this._buildHealthSectionHTML();
+    const riskSignals = this._buildRiskSignalsSectionHTML();
     if (viewModel.dealCount === 0) {
       return (
         `<div style="padding:32px">${filters}${header}` +
@@ -331,6 +377,7 @@ export class CRMInsightsView {
       filters + header +
       this._buildCardsHTML(viewModel.cards) +
       health +
+      riskSignals +
       this._buildPipelineHTML(viewModel.pipeline) +
       this._buildStatusSectionHTML(viewModel.status) +
       this._buildForecastSectionHTML(viewModel.forecast) +
@@ -614,6 +661,91 @@ export class CRMInsightsView {
     );
   }
 
+  _buildRiskSignalsSectionHTML() {
+    if (this._riskSignalsState === 'empty') return '';
+    if (this._riskSignalsState === 'error') {
+      return (
+        `<div class="card" style="margin-bottom:18px" data-insights-risk-signals>` +
+        `<div class="card-title">Sinais de Risco Comercial</div>` +
+        `<div style="text-align:center;padding:32px;color:var(--danger,#C0392B);font-size:13px">` +
+        `Não foi possível carregar os sinais de risco comercial.</div></div>`
+      );
+    }
+    const s = this._riskSummary;
+    return (
+      `<div class="card" style="margin-bottom:18px" data-insights-risk-signals>` +
+      `<div class="card-title">◆ Sinais de Risco Comercial</div>` +
+      this._buildRiskSignalsKpisHTML(s) +
+      this._buildRiskSignalsListHTML(s.signals || []) +
+      `</div>`
+    );
+  }
+
+  _buildRiskSignalsKpisHTML(s) {
+    const kpi = (key, label, value, isCurrency) => {
+      const formatted = isCurrency ? this._formatCurrency(value || 0) : String(value || 0);
+      return (
+        `<div style="background:var(--gl,#EEF5F1);border-radius:8px;padding:12px 16px;text-align:center" data-risk-kpi="${key}">` +
+        `<div style="font-size:18px;font-weight:700;font-family:DM Mono,monospace;color:var(--g,#0D2418)">${formatted}</div>` +
+        `<div style="font-size:11px;color:var(--gr,#4A7A5E);margin-top:4px">${label}</div>` +
+        `</div>`
+      );
+    };
+    return (
+      `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:16px">` +
+      kpi('critical',       'Sinais Críticos',  s.criticalSignals)          +
+      kpi('risk',           'Sinais de Risco',  s.riskSignals)              +
+      kpi('affected-deals', 'Deals Afetados',   s.affectedDeals)            +
+      kpi('value-exposed',  'Valor Exposto',    s.valueExposed, true)       +
+      `</div>`
+    );
+  }
+
+  _buildRiskSignalsListHTML(signals) {
+    if (!signals || !signals.length) {
+      return (
+        `<div data-risk-signals-list style="text-align:center;padding:24px;color:var(--gr,#4A7A5E);font-size:13px">` +
+        `Nenhum sinal de risco identificado.</div>`
+      );
+    }
+    const rows = signals.slice(0, 20).map((s) => this._buildRiskSignalItemHTML(s)).join('');
+    return `<div data-risk-signals-list>${rows}</div>`;
+  }
+
+  _buildRiskSignalItemHTML(signal) {
+    const SEV_COLOR = { critical: '#C0392B', risk: '#E67E22', attention: '#F39C12', info: '#4A7A5E' };
+    const SEV_LABEL = { critical: 'Crítico',  risk: 'Risco',   attention: 'Atenção',  info: 'Info' };
+    const sev     = String(signal.severity || 'info');
+    const color   = SEV_COLOR[sev]  || '#4A7A5E';
+    const label   = SEV_LABEL[sev]  || sev;
+    const title   = this._escapeHTML(signal.title       || '');
+    const desc    = this._escapeHTML(signal.description || '');
+    const dealId  = signal.dealId != null ? this._escapeHTML(String(signal.dealId)) : null;
+    const meta    = this._buildRiskSignalMetaHTML(signal);
+    const clickable = dealId ? ` data-insights-deal-id="${dealId}" style="cursor:pointer"` : '';
+    return (
+      `<div style="border-bottom:1px solid var(--bd,#E0DBD0);padding:10px 0;display:flex;gap:12px;align-items:flex-start"` +
+      ` data-risk-signal-id="${this._escapeHTML(String(signal.id || ''))}"` +
+      ` data-risk-signal-type="${this._escapeHTML(String(signal.type || ''))}"` +
+      ` data-risk-signal-severity="${this._escapeHTML(sev)}"${clickable}>` +
+      `<div style="min-width:60px;text-align:center;padding:3px 6px;border-radius:4px;font-size:10px;font-weight:700;color:#fff;background:${color};flex-shrink:0">${label}</div>` +
+      `<div style="flex:1;min-width:0">` +
+      `<div style="font-size:13px;font-weight:600;color:var(--bk,#1A1A1A)">${title}</div>` +
+      `<div style="font-size:11px;color:var(--gr,#4A7A5E);margin-top:2px">${desc}</div>` +
+      (meta ? `<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:6px;font-size:11px;font-family:DM Mono,monospace;color:var(--g,#0D2418)">${meta}</div>` : '') +
+      `</div></div>`
+    );
+  }
+
+  _buildRiskSignalMetaHTML(signal) {
+    const parts = [];
+    if (signal.dealName   != null) parts.push(`<span>Deal: ${this._escapeHTML(String(signal.dealName))}</span>`);
+    if (signal.responsible != null) parts.push(`<span>Resp.: ${this._escapeHTML(String(signal.responsible))}</span>`);
+    if (signal.value !== null && signal.value > 0) parts.push(`<span>${this._formatCurrency(signal.value)}</span>`);
+    if (signal.agingDays !== null && signal.agingDays >= 0) parts.push(`<span>${signal.agingDays}d</span>`);
+    return parts.join('');
+  }
+
   _buildDrilldownHTML(drilldown) {
     if (!drilldown || !drilldown.active) return '';
     const title = this._escapeHTML(drilldown.title);
@@ -790,6 +922,7 @@ export class CRMInsightsView {
       selectedDealId:     this._selectedDeal ? (this._selectedDeal.id || null) : null,
       dealDetailState:    this._dealDetailState,
       healthState:        this._healthState,
+      riskSignalsState:   this._riskSignalsState,
     };
   }
 }

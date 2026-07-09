@@ -13,8 +13,9 @@
  * Valida dependências no momento da execução da query, não no constructor.
  */
 
-import { CRMQueryResult }       from './crm-query-result.js';
-import { CRMPipelineAnalyzer }  from './crm-pipeline-analyzer.js';
+import { CRMQueryResult }          from './crm-query-result.js';
+import { CRMPipelineAnalyzer }     from './crm-pipeline-analyzer.js';
+import { CRMRiskSignalAnalyzer }   from './crm-risk-signal-analyzer.js';
 
 export class CRMQueryService {
   /**
@@ -25,6 +26,7 @@ export class CRMQueryService {
     this._readModel        = readModel;
     this._metrics          = metrics;
     this._pipelineAnalyzer = null;
+    this._riskAnalyzer     = null;
   }
 
   // ── Queries de Read Model ─────────────────────────────────────────────────
@@ -219,6 +221,58 @@ export class CRMQueryService {
     });
   }
 
+  // ── Risk Signals ──────────────────────────────────────────────────────────
+
+  /**
+   * Retorna lista priorizada de sinais de risco comercial.
+   *
+   * @param {Object} filters
+   * @param {Object} [options={}]
+   * @returns {CRMQueryResult} data: RiskSignal[]
+   */
+  getRiskSignals(filters = {}, options = {}) {
+    this._requireReadModel('getDeals');
+    const signals = this._getRiskAnalyzer().getRiskSignals(filters, options);
+    return new CRMQueryResult(signals, {
+      query:   'crm.getRiskSignals',
+      filters: Object.assign({}, filters),
+      count:   signals.length,
+    });
+  }
+
+  /**
+   * Retorna apenas sinais com severity === 'critical'.
+   *
+   * @param {Object} filters
+   * @param {Object} [options={}]
+   * @returns {CRMQueryResult} data: RiskSignal[]
+   */
+  getCriticalRiskSignals(filters = {}, options = {}) {
+    this._requireReadModel('getDeals');
+    const signals = this._getRiskAnalyzer().getCriticalRiskSignals(filters, options);
+    return new CRMQueryResult(signals, {
+      query:   'crm.getCriticalRiskSignals',
+      filters: Object.assign({}, filters),
+      count:   signals.length,
+    });
+  }
+
+  /**
+   * Retorna resumo gerencial com contagens, valor exposto e lista priorizada de sinais.
+   *
+   * @param {Object} filters
+   * @param {Object} [options={}]
+   * @returns {CRMQueryResult} data: RiskSignalSummary
+   */
+  getRiskSignalSummary(filters = {}, options = {}) {
+    this._requireReadModel('getDeals');
+    const summary = this._getRiskAnalyzer().getRiskSignalSummary(filters, options);
+    return new CRMQueryResult(summary, {
+      query:   'crm.getRiskSignalSummary',
+      filters: Object.assign({}, filters),
+    });
+  }
+
   // ── Validação privada ─────────────────────────────────────────────────────
 
   _getAnalyzer() {
@@ -226,6 +280,13 @@ export class CRMQueryService {
       this._pipelineAnalyzer = new CRMPipelineAnalyzer(this._readModel);
     }
     return this._pipelineAnalyzer;
+  }
+
+  _getRiskAnalyzer() {
+    if (!this._riskAnalyzer) {
+      this._riskAnalyzer = new CRMRiskSignalAnalyzer(this._readModel);
+    }
+    return this._riskAnalyzer;
   }
 
   _requireReadModel(method) {

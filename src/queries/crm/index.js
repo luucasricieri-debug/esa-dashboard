@@ -16,7 +16,10 @@
 export { CRMQueryService }      from './crm-query-service.js';
 export { CRMQueryResult }       from './crm-query-result.js';
 export { CRMPipelineAnalyzer,
-         AGING_THRESHOLDS }     from './crm-pipeline-analyzer.js';
+         AGING_THRESHOLDS }                                           from './crm-pipeline-analyzer.js';
+export { CRMRiskSignalAnalyzer,
+         SIGNAL_TYPES, SEVERITY_LEVELS,
+         HIGH_VALUE_THRESHOLD, RISK_THRESHOLDS }                      from './crm-risk-signal-analyzer.js';
 
 import { CRMQueryService }          from './crm-query-service.js';
 import { crmReadModel, crmMetrics } from '../../read-models/crm/index.js';
