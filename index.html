@@ -887,11 +887,20 @@ async function doLogin() {
     if(!user){errEl.textContent='Usuário não encontrado.';return;}
     const hash = await hashPass(passVal);
     if(hash !== user.passHash){errEl.textContent='Senha incorreta.';return;}
+    // Ponte de sessão segura para upload — chamada ANTES de descartar passVal
+    var _sessionToken=null,_sessionExpiresAt=null;
+    try{
+      var _siRes=await fetch('/.netlify/functions/session-init',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login:loginVal,password:passVal})});
+      if(_siRes.ok){var _siData=await _siRes.json();_sessionToken=_siData.sessionToken||null;_sessionExpiresAt=_siData.expiresAt||null;}
+    }catch(_sie){}
+    // passVal não é mais utilizado a partir daqui
     CU = user;
-    sessionStorage.setItem('esa_session', JSON.stringify({uid:user.uid, login:user.login}));
+    var _sessObj={uid:user.uid,login:user.login};
+    if(_sessionToken){_sessObj.sessionToken=_sessionToken;_sessObj.sessionExpiresAt=_sessionExpiresAt;}
+    sessionStorage.setItem('esa_session', JSON.stringify(_sessObj));
     var rememberEl=document.getElementById('auth-remember');
     if(rememberEl&&rememberEl.checked){
-      localStorage.setItem('esa_remember',JSON.stringify({uid:user.uid,login:user.login}));
+      localStorage.setItem('esa_remember',JSON.stringify(_sessObj));
     } else {
       localStorage.removeItem('esa_remember');
     }
@@ -912,8 +921,11 @@ async function resumeSession() {
     var user=await fbGet('users/'+uid);
     if(!user) return false;
     CU=user;
-    // Re-sync sessionStorage
-    sessionStorage.setItem('esa_session',JSON.stringify({uid:user.uid,login:user.login}));
+    // Re-sync sessionStorage preservando sessionToken existente
+    var _resync={uid:user.uid,login:user.login};
+    if(parsed.sessionToken){_resync.sessionToken=parsed.sessionToken;}
+    if(parsed.sessionExpiresAt){_resync.sessionExpiresAt=parsed.sessionExpiresAt;}
+    sessionStorage.setItem('esa_session',JSON.stringify(_resync));
     await initDashboard();
     return true;
   } catch(e){ return false; }
@@ -3937,47 +3949,43 @@ window.crmUploadArquivo=async function(){
   if(!_temAcessoCRM){errEl.textContent='Sem permissão para upload no CRM.';return;}
   if(!file){errEl.textContent='Selecione um arquivo.';return;}
   if(file.size>10*1024*1024){errEl.textContent='Arquivo muito grande. Máximo 10MB.';return;}
+  var _sess=JSON.parse(sessionStorage.getItem('esa_session')||'{}');
+  if(!_sess.sessionToken){errEl.textContent='Sessão segura de upload indisponível. Saia e entre novamente no sistema.';return;}
   var btn=document.getElementById('arq-send-btn');
   btn.disabled=true; btn.textContent='Enviando...';
   var pw=document.getElementById('arq-progress-wrap');
   var pb=document.getElementById('arq-progress-bar');
   var pl=document.getElementById('arq-progress-label');
-  pw.style.display=''; pb.style.width='0%'; pl.textContent='0%';
+  pw.style.display=''; pb.style.width='50%'; pl.textContent='Enviando…';
   try{
-    var ts=Date.now();
-    var safeNome=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
-    var path='crm/'+dealId+'/'+ts+'_'+safeNome;
-    var ref=storage.ref(path);
-    var uploadTask=ref.put(file);
-    var url=await new Promise(function(resolve,reject){
-      uploadTask.on('state_changed',
-        function(snap){
-          var pct=Math.round(snap.bytesTransferred/snap.totalBytes*100);
-          pb.style.width=pct+'%'; pl.textContent=pct+'%';
-        },
-        function(err){reject(err);},
-        async function(){
-          var dlUrl=await uploadTask.snapshot.ref.getDownloadURL();
-          resolve(dlUrl);
-        }
-      );
+    var fileBase64=await new Promise(function(resolve,reject){
+      var reader=new FileReader();
+      reader.onload=function(e){resolve(e.target.result.split(',')[1]);};
+      reader.onerror=reject;
+      reader.readAsDataURL(file);
     });
-    var arqId='arq_'+ts;
-    var arqData={nome:file.name,url:url,tipo:file.type,tamanho:file.size,uploadedBy:CU.name,uploadedAt:ts,path:path};
+    var res=await fetch('/.netlify/functions/crm-upload',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({sessionToken:_sess.sessionToken,dealId:dealId,fileName:file.name,contentType:file.type,fileBase64:fileBase64})
+    });
+    if(!res.ok){
+      var errBody=await res.json().catch(function(){return{};});
+      throw new Error(errBody.error||'HTTP '+res.status);
+    }
+    var arqData=await res.json();
+    var arqId='arq_'+arqData.uploadedAt;
     await fbSet('crm/deals/'+dealId+'/arquivos/'+arqId,arqData);
     if(!crmDeals[dealId]) crmDeals[dealId]={};
     if(!crmDeals[dealId].arquivos) crmDeals[dealId].arquivos={};
     crmDeals[dealId].arquivos[arqId]=arqData;
     fileInput.value='';
+    pb.style.width='100%'; pl.textContent='100%';
     crmRenderArquivos(dealId);
     crmRenderView();
     showToast('Arquivo enviado com sucesso!');
   }catch(e){
-    if(e.code==='storage/unauthorized'){
-      errEl.textContent='Permissão negada pelo Firebase Storage (storage/unauthorized). Storage Rules aguardando implantação — contacte o administrador.';
-    } else {
-      errEl.textContent='Erro no upload: '+e.message;
-    }
+    errEl.textContent='Erro no upload: '+e.message;
   }finally{
     btn.disabled=false; btn.textContent='Enviar arquivo';
     pw.style.display='none';
