@@ -1877,6 +1877,7 @@ function countMeta(list,id,_uid,_uName){
     var count=0;
     Object.values(dayEvents).forEach(function(ev){
       if(!ev) return;
+      if(ev.type==='retomada') return;
       var isAuthor=ev.author===_en;
       var isGuest=ev.guests&&ev.guests.some(function(g){return g.name===_en&&g.status==='confirmed';});
       var isSucesso=ev.resultado==='sucesso';
@@ -1894,6 +1895,7 @@ function countMeta(list,id,_uid,_uName){
       var dayEvs2=agEvs[key]||{};
       Object.values(dayEvs2).forEach(function(ev){
         if(!ev) return;
+        if(ev.type==='retomada') return;
         var isAuthor=ev.author===_en;
         var isGuest=ev.guests&&ev.guests.some(function(g){return g.name===_en&&g.status==='confirmed';});
         var isSucesso=ev.resultado==='sucesso';
