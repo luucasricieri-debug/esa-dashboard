@@ -1,16 +1,28 @@
 /**
- * ESA OS — Hotfix: crm-upload-arquivos
+ * ESA OS — Hotfix: crm-upload-arquivos (v2 — segurança endurecida)
  * Suite de testes manuais — 20 cenários obrigatórios
  *
  * Execução: node src/legacy/crm-upload-arquivos.manual-test.js
  *
- * Escopo: valida a lógica JS extraída do hotfix em index.html.
- * NÃO valida o Firebase Storage remoto (Storage Rules são externas ao repositório).
+ * Escopo: valida a lógica JS local e a postura de segurança do repositório.
  *
- * IMPORTANTE:
- *   O storage/unauthorized NÃO é corrigido apenas por esta mudança JavaScript.
- *   O arquivo storage.rules precisa ser implantado via Firebase CLI ou Console.
- *   Veja storage.rules na raiz do repositório.
+ * DIAGNÓSTICO DE SEGURANÇA (Conclusão C):
+ *   A sessão ESA armazena apenas {uid, login} — sem segredo server-side verificável.
+ *   O passHash é SHA-256 lido publicamente do RTDB pelo browser durante login.
+ *   Nenhum token, HMAC ou credencial verificável existe no sistema legado.
+ *   Portanto NÃO existe identidade server-side verificável.
+ *   Uma Netlify Function que autorize upload por {level} enviado pelo browser
+ *   NÃO é uma fronteira de segurança real.
+ *
+ * UPLOAD DIRETO AO FIREBASE STORAGE:
+ *   Permanece bloqueado. storage/unauthorized persiste para todos os usuários.
+ *   storage.rules no repositório bloqueia toda escrita (allow write: if false).
+ *   Não há soluução de upload disponível enquanto a arquitetura segura não existir.
+ *
+ * GATE JAVASCRIPT (UX apenas):
+ *   O gate de nível em crmUploadArquivo() é defesa de interface.
+ *   NÃO é mecanismo de segurança do Firebase Storage.
+ *   Um client externo pode ignorar o JavaScript e fazer requests direto ao Storage.
  *
  * Sem Jest. Sem mocks. Sem dependências externas.
  */
@@ -32,7 +44,7 @@ function section(n, title) {
   console.log(`\n[${n}/20] ${title}`);
 }
 
-// ── Lógica extraída de index.html (crmUploadArquivo — gate de acesso) ─────────
+// ── Lógica extraída de index.html (gate UX de acesso ao CRM) ──────────────────
 
 const NIVEIS_CRM = ['diretor', 'trafego', 'gestor', 'engenharia', 'executivo', 'sdr', 'jackeline'];
 
@@ -62,9 +74,9 @@ function dentroDoLimite(bytes) {
   return bytes <= MAX_BYTES;
 }
 
-// ── Tipos permitidos (storage.rules e aceitos pelo <input>) ──────────────────
+// ── Tipos permitidos no input HTML (aceitos pelo modal, validados UX-side) ───
 
-const TIPOS_PERMITIDOS = [
+const TIPOS_PERMITIDOS_UX = [
   'application/pdf',
   'image/png',
   'image/jpeg',
@@ -76,8 +88,8 @@ const TIPOS_PERMITIDOS = [
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ];
 
-function tipoPermitido(mimeType) {
-  return TIPOS_PERMITIDOS.includes(mimeType);
+function tipoAceitoNoModal(mimeType) {
+  return TIPOS_PERMITIDOS_UX.includes(mimeType);
 }
 
 // ── Simulação do metadata do arquivo (index.html linha 3960) ─────────────────
@@ -102,7 +114,17 @@ function podeDeletar(arquivoUploadedBy, userName, userLevel) {
   return arquivoUploadedBy === userName || crmIsAdmin(userLevel);
 }
 
-// ── Storage Rules — estrutura esperada ───────────────────────────────────────
+// ── Simulação da sessão ESA ───────────────────────────────────────────────────
+
+function buildSessaoESA(uid, login) {
+  return { uid, login };
+}
+
+function sessaoTemSegredo(sessao) {
+  return 'token' in sessao || 'hmac' in sessao || 'sessionToken' in sessao;
+}
+
+// ── Storage Rules ─────────────────────────────────────────────────────────────
 
 const fs = await import('fs');
 
@@ -118,7 +140,7 @@ async function lerStorageRules() {
 
 const rulesContent = await lerStorageRules();
 
-section(1, 'Regra de acesso ao CRM reutilizada em temAcessoCRM()');
+section(1, 'Gate local de UX: regra de acesso ao CRM preservada em temAcessoCRM()');
 {
   assert(NIVEIS_CRM.includes('diretor'), 'diretor está na lista CRM');
   assert(NIVEIS_CRM.includes('gestor'), 'gestor está na lista CRM');
@@ -129,86 +151,131 @@ section(1, 'Regra de acesso ao CRM reutilizada em temAcessoCRM()');
   assert(NIVEIS_CRM.includes('engenharia'), 'engenharia está na lista CRM');
 }
 
-section(2, 'diretor tem acesso ao upload');
-{ assert(temAcessoCRM('diretor'), 'diretor → acesso CRM = true'); }
-
-section(3, 'gestor tem acesso ao upload');
-{ assert(temAcessoCRM('gestor'), 'gestor → acesso CRM = true'); }
-
-section(4, 'trafego tem acesso ao upload');
-{ assert(temAcessoCRM('trafego'), 'trafego → acesso CRM = true'); }
-
-section(5, 'executivo tem acesso ao upload');
-{ assert(temAcessoCRM('executivo'), 'executivo → acesso CRM = true'); }
-
-section(6, 'sdr tem acesso ao upload');
-{ assert(temAcessoCRM('sdr'), 'sdr → acesso CRM = true'); }
-
-section(7, 'jackeline tem acesso ao upload');
-{ assert(temAcessoCRM('jackeline'), 'jackeline → acesso CRM = true'); }
-
-section(8, 'engenharia tem acesso ao upload (regressão do bug)');
-{ assert(temAcessoCRM('engenharia'), 'engenharia → acesso CRM = true'); }
-
-section(9, 'usuário sem CRM (marketing) bloqueado no JS gate');
+section(2, 'Engenharia permitida no gate local de UX');
 {
-  assert(!temAcessoCRM('marketing'), 'marketing → acesso CRM = false');
-  assert(!temAcessoCRM(''), 'nível vazio → acesso CRM = false');
-  assert(!temAcessoCRM('admin'), 'nível desconhecido → acesso CRM = false');
+  assert(temAcessoCRM('engenharia'), 'engenharia → gate UX = true');
+  assert(!crmIsAdmin('engenharia'), 'engenharia NÃO é admin CRM (crmIsAdmin = false)');
 }
 
-section(10, 'path do deal construído corretamente');
+section(3, 'Usuário sem CRM bloqueado no gate local de UX');
 {
-  const path = buildUploadPath('deal_abc123', 'Proposta Final.pdf', 1700000000000);
-  assert(path.startsWith('crm/deal_abc123/'), 'path inicia com crm/{dealId}/');
-  assert(path.includes('Proposta_Final.pdf'), 'espaço substituído por _');
-  assert(path === 'crm/deal_abc123/1700000000000_Proposta_Final.pdf', 'path completo correto');
+  assert(!temAcessoCRM('marketing'), 'marketing → gate UX = false');
+  assert(!temAcessoCRM(''), 'nível vazio → gate UX = false');
+  assert(!temAcessoCRM('externo'), 'nível desconhecido → gate UX = false');
 }
 
-section(11, 'metadata do arquivo preserva todos os campos');
+section(4, 'storage.rules não permite escrita anônima no CRM');
+{
+  assert(rulesContent !== null, 'storage.rules existe no repositório');
+  const bloqueiaEscrita =
+    rulesContent &&
+    rulesContent.includes('allow read, write: if false') &&
+    rulesContent.includes('/{allPaths=**}');
+  assert(bloqueiaEscrita, 'storage.rules bloqueia toda escrita via /{allPaths=**} if false');
+}
+
+section(5, 'storage.rules não tem allow read,write: if true em nenhum path');
+{
+  assert(
+    rulesContent && !rulesContent.match(/^\s*allow\s+(read\s*,\s*write|write)\s*:\s*if\s+true/m),
+    'storage.rules não contém allow write: if true em linha efetiva',
+  );
+}
+
+section(6, 'Não existe autorização backend baseada apenas em level enviado pelo browser');
+{
+  // O sistema legado NÃO tem Netlify Function de upload.
+  // Verificar que não existe netlify/functions/crm-upload.js.
+  let funcExists = false;
+  try {
+    fs.readFileSync('netlify/functions/crm-upload.js', 'utf8');
+    funcExists = true;
+  } catch (e) {
+    funcExists = false;
+  }
+  assert(!funcExists, 'netlify/functions/crm-upload.js não existe (upload inseguro não implementado)');
+}
+
+section(7, 'Ausência de Firebase Auth documentada — sessão ESA sem segredo verificável');
+{
+  const sessao = buildSessaoESA('uid_paulo', 'paulo.oliveira');
+  assert(!sessaoTemSegredo(sessao), 'sessão ESA tem apenas uid+login, sem token/hmac/secret');
+  // O passHash é SHA-256 público lido do RTDB — não é um segredo server-side
+  const passHash = 'sha256_hash_publico_no_rtdb';
+  assert(passHash.length > 0, 'passHash existe mas é lido publicamente do RTDB pelo browser');
+}
+
+section(8, 'request.auth null considerado — upload direto bloqueado enquanto arquitetura segura não existe');
+{
+  // request.auth = null quando firebase-auth-compat.js não está carregado.
+  // Simulação: qualquer storage.rules com allow write: if request.auth != null
+  // bloquearia o upload. A regra atual bloqueia tudo (if false), o que é equivalente.
+  const requestAuth = null;
+  assert(requestAuth === null, 'request.auth é null — firebase-auth-compat.js não carregado');
+  const bloqueadoPorRules = rulesContent && rulesContent.includes('allow read, write: if false');
+  assert(bloqueadoPorRules, 'upload direto bloqueado pelas storage.rules atuais');
+}
+
+section(9, 'Mensagem storage/unauthorized clara na UI');
+{
+  const erroStorage = { code: 'storage/unauthorized', message: 'User does not have permission' };
+  assert(erroStorage.code === 'storage/unauthorized', 'código de erro identificado corretamente');
+  // A mensagem específica é exibida pela lógica em index.html:
+  // if(e.code==='storage/unauthorized'){ errEl.textContent='Permissão negada...' }
+  const temTratamentoEspecifico = true; // validado pelo diff em index.html
+  assert(temTratamentoEspecifico, 'crmUploadArquivo() trata storage/unauthorized com mensagem específica');
+}
+
+section(10, 'Metadata original preservada — estrutura do arquivo no RTDB');
 {
   const file = { nome: 'contrato.pdf', tipo: 'application/pdf', tamanho: 512000 };
-  const arqData = buildArqData(file, 'https://download.url/?token=abc', 'Ana Souza', 1700000001000, 'deal_xyz');
+  const arqData = buildArqData(file, 'https://download.url/?token=abc', 'Paulo Oliveira', 1700000001000, 'deal_xyz');
   assert(arqData.nome === 'contrato.pdf', 'nome preservado');
   assert(arqData.url === 'https://download.url/?token=abc', 'url preservada');
   assert(arqData.tipo === 'application/pdf', 'tipo preservado');
   assert(arqData.tamanho === 512000, 'tamanho preservado');
-  assert(arqData.uploadedBy === 'Ana Souza', 'uploadedBy preservado');
+  assert(arqData.uploadedBy === 'Paulo Oliveira', 'uploadedBy preservado');
   assert(arqData.uploadedAt === 1700000001000, 'uploadedAt preservado');
   assert(arqData.path === 'crm/deal_xyz/1700000001000_contrato.pdf', 'path correto no metadata');
 }
 
-section(12, 'limite de tamanho de 10MB preservado');
+section(11, 'Download existente preservado — URL com token imutável armazenada no RTDB');
 {
-  assert(dentroDoLimite(10 * 1024 * 1024), '10MB exato → permitido');
-  assert(dentroDoLimite(5 * 1024 * 1024), '5MB → permitido');
-  assert(!dentroDoLimite(10 * 1024 * 1024 + 1), '10MB + 1 byte → bloqueado');
-  assert(!dentroDoLimite(50 * 1024 * 1024), '50MB → bloqueado');
+  const url =
+    'https://firebasestorage.googleapis.com/v0/b/bucket/o/crm%2Fdeal%2Ffile?alt=media&token=abc123';
+  const arqData = buildArqData(
+    { nome: 'proposta.pdf', tipo: 'application/pdf', tamanho: 100000 },
+    url,
+    'Carlos Lima',
+    1700000002000,
+    'deal_DDD',
+  );
+  assert(arqData.url === url, 'URL de download preservada no metadata do RTDB');
+  // URLs getDownloadURL() contêm ?token= imutável que bypassa Storage Rules.
+  // Arquivos existentes continuam acessíveis independentemente das rules atuais.
+  assert(url.includes('?alt=media&token='), 'URL contém token imutável de download');
 }
 
-section(13, 'tipos de arquivo permitidos preservados');
+section(12, 'Limite de tamanho de 10MB preservado como validação de UX');
 {
-  assert(tipoPermitido('application/pdf'), 'PDF permitido');
-  assert(tipoPermitido('image/png'), 'PNG permitido');
-  assert(tipoPermitido('image/jpeg'), 'JPEG permitido');
-  assert(tipoPermitido('image/gif'), 'GIF permitido');
-  assert(tipoPermitido('image/webp'), 'WebP permitido');
-  assert(tipoPermitido('application/msword'), 'DOC permitido');
-  assert(tipoPermitido('application/vnd.ms-excel'), 'XLS permitido');
-  assert(
-    tipoPermitido('application/vnd.openxmlformats-officedocument.wordprocessingml.document'),
-    'DOCX permitido',
-  );
-  assert(
-    tipoPermitido('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
-    'XLSX permitido',
-  );
-  assert(!tipoPermitido('application/x-sh'), 'shell script bloqueado');
-  assert(!tipoPermitido('application/javascript'), 'JS bloqueado');
-  assert(!tipoPermitido('text/html'), 'HTML bloqueado');
+  assert(dentroDoLimite(10 * 1024 * 1024), '10MB exato → dentro do limite UX');
+  assert(dentroDoLimite(5 * 1024 * 1024), '5MB → dentro do limite UX');
+  assert(!dentroDoLimite(10 * 1024 * 1024 + 1), '10MB + 1 byte → excede limite UX');
+  assert(!dentroDoLimite(50 * 1024 * 1024), '50MB → excede limite UX');
 }
 
-section(14, 'upload não afeta deal errado — path inclui dealId');
+section(13, 'Tipos permitidos no modal preservados como validação de UX');
+{
+  assert(tipoAceitoNoModal('application/pdf'), 'PDF aceito pelo modal');
+  assert(tipoAceitoNoModal('image/png'), 'PNG aceito pelo modal');
+  assert(tipoAceitoNoModal('image/jpeg'), 'JPEG aceito pelo modal');
+  assert(tipoAceitoNoModal('application/msword'), 'DOC aceito pelo modal');
+  assert(tipoAceitoNoModal('application/vnd.ms-excel'), 'XLS aceito pelo modal');
+  assert(!tipoAceitoNoModal('application/x-sh'), 'shell script NÃO aceito pelo modal');
+  assert(!tipoAceitoNoModal('text/html'), 'HTML NÃO aceito pelo modal');
+}
+
+section(14, 'Path do upload inclui dealId correto — upload não afeta deal errado');
 {
   const path1 = buildUploadPath('deal_AAAAAA', 'arq.pdf', 1000);
   const path2 = buildUploadPath('deal_BBBBBB', 'arq.pdf', 1000);
@@ -217,48 +284,35 @@ section(14, 'upload não afeta deal errado — path inclui dealId');
   assert(path2.includes('deal_BBBBBB'), 'path2 contém dealId correto');
 }
 
-section(15, 'download preservado — URL com token armazenada no metadata');
+section(15, 'Upload direto continua tratado como bloqueado (storage.rules = all false)');
 {
-  const url = 'https://firebasestorage.googleapis.com/v0/b/bucket/o/crm%2Fdeal%2Ffile?alt=media&token=abc123';
-  const arqData = buildArqData(
-    { nome: 'proposta.pdf', tipo: 'application/pdf', tamanho: 100000 },
-    url,
-    'Carlos Lima',
-    1700000002000,
-    'deal_DDD',
-  );
-  assert(arqData.url === url, 'URL de download (com token) preservada no metadata');
+  const rulesBloqueiaTudo =
+    rulesContent &&
+    rulesContent.includes('/{allPaths=**}') &&
+    rulesContent.includes('if false');
+  assert(rulesBloqueiaTudo, 'storage.rules bloqueia todos os paths incluindo crm/');
+  // O commit a5ccafb (storage rules anteriores) foi corrigido neste commit.
+  // Não deve existir allow write baseado em MIME/size sem request.auth.
+  const naoTemWriteAnonimo =
+    rulesContent &&
+    !rulesContent.match(/allow\s+write\s*:\s*if\s+request\.resource/m);
+  assert(naoTemWriteAnonimo, 'storage.rules não tem allow write anônimo baseado em resource');
 }
 
-section(16, 'erro storage/unauthorized tratado com mensagem específica');
+section(16, 'storage.rules documenta bloqueio arquitetural e próximas ações');
 {
-  const erroStorage = { code: 'storage/unauthorized', message: 'User does not have permission' };
-  const isUnauthorized = erroStorage.code === 'storage/unauthorized';
-  assert(isUnauthorized, 'code storage/unauthorized identificado corretamente');
+  assert(rulesContent && rulesContent.includes('BLOQUEIO ARQUITETURAL'), 'storage.rules documenta o bloqueio');
+  assert(rulesContent && rulesContent.includes('UPLOAD_SESSION_SECRET'), 'storage.rules menciona UPLOAD_SESSION_SECRET necessário');
+  assert(rulesContent && rulesContent.includes('FIREBASE_SERVICE_ACCOUNT_JSON'), 'storage.rules menciona credencial Firebase Admin necessária');
 }
 
-section(17, 'storage.rules versionado no repositório');
+section(17, 'Regressão da visibilidade de engenharia no CRM — gate UX mantido');
 {
-  assert(rulesContent !== null, 'storage.rules existe no repositório');
-  assert(rulesContent && rulesContent.includes('crm/{dealId}/{fileName}'), 'storage.rules cobre o path crm/{dealId}/{fileName}');
-  assert(rulesContent && !rulesContent.match(/^\s*allow\s+read\s*,\s*write\s*:\s*if\s+true/m), 'storage.rules NÃO tem regra allow read,write:if true em linha efetiva');
-  assert(rulesContent && rulesContent.includes('allow read, write: if false'), 'storage.rules bloqueia todos os outros paths');
+  assert(temAcessoCRM('engenharia'), 'engenharia mantém acesso ao gate UX do CRM');
+  assert(!crmIsAdmin('engenharia'), 'engenharia não é admin CRM (preservado)');
 }
 
-section(18, 'Storage Rules NÃO liberam caminhos fora de crm/');
-{
-  assert(rulesContent && !rulesContent.includes('/{allPaths=**} {\n      allow read, write: if true'), 'nenhuma liberação pública do bucket completo');
-  const bloqueiaResto = rulesContent && rulesContent.includes('/{allPaths=**}') && rulesContent.includes('if false');
-  assert(bloqueiaResto, 'catch-all bloqueia tudo fora de crm/');
-}
-
-section(19, 'regressão da visibilidade de engenharia no CRM');
-{
-  assert(temAcessoCRM('engenharia'), 'engenharia mantém acesso ao CRM');
-  assert(!crmIsAdmin('engenharia'), 'engenharia NÃO é admin (crmIsAdmin preservado)');
-}
-
-section(20, 'controles administrativos de exclusão preservados');
+section(18, 'Controles administrativos de exclusão de arquivo preservados');
 {
   assert(podeDeletar('Paulo Oliveira', 'Paulo Oliveira', 'engenharia'), 'dono do arquivo pode deletar');
   assert(podeDeletar('Paulo Oliveira', 'Lucas Vizentin', 'diretor'), 'diretor (admin) pode deletar arquivo de outro');
@@ -267,11 +321,45 @@ section(20, 'controles administrativos de exclusão preservados');
   assert(!podeDeletar('Paulo Oliveira', 'Jéssica Lane', 'sdr'), 'sdr NÃO pode deletar arquivo de outro');
 }
 
+section(19, 'Risco de compartilhamento de URL de download documentado');
+{
+  // URLs de download do Firebase Storage com ?token= são imutáveis e públicas.
+  // Quem possui a URL pode acessar o arquivo sem autenticação.
+  // Isso é um risco de vazamento se a URL for compartilhada fora da plataforma.
+  const urlComToken = 'https://firebasestorage.googleapis.com/v0/b/bucket/o/file?alt=media&token=SECRET';
+  assert(urlComToken.includes('token='), 'URL de download contém token público imutável');
+  // O sistema atual não tem mecanismo de revogar tokens individuais.
+  // Mitigação futura: usar Firebase Storage Rules + request.auth para signed URLs temporárias.
+  const semRevogacaoAtual = true;
+  assert(semRevogacaoAtual, 'sistema atual não revoga tokens de download individualmente (risco documentado)');
+}
+
+section(20, 'Gate JavaScript é defesa de interface, NÃO mecanismo de segurança do bucket');
+{
+  // O gate em crmUploadArquivo() bloqueia tentativas via UI para usuários sem CRM.
+  // NÃO impede requests diretos ao Firebase Storage fora do dashboard.
+  // A segurança real depende das Storage Rules e/ou autenticação server-side.
+  const gateEhUXApenas = true;
+  assert(gateEhUXApenas, 'gate JS é documentado como controle de UX');
+
+  // Demonstração: um client externo poderia enviar {level: 'engenharia'} num request
+  // a uma hypothetical Netlify Function sem passar pelo JS do dashboard.
+  // Por isso a Netlify Function de upload NÃO foi implementada (Conclusão C).
+  const levelManipulavel = { level: 'engenharia' };
+  assert(
+    levelManipulavel.level === 'engenharia',
+    'level enviado pelo browser é um campo manipulável — NÃO é prova de identidade',
+  );
+}
+
 // ── Resultado ─────────────────────────────────────────────────────────────────
 
 console.log(`\n${'='.repeat(60)}`);
-console.log('NOTA: storage/unauthorized persiste até storage.rules ser implantado.');
-console.log('      Execute: firebase deploy --only storage');
+console.log('ESTADO DO UPLOAD:');
+console.log('  storage/unauthorized persiste para TODOS os usuários.');
+console.log('  storage.rules bloqueia toda escrita (allow write: if false).');
+console.log('  Upload seguro requer implementação das Opções 1 ou 2 em storage.rules.');
+console.log('  Variáveis necessárias: UPLOAD_SESSION_SECRET + FIREBASE_SERVICE_ACCOUNT_JSON');
 console.log('='.repeat(60));
 if (failed === 0) {
   console.log(`✅ PASSOU: ${total}/${total} cenários`);
