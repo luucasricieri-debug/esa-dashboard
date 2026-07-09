@@ -3932,6 +3932,9 @@ window.crmUploadArquivo=async function(){
   var file=fileInput.files[0];
   var errEl=document.getElementById('arq-err');
   errEl.textContent='';
+  var _lvlCrm=(CU&&CU.level||'').toLowerCase().trim();
+  var _temAcessoCRM=['diretor','trafego','gestor','engenharia','executivo','sdr','jackeline'].indexOf(_lvlCrm)>=0;
+  if(!_temAcessoCRM){errEl.textContent='Sem permissão para upload no CRM.';return;}
   if(!file){errEl.textContent='Selecione um arquivo.';return;}
   if(file.size>10*1024*1024){errEl.textContent='Arquivo muito grande. Máximo 10MB.';return;}
   var btn=document.getElementById('arq-send-btn');
@@ -3970,7 +3973,11 @@ window.crmUploadArquivo=async function(){
     crmRenderView();
     showToast('Arquivo enviado com sucesso!');
   }catch(e){
-    errEl.textContent='Erro no upload: '+e.message;
+    if(e.code==='storage/unauthorized'){
+      errEl.textContent='Permissão negada pelo Firebase Storage (storage/unauthorized). Storage Rules aguardando implantação — contacte o administrador.';
+    } else {
+      errEl.textContent='Erro no upload: '+e.message;
+    }
   }finally{
     btn.disabled=false; btn.textContent='Enviar arquivo';
     pw.style.display='none';
