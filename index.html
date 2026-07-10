@@ -743,7 +743,7 @@ const METAS = {
   executivo:{
     diaria:[
       {id:'novos_clientes', label:'Novos Clientes',           meta:5},
-      {id:'interacao',      label:'Interação Comercial',      meta:5},
+      {id:'interacao',      label:'Interação Comercial',      meta:10},
       {id:'atendimentos',   label:'Atendimentos Realizados',  meta:2},
     ],
     mensal:[
@@ -1513,6 +1513,7 @@ async function saveProsp() {
     data_retomada: getVal('f-data-retomada') || '',
   };
 
+  if(window._retomadaOrigId){rec.tipo='retomada';window._retomadaOrigId=null;window._retomadaOrigUid=null;}
   try {
     var _is4Named=['Fernando Fadel','Pedro Oliveira','Andre Mosoli','Lucas Vizentin'].indexOf(CU.name)>=0;
     await fbSet('prospections/' + CU.uid + '/' + id, rec);
@@ -1833,7 +1834,9 @@ function countMeta(list,id,_uid,_uName){
   if(id==='eventos') return list.length;
   if(id==='indicacoes') return list.filter(p=>p.produto&&p.produto.includes('Embaixador')).length;
   // Executivo — novas métricas
-  if(id==='novos_clientes'||id==='prosp_mensal'||id==='prosp_sdr'||id==='prosp_sdr_mensal')
+  if(id==='novos_clientes')
+    return list.filter(function(p){return !p.tipo||p.tipo!=='atendimento'&&p.tipo!=='retomada';}).length;
+  if(id==='prosp_mensal'||id==='prosp_sdr'||id==='prosp_sdr_mensal')
     return list.filter(function(p){return !p.tipo||p.tipo!=='atendimento';}).length;
   // SDR — novas métricas
   if(id==='agendamentos_sdr'){
