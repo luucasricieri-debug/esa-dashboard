@@ -1,0 +1,69 @@
+// Firebase Storage Rules — ESA Dashboard
+//
+// ESTADO: SEGURO POR PADRÃO — escrita bloqueada para todos os paths.
+//
+// CONTEXTO:
+//   O dashboard usa autenticação legada própria (sessionStorage/localStorage).
+//   A biblioteca firebase-auth-compat.js NÃO está carregada no cliente.
+//   A sessão ESA armazena apenas {uid, login} — sem segredo server-side verificável.
+//   O passHash é lido publicamente do RTDB pelo próprio browser durante login.
+//   Portanto NÃO existe credencial que o backend possa verificar sem confiar
+//   em dados manipuláveis enviados pelo browser.
+//
+// DECISÃO DE SEGURANÇA (Hotfix 2 — rejeitando solução anterior):
+//   A proposta anterior de allow write com filtros de MIME/tamanho foi REJEITADA
+//   porque path-based rules não são uma fronteira de segurança real:
+//   um client externo pode fazer upload diretamente ao Firebase Storage
+//   sem passar pelo JavaScript do dashboard.
+//
+// ESTADO ATUAL:
+//   Toda escrita está bloqueada (allow write: if false) em todos os paths.
+//   Upload de arquivos do CRM permanece indisponível até que uma das soluções
+//   abaixo seja implementada.
+//
+// PRÓXIMA AÇÃO NECESSÁRIA para upload seguro (escolher uma):
+//
+//   OPÇÃO 1 — Firebase Auth Custom Token via Netlify Function (RECOMENDADA):
+//     a. Adicionar FIREBASE_SERVICE_ACCOUNT_JSON como env var da Netlify Function.
+//     b. Criar Netlify Function crm-upload.js que:
+//        - Recebe {uid, sessionToken} do browser
+//        - Verifica sessionToken via HMAC com UPLOAD_SESSION_SECRET
+//        - Se válido, minta Custom Token via firebase-admin.auth().createCustomToken(uid)
+//        - Retorna o Custom Token para o browser
+//     c. Browser usa firebase.auth().signInWithCustomToken(token) antes do upload.
+//     d. Storage Rules: allow write: if request.auth != null
+//                                    && request.auth.uid == <uid do deal ou CRM list>
+//     e. Alterar login no dashboard para chamar Netlify Function e armazenar
+//        sessionToken HMAC no sessionStorage (substitui {uid, login} simples).
+//
+//   OPÇÃO 2 — Netlify Function como proxy de upload (sem Firebase Auth no browser):
+//     a. Adicionar FIREBASE_SERVICE_ACCOUNT_JSON como env var.
+//     b. Criar Netlify Function crm-upload.js que:
+//        - Recebe arquivo + {uid, sessionToken}
+//        - Verifica sessionToken
+//        - Faz upload via firebase-admin.storage().bucket().upload()
+//        - Retorna URL de download
+//     c. Browser não chama Firebase Storage diretamente.
+//     d. Storage Rules: allow read, write: if false (bucket acessível apenas via Admin SDK).
+//
+// BLOQUEIO ARQUITETURAL ATUAL:
+//   Nenhuma opção acima pode ser implementada sem:
+//   1. UPLOAD_SESSION_SECRET — para HMAC de tokens de sessão
+//   2. FIREBASE_SERVICE_ACCOUNT_JSON — para Firebase Admin SDK
+//   Ambas são variáveis de ambiente externas não presentes no repositório.
+//
+// NÃO IMPLANTAR ESTAS REGRAS SEM PRIMEIRO IMPLEMENTAR UMA DAS OPÇÕES ACIMA.
+
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Tudo bloqueado por padrão.
+    // Escrita no path crm/ permanece fechada até implementação de autenticação segura.
+    // Ver comentários acima para as opções arquiteturais disponíveis.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+  }
+}
