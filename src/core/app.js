@@ -29,6 +29,8 @@ import { energyCreditsReportService }     from '../reports/energy-credits/index.
 import { energyCreditsRepository,
          energyCreditsRepositoryHydrator,
          EnergyCreditsFirebaseRepository }  from '../repositories/energy-credits/index.js';
+import { energyCreditsImportService,
+         EnergyCreditsImportService }        from '../importers/energy-credits/index.js';
 
 class ESAApplication {
 
@@ -277,6 +279,29 @@ class ESAApplication {
 
   createEnergyCreditsFirebaseRepository(firebaseClient, options = {}) {
     return new EnergyCreditsFirebaseRepository(firebaseClient, options);
+  }
+
+  // ── Energy Credits Import ──────────────────────────────────────────────────
+
+  importEnergyCreditsFromCsv(importType, csvText, options = {}) {
+    const opts = this._enrichImportOptions(options);
+    return energyCreditsImportService.importFromCsv(importType, csvText, opts);
+  }
+
+  importEnergyCreditsFromRows(importType, rows, options = {}) {
+    const opts = this._enrichImportOptions(options);
+    return energyCreditsImportService.importFromRows(importType, rows, opts);
+  }
+
+  createEnergyCreditsImportService(mapper = null, validator = null, parser = null) {
+    return new EnergyCreditsImportService(mapper, validator, parser);
+  }
+
+  _enrichImportOptions(options) {
+    const enriched = Object.assign({}, options);
+    if (enriched.persist && !enriched.repository) enriched.repository = energyCreditsRepository;
+    if (enriched.hydrateReadModel && !enriched.hydrator) enriched.hydrator = energyCreditsRepositoryHydrator;
+    return enriched;
   }
 
 }
