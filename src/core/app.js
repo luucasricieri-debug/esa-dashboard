@@ -21,14 +21,16 @@ import { CRMLegacyReadModelHydrator } from '../legacy/crm-read-model-hydrator.js
 import { CRMReadModelIntegration,
          crmReadModel }            from '../read-models/crm/index.js';
 import { crmQueryService }         from '../queries/crm/index.js';
+import { SolanaCommercialContextBuilder } from '../contexts/solana/index.js';
 
 class ESAApplication {
 
   constructor() {
-    this.version                = '2.0.0-alpha';
-    this.firebase               = new FirebaseService();
-    this.crmLegacyBridge        = null;
-    this.crmReadModelHydrator   = null;
+    this.version                  = '2.0.0-alpha';
+    this.firebase                 = new FirebaseService();
+    this.crmLegacyBridge          = null;
+    this.crmReadModelHydrator     = null;
+    this._solanaContextBuilder    = null;
   }
 
   initialize() {
@@ -157,6 +159,13 @@ class ESAApplication {
 
   getCRMManagementBrief(filters = {}, options = {}) {
     return crmQueryService.getManagementBrief(filters, options).toJSON();
+  }
+
+  getSolanaCommercialContext(filters = {}, options = {}) {
+    if (!this._solanaContextBuilder) {
+      this._solanaContextBuilder = new SolanaCommercialContextBuilder(crmQueryService);
+    }
+    return this._solanaContextBuilder.generateContext(filters, options);
   }
 
 }
