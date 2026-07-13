@@ -25,6 +25,7 @@ import { SolanaCommercialContextBuilder } from '../contexts/solana/index.js';
 import { EnergyCreditsService }           from '../domains/energy/credits/index.js';
 import { energyCreditsReadModel }         from '../read-models/energy-credits/index.js';
 import { energyCreditsQueryService }      from '../queries/energy-credits/index.js';
+import { energyCreditsReportService }     from '../reports/energy-credits/index.js';
 
 class ESAApplication {
 
@@ -237,6 +238,24 @@ class ESAApplication {
       this._solanaContextBuilder = new SolanaCommercialContextBuilder(crmQueryService);
     }
     return this._solanaContextBuilder.generateContext(filters, options);
+  }
+
+  // ── Energy Credits Reports ─────────────────────────────────────────────────
+
+  buildEnergyCreditsOwnerMonthlyReport(generatingUnitId, referenceMonth, options = {}) {
+    return energyCreditsReportService.buildOwnerMonthlyReport(generatingUnitId, referenceMonth, options).toJSON();
+  }
+
+  buildEnergyCreditsBeneficiaryMonthlyReport(beneficiaryUnitId, referenceMonth, options = {}) {
+    return energyCreditsReportService.buildBeneficiaryMonthlyReport(beneficiaryUnitId, referenceMonth, options).toJSON();
+  }
+
+  buildEnergyCreditsEsaInternalMonthlyReport(referenceMonth, options = {}) {
+    return energyCreditsReportService.buildEsaInternalMonthlyReport(referenceMonth, options).toJSON();
+  }
+
+  buildEnergyCreditsEsaFinancialMonthlyReport(referenceMonth, options = {}) {
+    return energyCreditsReportService.buildEsaFinancialMonthlyReport(referenceMonth, options).toJSON();
   }
 
 }
