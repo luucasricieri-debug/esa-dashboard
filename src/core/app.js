@@ -27,7 +27,8 @@ import { energyCreditsReadModel }         from '../read-models/energy-credits/in
 import { energyCreditsQueryService }      from '../queries/energy-credits/index.js';
 import { energyCreditsReportService }     from '../reports/energy-credits/index.js';
 import { energyCreditsRepository,
-         energyCreditsRepositoryHydrator } from '../repositories/energy-credits/index.js';
+         energyCreditsRepositoryHydrator,
+         EnergyCreditsFirebaseRepository }  from '../repositories/energy-credits/index.js';
 
 class ESAApplication {
 
@@ -272,6 +273,10 @@ class ESAApplication {
 
   hydrateEnergyCreditsFromRepository(options = {}) {
     return energyCreditsRepositoryHydrator.hydrateReadModel(options);
+  }
+
+  createEnergyCreditsFirebaseRepository(firebaseClient, options = {}) {
+    return new EnergyCreditsFirebaseRepository(firebaseClient, options);
   }
 
 }

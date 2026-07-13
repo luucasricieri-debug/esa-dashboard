@@ -3,11 +3,12 @@
  * Public API + Singletons
  */
 
-export { EC_COLLECTIONS, EC_ROOT, EC_PATHS, buildEnergyCreditsPath } from './energy-credits-paths.js';
+export { EC_COLLECTIONS, EC_ROOT, EC_PATHS,
+         buildEnergyCreditsPath,
+         buildEnergyCreditsCollectionPath }                          from './energy-credits-paths.js';
 export { EnergyCreditsRepositoryResult }                              from './energy-credits-repository-result.js';
 export { EnergyCreditsMemoryRepository }                              from './energy-credits-memory-repository.js';
-export { EnergyCreditsFirebaseRepository,
-         EC_FIREBASE_NOT_IMPLEMENTED }                                from './energy-credits-firebase-repository.js';
+export { EnergyCreditsFirebaseRepository }                           from './energy-credits-firebase-repository.js';
 export { EnergyCreditsRepositoryHydrator }                           from './energy-credits-repository-hydrator.js';
 
 import { EnergyCreditsMemoryRepository }    from './energy-credits-memory-repository.js';

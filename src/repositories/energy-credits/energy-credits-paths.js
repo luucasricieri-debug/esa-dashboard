@@ -34,6 +34,24 @@ export const EC_PATHS = Object.freeze(
 const INVALID_ID_PATTERNS = ['/', '..', '#', '$', '[', ']'];
 
 /**
+ * Constrói o path lógico de uma coleção (sem id).
+ * Útil para listagens que precisam do path da collection inteira.
+ *
+ * @param {string} collection - Nome da coleção (deve estar em EC_COLLECTIONS)
+ * @returns {string}          - "energyCredits/{collection}"
+ * @throws {TypeError}        - Se collection for inválida
+ */
+export function buildEnergyCreditsCollectionPath(collection) {
+  if (!_ALLOWED.has(collection)) {
+    throw new TypeError(
+      `[buildEnergyCreditsCollectionPath] collection inválida: "${collection}". ` +
+      `Válidas: ${EC_COLLECTIONS.join(', ')}`,
+    );
+  }
+  return `${EC_ROOT}/${collection}`;
+}
+
+/**
  * Constrói o path lógico de um item em uma coleção.
  *
  * @param {string} collection - Nome da coleção (deve estar em EC_COLLECTIONS)

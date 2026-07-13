@@ -11,6 +11,7 @@ import {
   EC_ROOT,
   EC_PATHS,
   buildEnergyCreditsPath,
+  buildEnergyCreditsCollectionPath,
 } from './energy-credits-paths.js';
 
 // ── Runner ─────────────────────────────────────────────────────────────────
@@ -127,6 +128,44 @@ assertThrows(() => buildEnergyCreditsPath('generatingUnits', 'a$b'),       '5.7 
 assertThrows(() => buildEnergyCreditsPath('generatingUnits', 'a[b'),       '5.8 abre colchete');
 assertThrows(() => buildEnergyCreditsPath('generatingUnits', 'a]b'),       '5.9 fecha colchete');
 assertThrows(() => buildEnergyCreditsPath('generatingUnits', '  '),        '5.10 apenas espaços');
+
+// ── 6. buildEnergyCreditsCollectionPath ───────────────────────────────────
+
+section(6, 'buildEnergyCreditsCollectionPath');
+
+assert(
+  buildEnergyCreditsCollectionPath('generatingUnits') === 'energyCredits/generatingUnits',
+  '6.1 path de collection sem id',
+);
+assert(
+  buildEnergyCreditsCollectionPath('creditAuditLog') === 'energyCredits/creditAuditLog',
+  '6.2 creditAuditLog collection path',
+);
+
+// Todas as collections produzem path correto
+for (const col of EC_COLLECTIONS) {
+  assert(
+    buildEnergyCreditsCollectionPath(col) === `energyCredits/${col}`,
+    `6.3 ${col} collection path correto`,
+  );
+}
+
+// Compatibilidade: buildEnergyCreditsCollectionPath(col) === buildEnergyCreditsPath sem o /{id}
+assert(
+  buildEnergyCreditsCollectionPath('esaInvoices') + '/inv-001' === buildEnergyCreditsPath('esaInvoices', 'inv-001'),
+  '6.4 compatível com buildEnergyCreditsPath',
+);
+
+// Determinismo
+const cp1 = buildEnergyCreditsCollectionPath('monthlyReports');
+const cp2 = buildEnergyCreditsCollectionPath('monthlyReports');
+assert(cp1 === cp2, '6.5 determinístico');
+
+// Collection inválida rejeitada
+assertThrows(() => buildEnergyCreditsCollectionPath('creditos'),  '6.6 collection inválida rejeitada');
+assertThrows(() => buildEnergyCreditsCollectionPath(''),          '6.7 collection vazia rejeitada');
+assertThrows(() => buildEnergyCreditsCollectionPath(null),        '6.8 collection null rejeitada');
+assertThrows(() => buildEnergyCreditsCollectionPath(undefined),   '6.9 collection undefined rejeitada');
 
 // ── Resultado ─────────────────────────────────────────────────────────────
 
