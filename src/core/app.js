@@ -22,6 +22,7 @@ import { CRMReadModelIntegration,
          crmReadModel }            from '../read-models/crm/index.js';
 import { crmQueryService }         from '../queries/crm/index.js';
 import { SolanaCommercialContextBuilder } from '../contexts/solana/index.js';
+import { EnergyCreditsService }           from '../domains/energy/credits/index.js';
 
 class ESAApplication {
 
@@ -31,6 +32,7 @@ class ESAApplication {
     this.crmLegacyBridge          = null;
     this.crmReadModelHydrator     = null;
     this._solanaContextBuilder    = null;
+    this._energyCreditsService    = null;
   }
 
   initialize() {
@@ -159,6 +161,13 @@ class ESAApplication {
 
   getCRMManagementBrief(filters = {}, options = {}) {
     return crmQueryService.getManagementBrief(filters, options).toJSON();
+  }
+
+  getEnergyCreditsService() {
+    if (!this._energyCreditsService) {
+      this._energyCreditsService = new EnergyCreditsService();
+    }
+    return this._energyCreditsService;
   }
 
   getSolanaCommercialContext(filters = {}, options = {}) {
