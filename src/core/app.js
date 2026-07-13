@@ -23,6 +23,8 @@ import { CRMReadModelIntegration,
 import { crmQueryService }         from '../queries/crm/index.js';
 import { SolanaCommercialContextBuilder } from '../contexts/solana/index.js';
 import { EnergyCreditsService }           from '../domains/energy/credits/index.js';
+import { energyCreditsReadModel }         from '../read-models/energy-credits/index.js';
+import { energyCreditsQueryService }      from '../queries/energy-credits/index.js';
 
 class ESAApplication {
 
@@ -168,6 +170,66 @@ class ESAApplication {
       this._energyCreditsService = new EnergyCreditsService();
     }
     return this._energyCreditsService;
+  }
+
+  // ── Energy Credits Read Model ──────────────────────────────────────────────
+
+  hydrateEnergyCreditsReadModel(snapshot = {}, options = {}) {
+    return energyCreditsReadModel.hydrate(snapshot, options);
+  }
+
+  getEnergyCreditsReadModelStats() {
+    return energyCreditsReadModel.getStats();
+  }
+
+  // ── Energy Credits Queries ─────────────────────────────────────────────────
+
+  queryEnergyCreditsGeneratingUnit(id, options = {}) {
+    return energyCreditsQueryService.getGeneratingUnit(id, options).toJSON();
+  }
+
+  queryEnergyCreditsBeneficiaryUnit(id, options = {}) {
+    return energyCreditsQueryService.getBeneficiaryUnit(id, options).toJSON();
+  }
+
+  searchEnergyCreditsGeneratingUnits(filters = {}, options = {}) {
+    return energyCreditsQueryService.searchGeneratingUnits(filters, options).toJSON();
+  }
+
+  searchEnergyCreditsBeneficiaryUnits(filters = {}, options = {}) {
+    return energyCreditsQueryService.searchBeneficiaryUnits(filters, options).toJSON();
+  }
+
+  getEnergyCreditsMonthlyStatement(generatingUnitId, referenceMonth, options = {}) {
+    return energyCreditsQueryService.getMonthlyStatement(generatingUnitId, referenceMonth, options).toJSON();
+  }
+
+  getEnergyCreditsGeneratingUnitHistory(generatingUnitId, filters = {}, options = {}) {
+    return energyCreditsQueryService.getGeneratingUnitMonthlyHistory(generatingUnitId, filters, options).toJSON();
+  }
+
+  getEnergyCreditsBeneficiaryHistory(beneficiaryUnitId, filters = {}, options = {}) {
+    return energyCreditsQueryService.getBeneficiaryMonthlyHistory(beneficiaryUnitId, filters, options).toJSON();
+  }
+
+  getEnergyCreditsExecutiveSummary(filters = {}, options = {}) {
+    return energyCreditsQueryService.getExecutiveSummary(filters, options).toJSON();
+  }
+
+  getEnergyCreditsGeneratingUnitSummary(generatingUnitId, filters = {}, options = {}) {
+    return energyCreditsQueryService.getGeneratingUnitSummary(generatingUnitId, filters, options).toJSON();
+  }
+
+  getEnergyCreditsBeneficiarySummary(beneficiaryUnitId, filters = {}, options = {}) {
+    return energyCreditsQueryService.getBeneficiarySummary(beneficiaryUnitId, filters, options).toJSON();
+  }
+
+  getEnergyCreditsFinancialSummary(filters = {}, options = {}) {
+    return energyCreditsQueryService.getFinancialSummary(filters, options).toJSON();
+  }
+
+  getEnergyCreditsAlertsSummary(filters = {}, options = {}) {
+    return energyCreditsQueryService.getAlertsSummary(filters, options).toJSON();
   }
 
   getSolanaCommercialContext(filters = {}, options = {}) {
