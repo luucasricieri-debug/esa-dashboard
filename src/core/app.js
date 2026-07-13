@@ -26,6 +26,8 @@ import { EnergyCreditsService }           from '../domains/energy/credits/index.
 import { energyCreditsReadModel }         from '../read-models/energy-credits/index.js';
 import { energyCreditsQueryService }      from '../queries/energy-credits/index.js';
 import { energyCreditsReportService }     from '../reports/energy-credits/index.js';
+import { energyCreditsRepository,
+         energyCreditsRepositoryHydrator } from '../repositories/energy-credits/index.js';
 
 class ESAApplication {
 
@@ -256,6 +258,20 @@ class ESAApplication {
 
   buildEnergyCreditsEsaFinancialMonthlyReport(referenceMonth, options = {}) {
     return energyCreditsReportService.buildEsaFinancialMonthlyReport(referenceMonth, options).toJSON();
+  }
+
+  // ── Energy Credits Repository ──────────────────────────────────────────────
+
+  getEnergyCreditsRepository() {
+    return energyCreditsRepository;
+  }
+
+  getEnergyCreditsRepositoryStats() {
+    return energyCreditsRepository.getStats();
+  }
+
+  hydrateEnergyCreditsFromRepository(options = {}) {
+    return energyCreditsRepositoryHydrator.hydrateReadModel(options);
   }
 
 }
