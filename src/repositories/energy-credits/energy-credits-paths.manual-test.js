@@ -47,7 +47,7 @@ function section(n, title) {
 section(1, 'EC_COLLECTIONS');
 
 assert(Array.isArray(EC_COLLECTIONS),                    '1.1 EC_COLLECTIONS é array');
-assert(EC_COLLECTIONS.length === 11,                     '1.2 11 coleções');
+assert(EC_COLLECTIONS.length === 12,                     '1.2 12 coleções');
 assert(EC_COLLECTIONS.includes('generatingUnits'),       '1.3 generatingUnits presente');
 assert(EC_COLLECTIONS.includes('beneficiaryUnits'),      '1.4 beneficiaryUnits presente');
 assert(EC_COLLECTIONS.includes('creditAllocations'),     '1.5 creditAllocations presente');
@@ -58,6 +58,7 @@ assert(EC_COLLECTIONS.includes('creditDocuments'),       '1.9 creditDocuments pr
 assert(EC_COLLECTIONS.includes('creditAuditLog'),        '1.10 creditAuditLog presente');
 assert(EC_COLLECTIONS.includes('generatingUnitMonthlyRecords'), '1.11 generatingUnitMonthlyRecords presente');
 assert(EC_COLLECTIONS.includes('beneficiaryMonthlyRecords'),    '1.12 beneficiaryMonthlyRecords presente');
+assert(EC_COLLECTIONS.includes('utilityBillImports'),           '1.13 utilityBillImports presente');
 
 // ── 2. EC_ROOT e EC_PATHS ──────────────────────────────────────────────────
 
@@ -68,7 +69,7 @@ assert(typeof EC_PATHS === 'object' && EC_PATHS !== null, '2.2 EC_PATHS é objet
 assert(EC_PATHS.generatingUnits === 'energyCredits/generatingUnits',       '2.3 path generatingUnits');
 assert(EC_PATHS.creditAuditLog  === 'energyCredits/creditAuditLog',         '2.4 path creditAuditLog');
 assert(EC_PATHS.monthlyReports  === 'energyCredits/monthlyReports',         '2.5 path monthlyReports');
-assert(Object.keys(EC_PATHS).length === 11, '2.6 EC_PATHS tem 11 entradas');
+assert(Object.keys(EC_PATHS).length === 12, '2.6 EC_PATHS tem 12 entradas');
 
 // ── 3. buildEnergyCreditsPath — caminho válido ─────────────────────────────
 

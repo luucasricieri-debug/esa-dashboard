@@ -325,7 +325,7 @@ assert(Array.isArray(snap.data.creditAuditLog),          '10.5 creditAuditLog ar
 assert(snap.data.generatingUnits.some(u => u.id === 'gs-001'), '10.6 gs-001 no snapshot');
 assert(snap.metadata.source === 'energy-credits-firebase-repository', '10.7 metadata.source');
 assert(snap.metadata.referenceDate === '2024-06',        '10.8 metadata.referenceDate');
-assert(Object.keys(snap.data).length === 11,             '10.9 11 coleções no snapshot');
+assert(Object.keys(snap.data).length === 12,             '10.9 12 coleções no snapshot');
 
 // ── 11. Filtros ────────────────────────────────────────────────────────────
 

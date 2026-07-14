@@ -19,6 +19,7 @@ export const EC_COLLECTIONS = Object.freeze([
   'creditDocuments',
   'creditAuditLog',
   'beneficiaryCreditBalanceRecords',
+  'utilityBillImports',
 ]);
 
 const _ALLOWED = new Set(EC_COLLECTIONS);

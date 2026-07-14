@@ -71,6 +71,7 @@ export class EnergyCreditsMemoryRepository {
     this._creditDocuments                  = new Map();
     this._creditAuditLog                   = new Map();
     this._beneficiaryCreditBalanceRecords  = new Map();
+    this._utilityBillImports               = new Map();
     this._hydrateCount                     = 0;
     this._lastHydration                    = null;
   }
@@ -198,6 +199,12 @@ export class EnergyCreditsMemoryRepository {
 
   listCreditAuditLog(filters = {}) { return this._list(this._creditAuditLog, filters); }
 
+  // ── Utility Bill Imports ─────────────────────────────────────────────────
+
+  saveUtilityBillImport(record)          { return this._save(this._utilityBillImports, record); }
+  getUtilityBillImport(id)               { return this._get(this._utilityBillImports, id); }
+  listUtilityBillImports(filters = {})   { return this._list(this._utilityBillImports, filters); }
+
   // ── Snapshot ─────────────────────────────────────────────────────────────
 
   getSnapshot(options = {}) {
@@ -214,6 +221,7 @@ export class EnergyCreditsMemoryRepository {
       creditDocuments:                 toArr(this._creditDocuments),
       creditAuditLog:                  toArr(this._creditAuditLog),
       beneficiaryCreditBalanceRecords: toArr(this._beneficiaryCreditBalanceRecords),
+      utilityBillImports:              toArr(this._utilityBillImports),
     });
   }
 
@@ -248,6 +256,7 @@ export class EnergyCreditsMemoryRepository {
     run(snapshot.creditDocuments,                 this.saveCreditDocument.bind(this));
     run(snapshot.creditAuditLog,                  this.appendCreditAuditLog.bind(this));
     run(snapshot.beneficiaryCreditBalanceRecords, this.saveBeneficiaryCreditBalanceRecord.bind(this));
+    run(snapshot.utilityBillImports,              this.saveUtilityBillImport.bind(this));
 
     this._hydrateCount++;
     const result = { received, hydrated, skipped, replaced: replace, referenceDate: referenceDate || null };
@@ -269,6 +278,7 @@ export class EnergyCreditsMemoryRepository {
     this._creditDocuments.clear();
     this._creditAuditLog.clear();
     this._beneficiaryCreditBalanceRecords.clear();
+    this._utilityBillImports.clear();
     this._hydrateCount  = 0;
     this._lastHydration = null;
   }
@@ -289,6 +299,7 @@ export class EnergyCreditsMemoryRepository {
       creditDocumentCount:                   this._creditDocuments.size,
       creditAuditLogCount:                   this._creditAuditLog.size,
       beneficiaryCreditBalanceRecordCount:   this._beneficiaryCreditBalanceRecords.size,
+      utilityBillImportCount:                this._utilityBillImports.size,
       hydrateCount:                          this._hydrateCount,
       lastHydration:                         this._lastHydration ? Object.assign({}, this._lastHydration) : null,
     };

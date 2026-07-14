@@ -36,6 +36,9 @@ import { energyBillingEngine,
 import { consumptionAverageCalculator,
          creditAllocationPlanner,
          beneficiaryCreditBalanceCalculator } from '../domains/energy/credits/allocation/index.js';
+import { UtilityBillImportService,
+         buildBillingInputFromUtilityBillMonthlyRecord } from '../importers/energy-utility-bills/index.js';
+import { UtilityBillQueryService }            from '../queries/energy-utility-bills/index.js';
 
 class ESAApplication {
 
@@ -46,6 +49,8 @@ class ESAApplication {
     this.crmReadModelHydrator     = null;
     this._solanaContextBuilder    = null;
     this._energyCreditsService    = null;
+    this._utilityBillImportService = null;
+    this._utilityBillQueryService  = null;
   }
 
   initialize() {
@@ -343,6 +348,84 @@ class ESAApplication {
 
   getEnergyCreditsAllocationPlan(generatingUnitId, referenceMonth, options = {}) {
     return energyCreditsQueryService.getCreditAllocationPlan(generatingUnitId, referenceMonth, options).toJSON();
+  }
+
+  // ── Energy Utility Bill Import ─────────────────────────────────────────────
+
+  _ensureUtilityBillServices() {
+    if (!this._utilityBillImportService) {
+      this._utilityBillImportService = new UtilityBillImportService();
+      this._utilityBillQueryService  = new UtilityBillQueryService(this._utilityBillImportService);
+    }
+  }
+
+  getEnergyUtilityBillImportService() {
+    this._ensureUtilityBillServices();
+    return this._utilityBillImportService;
+  }
+
+  createEnergyUtilityBillImport(rawExtraction, options = {}) {
+    this._ensureUtilityBillServices();
+    return this._utilityBillImportService.createImport(rawExtraction, options);
+  }
+
+  matchEnergyUtilityBillImport(importId, beneficiaryUnits, options = {}) {
+    this._ensureUtilityBillServices();
+    return this._utilityBillImportService.matchImport(importId, beneficiaryUnits, options);
+  }
+
+  linkEnergyUtilityBillToBeneficiary(importId, beneficiaryUnitId, context = {}) {
+    this._ensureUtilityBillServices();
+    return this._utilityBillImportService.linkImportToBeneficiary(importId, beneficiaryUnitId, context);
+  }
+
+  prepareEnergyCreditsBeneficiaryFromUtilityBill(importId) {
+    this._ensureUtilityBillServices();
+    return this._utilityBillImportService.prepareBeneficiaryFromImport(importId);
+  }
+
+  reviewEnergyUtilityBillImport(importId, correctedData, options = {}) {
+    this._ensureUtilityBillServices();
+    return this._utilityBillImportService.reviewImport(importId, correctedData, options);
+  }
+
+  detectEnergyUtilityBillDuplicate(importId, existingMonthlyRecords, options = {}) {
+    this._ensureUtilityBillServices();
+    return this._utilityBillImportService.detectDuplicate(importId, existingMonthlyRecords, options);
+  }
+
+  confirmEnergyUtilityBillMonthlyRecord(importId, options = {}) {
+    this._ensureUtilityBillServices();
+    return this._utilityBillImportService.confirmMonthlyRecord(importId, options);
+  }
+
+  replaceEnergyUtilityBillMonthlyRecord(importId, replacementReason, options = {}) {
+    this._ensureUtilityBillServices();
+    return this._utilityBillImportService.replaceMonthlyRecord(importId, replacementReason, options);
+  }
+
+  discardEnergyUtilityBillImport(importId, options = {}) {
+    this._ensureUtilityBillServices();
+    return this._utilityBillImportService.discardImport(importId, options);
+  }
+
+  getEnergyUtilityBillImport(importId) {
+    this._ensureUtilityBillServices();
+    return this._utilityBillQueryService.getUtilityBillImport(importId);
+  }
+
+  searchEnergyUtilityBillImports(filters = {}) {
+    this._ensureUtilityBillServices();
+    return this._utilityBillQueryService.searchUtilityBillImports(filters);
+  }
+
+  getUnlinkedEnergyUtilityBills(filters = {}) {
+    this._ensureUtilityBillServices();
+    return this._utilityBillQueryService.getUnlinkedUtilityBills(filters);
+  }
+
+  buildEnergyBillingInputFromUtilityBillMonthlyRecord(monthlyRecord, context = {}) {
+    return buildBillingInputFromUtilityBillMonthlyRecord(monthlyRecord, context);
   }
 
 }

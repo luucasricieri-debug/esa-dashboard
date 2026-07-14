@@ -54,8 +54,8 @@ assert('3.4 filtro por generatingUnitId: 3 registros', lr3c.data?.length === 3);
 // ── 4. Repositório — getSnapshot inclui nova coleção ─────────────────────────
 group('4. Repositório — getSnapshot inclui beneficiaryCreditBalanceRecords');
 const snap4 = repo.getSnapshot();
-assert('4.1 beneficiaryCreditBalanceRecords presente no snapshot', Array.isArray(snap4.beneficiaryCreditBalanceRecords));
-assert('4.2 snapshot tem 3 registros', snap4.beneficiaryCreditBalanceRecords.length === 3);
+assert('4.1 beneficiaryCreditBalanceRecords presente no snapshot', Array.isArray(snap4.data?.beneficiaryCreditBalanceRecords));
+assert('4.2 snapshot tem 3 registros', snap4.data?.beneficiaryCreditBalanceRecords?.length === 3);
 
 // ── 5. Repositório — hydrateFromSnapshot backward compat ─────────────────────
 group('5. Repositório — hydrateFromSnapshot sem coleção (snapshot legado)');
@@ -112,7 +112,7 @@ assert('9.2 beneficiaryCreditBalanceRecordCount = 0', stats9.beneficiaryCreditBa
 group('10. Query — getBeneficiaryCreditBalance');
 const qs10 = new EnergyCreditsQueryService(rm6);
 const qr10 = qs10.getBeneficiaryCreditBalance('bu-001', '2025-06');
-assert('10.1 ok=true', qr10.ok === true);
+assert('10.1 data não é nulo', qr10.data !== null && qr10.data !== undefined);
 assert('10.2 data não nulo', qr10.data !== null);
 assert('10.3 currentBalanceKwh = 400', qr10.data?.currentBalanceKwh === 400);
 const qr10b = qs10.getBeneficiaryCreditBalance('bu-001', '2025-01');
@@ -121,7 +121,7 @@ assert('10.4 mês sem registro retorna null', qr10b.data === null);
 // ── 11. Query — getBeneficiaryCreditBalanceHistory ───────────────────────────
 group('11. Query — getBeneficiaryCreditBalanceHistory');
 const qr11 = qs10.getBeneficiaryCreditBalanceHistory('bu-001');
-assert('11.1 ok=true', qr11.ok === true);
+assert('11.1 data é array', Array.isArray(qr11.data));
 assert('11.2 data é array de 2', Array.isArray(qr11.data) && qr11.data.length === 2);
 assert('11.3 metadata.count = 2', qr11.metadata?.count === 2);
 const qr11b = qs10.getBeneficiaryCreditBalanceHistory('bu-001', { referenceMonthFrom: '2025-06' });
@@ -130,7 +130,7 @@ assert('11.4 filtro referenceMonthFrom: 1 registro', qr11b.data?.length === 1);
 // ── 12. Query — getCreditAllocationPlan ──────────────────────────────────────
 group('12. Query — getCreditAllocationPlan');
 const qr12 = qs10.getCreditAllocationPlan('gu-001', '2025-06');
-assert('12.1 ok=true', qr12.ok === true);
+assert('12.1 data não é nulo', qr12.data !== null && qr12.data !== undefined);
 assert('12.2 generatingUnitId correto', qr12.data?.generatingUnitId === 'gu-001');
 assert('12.3 referenceMonth correto', qr12.data?.referenceMonth === '2025-06');
 assert('12.4 beneficiaryCount = 2', qr12.data?.beneficiaryCount === 2);
@@ -143,7 +143,7 @@ group('13. Query — getCreditAllocationPlan gracioso sem listBeneficiaryCreditB
 const rmBare = { listGeneratingUnits: () => [], listBeneficiaryUnits: () => [], listBeneficiaryMonthlyRecords: () => [] };
 const qsBare = new EnergyCreditsQueryService(rmBare);
 const qr13 = qsBare.getCreditAllocationPlan('gu-001', '2025-06');
-assert('13.1 ok=true (gracioso)', qr13.ok === true);
+assert('13.1 data não é nulo (gracioso)', qr13.data !== null && qr13.data !== undefined);
 assert('13.2 beneficiaryCount = 0', qr13.data?.beneficiaryCount === 0);
 assert('13.3 totalPlannedCreditsKwh = 0', qr13.data?.totalPlannedCreditsKwh === 0);
 

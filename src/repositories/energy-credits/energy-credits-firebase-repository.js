@@ -257,6 +257,12 @@ export class EnergyCreditsFirebaseRepository {
   async getBeneficiaryCreditBalanceRecord(id)              { return this._get('beneficiaryCreditBalanceRecords', id); }
   async listBeneficiaryCreditBalanceRecords(filters = {})  { return this._list('beneficiaryCreditBalanceRecords', filters); }
 
+  // ── Utility Bill Imports ──────────────────────────────────────────────────
+
+  async saveUtilityBillImport(record)         { return this._save('utilityBillImports', record); }
+  async getUtilityBillImport(id)              { return this._get('utilityBillImports', id); }
+  async listUtilityBillImports(filters = {})  { return this._list('utilityBillImports', filters); }
+
   // ── Credit Audit Log ──────────────────────────────────────────────────────
 
   async appendCreditAuditLog(entry) {
@@ -280,15 +286,16 @@ export class EnergyCreditsFirebaseRepository {
     if (!this._hasClient()) return this._failNoClient('getSnapshot');
     const load = col => this._list(col, {}, col === 'creditDocuments');
     try {
-      const [gen, ben, genR, benR, alloc, sett, inv, rep, doc, audit, balRec] = await Promise.all([
+      const [gen, ben, genR, benR, alloc, sett, inv, rep, doc, audit, balRec, ubImports] = await Promise.all([
         load('generatingUnits'), load('beneficiaryUnits'),
         load('generatingUnitMonthlyRecords'), load('beneficiaryMonthlyRecords'),
         load('creditAllocations'), load('ownerSettlements'),
         load('esaInvoices'), load('monthlyReports'),
         load('creditDocuments'), load('creditAuditLog'),
         load('beneficiaryCreditBalanceRecords'),
+        load('utilityBillImports'),
       ]);
-      const failed = [gen, ben, genR, benR, alloc, sett, inv, rep, doc, audit, balRec].find(r => !r.ok);
+      const failed = [gen, ben, genR, benR, alloc, sett, inv, rep, doc, audit, balRec, ubImports].find(r => !r.ok);
       if (failed) return failed;
       return EnergyCreditsRepositoryResult.ok({
         generatingUnits:                 gen.data,
@@ -302,6 +309,7 @@ export class EnergyCreditsFirebaseRepository {
         creditDocuments:                 doc.data,
         creditAuditLog:                  audit.data,
         beneficiaryCreditBalanceRecords: balRec.data,
+        utilityBillImports:              ubImports.data,
       }, [], { source: SOURCE, referenceDate: options.referenceDate || null });
     } catch (e) {
       return this._failClientError(e, 'getSnapshot', 'all', '');
