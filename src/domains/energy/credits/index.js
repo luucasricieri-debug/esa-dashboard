@@ -35,3 +35,16 @@ export { EnergyCreditsResult } from './result.js';
 export { EnergyCreditsCalculator } from './calculator.js';
 export { EnergyCreditsValidator }  from './validator.js';
 export { EnergyCreditsService }    from './service.js';
+
+// Allocation layer
+export {
+  CreditAllocationResult,
+  ALLOCATION_ALERT_CODE,
+  ALLOCATION_THRESHOLDS,
+  BeneficiaryConsumptionAverageCalculator,
+  CreditAllocationPlanner,
+  BeneficiaryCreditBalanceCalculator,
+  consumptionAverageCalculator,
+  creditAllocationPlanner,
+  beneficiaryCreditBalanceCalculator,
+} from './allocation/index.js';

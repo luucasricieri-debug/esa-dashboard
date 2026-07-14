@@ -47,7 +47,7 @@ function section(n, title) {
 section(1, 'EC_COLLECTIONS');
 
 assert(Array.isArray(EC_COLLECTIONS),                    '1.1 EC_COLLECTIONS é array');
-assert(EC_COLLECTIONS.length === 10,                     '1.2 10 coleções');
+assert(EC_COLLECTIONS.length === 11,                     '1.2 11 coleções');
 assert(EC_COLLECTIONS.includes('generatingUnits'),       '1.3 generatingUnits presente');
 assert(EC_COLLECTIONS.includes('beneficiaryUnits'),      '1.4 beneficiaryUnits presente');
 assert(EC_COLLECTIONS.includes('creditAllocations'),     '1.5 creditAllocations presente');
@@ -68,7 +68,7 @@ assert(typeof EC_PATHS === 'object' && EC_PATHS !== null, '2.2 EC_PATHS é objet
 assert(EC_PATHS.generatingUnits === 'energyCredits/generatingUnits',       '2.3 path generatingUnits');
 assert(EC_PATHS.creditAuditLog  === 'energyCredits/creditAuditLog',         '2.4 path creditAuditLog');
 assert(EC_PATHS.monthlyReports  === 'energyCredits/monthlyReports',         '2.5 path monthlyReports');
-assert(Object.keys(EC_PATHS).length === 10, '2.6 EC_PATHS tem 10 entradas');
+assert(Object.keys(EC_PATHS).length === 11, '2.6 EC_PATHS tem 11 entradas');
 
 // ── 3. buildEnergyCreditsPath — caminho válido ─────────────────────────────
 

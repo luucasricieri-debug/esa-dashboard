@@ -137,7 +137,7 @@ test('contém cancelled', () => eq(STATEMENT_STATUS.CANCELLED, 'cancelled'));
 
 section('[4] CONSTANTES — ALERT_CODE');
 
-test('tem 9 códigos', () => eq(Object.keys(ALERT_CODE).length, 9));
+test('tem 13 códigos', () => eq(Object.keys(ALERT_CODE).length, 13));
 test('INSUFFICIENT_BALANCE definido', () => eq(ALERT_CODE.INSUFFICIENT_BALANCE, 'INSUFFICIENT_BALANCE'));
 test('MISSING_PRICE definido', () => eq(ALERT_CODE.MISSING_PRICE, 'MISSING_PRICE'));
 test('ALERT_SEVERITY tem 4 níveis', () => eq(Object.keys(ALERT_SEVERITY).length, 4));

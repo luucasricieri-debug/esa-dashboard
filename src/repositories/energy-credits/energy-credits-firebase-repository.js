@@ -251,6 +251,12 @@ export class EnergyCreditsFirebaseRepository {
   async getCreditDocument(id)              { return this._get('creditDocuments', id); }
   async listCreditDocuments(filters = {})  { return this._list('creditDocuments', filters, true); }
 
+  // ── Beneficiary Credit Balance Records ───────────────────────────────────
+
+  async saveBeneficiaryCreditBalanceRecord(record)         { return this._save('beneficiaryCreditBalanceRecords', record); }
+  async getBeneficiaryCreditBalanceRecord(id)              { return this._get('beneficiaryCreditBalanceRecords', id); }
+  async listBeneficiaryCreditBalanceRecords(filters = {})  { return this._list('beneficiaryCreditBalanceRecords', filters); }
+
   // ── Credit Audit Log ──────────────────────────────────────────────────────
 
   async appendCreditAuditLog(entry) {
@@ -274,26 +280,28 @@ export class EnergyCreditsFirebaseRepository {
     if (!this._hasClient()) return this._failNoClient('getSnapshot');
     const load = col => this._list(col, {}, col === 'creditDocuments');
     try {
-      const [gen, ben, genR, benR, alloc, sett, inv, rep, doc, audit] = await Promise.all([
+      const [gen, ben, genR, benR, alloc, sett, inv, rep, doc, audit, balRec] = await Promise.all([
         load('generatingUnits'), load('beneficiaryUnits'),
         load('generatingUnitMonthlyRecords'), load('beneficiaryMonthlyRecords'),
         load('creditAllocations'), load('ownerSettlements'),
         load('esaInvoices'), load('monthlyReports'),
         load('creditDocuments'), load('creditAuditLog'),
+        load('beneficiaryCreditBalanceRecords'),
       ]);
-      const failed = [gen, ben, genR, benR, alloc, sett, inv, rep, doc, audit].find(r => !r.ok);
+      const failed = [gen, ben, genR, benR, alloc, sett, inv, rep, doc, audit, balRec].find(r => !r.ok);
       if (failed) return failed;
       return EnergyCreditsRepositoryResult.ok({
-        generatingUnits:              gen.data,
-        beneficiaryUnits:             ben.data,
-        generatingUnitMonthlyRecords: genR.data,
-        beneficiaryMonthlyRecords:    benR.data,
-        creditAllocations:            alloc.data,
-        ownerSettlements:             sett.data,
-        esaInvoices:                  inv.data,
-        monthlyReports:               rep.data,
-        creditDocuments:              doc.data,
-        creditAuditLog:               audit.data,
+        generatingUnits:                 gen.data,
+        beneficiaryUnits:                ben.data,
+        generatingUnitMonthlyRecords:    genR.data,
+        beneficiaryMonthlyRecords:       benR.data,
+        creditAllocations:               alloc.data,
+        ownerSettlements:                sett.data,
+        esaInvoices:                     inv.data,
+        monthlyReports:                  rep.data,
+        creditDocuments:                 doc.data,
+        creditAuditLog:                  audit.data,
+        beneficiaryCreditBalanceRecords: balRec.data,
       }, [], { source: SOURCE, referenceDate: options.referenceDate || null });
     } catch (e) {
       return this._failClientError(e, 'getSnapshot', 'all', '');

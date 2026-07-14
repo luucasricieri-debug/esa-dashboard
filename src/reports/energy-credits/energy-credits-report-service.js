@@ -10,6 +10,7 @@
 
 import { EnergyCreditsQueryResult } from '../../queries/energy-credits/energy-credits-query-result.js';
 import { REPORT_VERSION, REPORT_TYPE, DISTRIBUTION_DEFAULTS } from './report-types.js';
+import { roundKwh, roundMoney }     from '../../domains/energy/credits/rounding.js';
 
 // ── Helpers de módulo ─────────────────────────────────────────────────────────
 
@@ -86,8 +87,9 @@ export class EnergyCreditsReportService {
     const alertsSum = this._qs.getAlertsSummary({ ...filters, ...genGid }, qOpts).data;
     const genRec    = this._qs.getGeneratingUnitMonthlyHistory(generatingUnitId, filters, qOpts).data[0] || null;
     const bItems    = this._buildBeneficiaryItems(benUnits, referenceMonth, qOpts);
+    const creditDst = this._buildCreditDestinations(benUnits, referenceMonth, qOpts);
     const alerts    = alertsSum.alerts;
-    const SECTIONS  = ['identification', 'generationAndBalance', 'beneficiaryConsumption', 'ownerSettlement', 'alerts', 'documentsPlaceholder'];
+    const SECTIONS  = ['identification', 'generationAndBalance', 'beneficiaryConsumption', 'creditDestinations', 'ownerSettlement', 'alerts', 'documentsPlaceholder'];
 
     const report = _sanitize({
       reportVersion: REPORT_VERSION,
@@ -97,7 +99,7 @@ export class EnergyCreditsReportService {
       target:        this._ownerTarget(unit),
       title:         `Relatório Mensal do Proprietário — ${unit.name} — ${referenceMonth}`,
       summary:       this._ownerSummary(unit, stmt, genRec, fin, referenceMonth),
-      sections:      this._ownerSections(unit, stmt, genRec, fin, alerts, bItems, referenceMonth),
+      sections:      this._ownerSections(unit, stmt, genRec, fin, alerts, bItems, referenceMonth, creditDst),
       totals:        this._ownerTotals(stmt, fin),
       alerts,
       distribution:  Object.assign({}, DISTRIBUTION_DEFAULTS),
@@ -135,14 +137,15 @@ export class EnergyCreditsReportService {
     };
   }
 
-  _ownerSections(unit, stmt, genRec, fin, alerts, bItems, referenceMonth) {
+  _ownerSections(unit, stmt, genRec, fin, alerts, bItems, referenceMonth, creditDst) {
     return {
-      identification:       this._genIdentification(unit),
-      generationAndBalance: this._genBalance(stmt, referenceMonth),
+      identification:         this._genIdentification(unit),
+      generationAndBalance:   this._genBalance(stmt, referenceMonth),
       beneficiaryConsumption: { count: bItems.length, beneficiaries: bItems },
-      ownerSettlement:      this._ownerSettlement(genRec, fin),
-      alerts:               { count: alerts.length, items: alerts },
-      documentsPlaceholder: { pdfReport: null, signed: null, attachments: [] },
+      creditDestinations:     creditDst,
+      ownerSettlement:        this._ownerSettlement(genRec, fin),
+      alerts:                 { count: alerts.length, items: alerts },
+      documentsPlaceholder:   { pdfReport: null, signed: null, attachments: [] },
     };
   }
 
@@ -217,6 +220,43 @@ export class EnergyCreditsReportService {
     });
   }
 
+  _buildCreditDestinations(benUnits, referenceMonth, qOpts) {
+    const items = benUnits
+      .map(u => {
+        const hist = this._qs.getBeneficiaryMonthlyHistory(u.id, { referenceMonth }, qOpts).data;
+        const rec  = hist.length > 0 ? hist[0] : null;
+        const bal  = this._qs.getBeneficiaryCreditBalance
+          ? this._qs.getBeneficiaryCreditBalance(u.id, referenceMonth, qOpts).data
+          : null;
+        return {
+          beneficiaryUnitId:     u.id,
+          beneficiaryName:       u.name,
+          beneficiaryUc:         u.uc,
+          utilityCompany:        u.utilityCompany,
+          allocationPercentage:  bal ? bal.allocationPercentage : null,
+          creditsReceivedKwh:    bal ? bal.creditsReceivedKwh   : null,
+          monthlyConsumptionKwh: rec ? rec.monthlyConsumptionKwh : null,
+          creditsCompensatedKwh: bal ? bal.creditsCompensatedKwh : (rec ? rec.compensatedKwh : null),
+          previousBalanceKwh:    bal ? bal.previousBalanceKwh   : null,
+          currentBalanceKwh:     bal ? bal.currentBalanceKwh    : null,
+          coverageMonths:        bal ? bal.coverageMonths        : null,
+        };
+      })
+      .sort((a, b) => (a.beneficiaryUnitId || '').localeCompare(b.beneficiaryUnitId || ''));
+
+    const sum = (field) => roundKwh(items.reduce((s, i) => s + (i[field] || 0), 0));
+    return {
+      items,
+      summary: {
+        beneficiaryCount:                items.length,
+        totalCreditsDistributedKwh:      sum('creditsReceivedKwh'),
+        totalBeneficiaryConsumptionKwh:  sum('monthlyConsumptionKwh'),
+        totalCreditsCompensatedKwh:      sum('creditsCompensatedKwh'),
+        totalBeneficiaryCreditBalanceKwh: sum('currentBalanceKwh'),
+      },
+    };
+  }
+
   // ── Beneficiary Monthly Report ─────────────────────────────────────────────
 
   buildBeneficiaryMonthlyReport(beneficiaryUnitId, referenceMonth, options = {}) {
@@ -232,8 +272,9 @@ export class EnergyCreditsReportService {
     const rec     = hist.length > 0 ? hist[0] : null;
     const aFilters = { ...filters, generatingUnitId: unit.generatingUnitId };
     const alerts  = this._qs.getAlertsSummary(aFilters, qOpts).data.alerts;
-    const billingSnapshot = options.billingSnapshot || null;
-    const SECTIONS = ['identification', 'consumption', 'billingComparison', 'savings', 'payment', 'alerts', 'documentsPlaceholder'];
+    const billingSnapshot   = options.billingSnapshot           || null;
+    const savingsHistory    = options.beneficiarySavingsHistory || null;
+    const SECTIONS = ['identification', 'consumption', 'creditBalance', 'billingComparison', 'savings', 'savingsHistory', 'settlement', 'payment', 'alerts', 'documentsPlaceholder'];
 
     const report = _sanitize({
       reportVersion: REPORT_VERSION,
@@ -243,7 +284,7 @@ export class EnergyCreditsReportService {
       target:        this._benTarget(unit),
       title:         `Relatório Mensal da Unidade Beneficiária — ${unit.name} — ${referenceMonth}`,
       summary:       this._benSummary(unit, rec, referenceMonth),
-      sections:      this._benSections(unit, rec, alerts, referenceMonth, billingSnapshot),
+      sections:      this._benSections(unit, rec, alerts, referenceMonth, billingSnapshot, savingsHistory),
       totals:        this._benTotals(rec),
       alerts,
       billingSnapshot,
@@ -289,14 +330,20 @@ export class EnergyCreditsReportService {
     };
   }
 
-  _benSections(unit, rec, alerts, referenceMonth, billingSnapshot = null) {
+  _benSections(unit, rec, alerts, referenceMonth, billingSnapshot = null, savingsHistory = null) {
+    const creditBal = this._qs.getBeneficiaryCreditBalance
+      ? this._qs.getBeneficiaryCreditBalance(unit.id, referenceMonth).data
+      : null;
     return {
-      identification:     this._benIdentification(unit),
-      consumption:        this._consumptionSection(rec),
-      billingComparison:  this._billingComparisonSection(rec, billingSnapshot),
-      savings:            this._savingsSection(rec, billingSnapshot),
-      payment:            this._paymentSection(rec),
-      alerts:             { count: alerts.length, items: alerts },
+      identification:      this._benIdentification(unit),
+      consumption:         this._consumptionSection(rec),
+      creditBalance:       this._creditBalanceSection(creditBal),
+      billingComparison:   this._billingComparisonSection(rec, billingSnapshot),
+      savings:             this._savingsSection(rec, billingSnapshot),
+      savingsHistory:      this._savingsHistorySection(savingsHistory, rec),
+      settlement:          this._settlementSection(billingSnapshot),
+      payment:             this._paymentSection(rec),
+      alerts:              { count: alerts.length, items: alerts },
       documentsPlaceholder: { pdfReport: null, signed: null, attachments: [] },
     };
   }
@@ -333,6 +380,53 @@ export class EnergyCreditsReportService {
       compensatedKwh:        rec ? rec.compensatedKwh : null,
       pendingKwh:            rec ? rec.pendingKwh : null,
       residualKwh:           rec ? rec.residualKwh : null,
+    };
+  }
+
+  _creditBalanceSection(bal) {
+    if (!bal) return { source: 'unavailable' };
+    return {
+      source:                        'beneficiary-credit-balance-record',
+      previousBalanceKwh:            bal.previousBalanceKwh,
+      creditsReceivedKwh:            bal.creditsReceivedKwh,
+      creditsCompensatedKwh:         bal.creditsCompensatedKwh,
+      positiveAdjustmentsKwh:        bal.positiveAdjustmentsKwh,
+      negativeAdjustmentsKwh:        bal.negativeAdjustmentsKwh,
+      currentBalanceKwh:             bal.currentBalanceKwh,
+      averageMonthlyConsumptionKwh:  bal.averageMonthlyConsumptionKwh,
+      preventiveMarginPercentage:    bal.preventiveMarginPercentage,
+      targetCreditKwh:               bal.targetCreditKwh,
+      allocationPercentage:          bal.allocationPercentage,
+      coverageMonths:                bal.coverageMonths,
+    };
+  }
+
+  _savingsHistorySection(savingsHistory, rec) {
+    if (!Array.isArray(savingsHistory) || savingsHistory.length === 0) {
+      return { source: 'unavailable', currentMonthSavings: rec ? rec.monthlyDiscount : null };
+    }
+    const sorted = [...savingsHistory].sort((a, b) => (a.referenceMonth || '').localeCompare(b.referenceMonth || ''));
+    const first  = sorted[0];
+    const last   = sorted[sorted.length - 1];
+    const accumulated = sorted.reduce((s, snap) => s + (snap.monthlySavings ?? snap.economiaMensal ?? 0), 0);
+    return {
+      source:                      'savings-history',
+      currentMonthSavings:         last.monthlySavings ?? last.economiaMensal ?? null,
+      accumulatedSavings:          roundMoney(accumulated),
+      customerSinceReferenceMonth: first.referenceMonth || null,
+      monthsAsCustomer:            sorted.length,
+    };
+  }
+
+  _settlementSection(billingSnapshot) {
+    const r = billingSnapshot && billingSnapshot.settlementRecipient;
+    if (!r) return { source: 'unavailable' };
+    return {
+      source:            'billing-snapshot',
+      recipientName:     r.recipientName     || null,
+      recipientDocument: r.recipientDocument || null,
+      pixKey:            r.pixKey            || null,
+      pixKeyType:        r.pixKeyType        || null,
     };
   }
 

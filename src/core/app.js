@@ -33,6 +33,9 @@ import { energyCreditsImportService,
          EnergyCreditsImportService }        from '../importers/energy-credits/index.js';
 import { energyBillingEngine,
          EnergyBillingEngine }               from '../engines/energy-billing/index.js';
+import { consumptionAverageCalculator,
+         creditAllocationPlanner,
+         beneficiaryCreditBalanceCalculator } from '../domains/energy/credits/allocation/index.js';
 
 class ESAApplication {
 
@@ -314,6 +317,32 @@ class ESAApplication {
 
   calculateEnergyBeneficiaryBilling(input = {}) {
     return energyBillingEngine.calculateBeneficiaryBilling(input);
+  }
+
+  // ── Energy Credits Allocation & Balance ────────────────────────────────────
+
+  calculateEnergyCreditsConsumptionAverage(input = {}) {
+    return consumptionAverageCalculator.calculate(input);
+  }
+
+  calculateEnergyCreditsAllocationPlan(input = {}) {
+    return creditAllocationPlanner.planAllocation(input);
+  }
+
+  calculateEnergyCreditsBeneficiaryBalance(input = {}) {
+    return beneficiaryCreditBalanceCalculator.calculate(input);
+  }
+
+  getEnergyCreditsBeneficiaryCreditBalance(beneficiaryUnitId, referenceMonth, options = {}) {
+    return energyCreditsQueryService.getBeneficiaryCreditBalance(beneficiaryUnitId, referenceMonth, options).toJSON();
+  }
+
+  getEnergyCreditsBeneficiaryCreditBalanceHistory(beneficiaryUnitId, filters = {}, options = {}) {
+    return energyCreditsQueryService.getBeneficiaryCreditBalanceHistory(beneficiaryUnitId, filters, options).toJSON();
+  }
+
+  getEnergyCreditsAllocationPlan(generatingUnitId, referenceMonth, options = {}) {
+    return energyCreditsQueryService.getCreditAllocationPlan(generatingUnitId, referenceMonth, options).toJSON();
   }
 
 }

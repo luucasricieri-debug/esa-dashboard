@@ -60,18 +60,19 @@ function _applyFilters(items, filters) {
 export class EnergyCreditsMemoryRepository {
 
   constructor() {
-    this._generatingUnits              = new Map();
-    this._beneficiaryUnits             = new Map();
-    this._generatingUnitMonthlyRecords = new Map();
-    this._beneficiaryMonthlyRecords    = new Map();
-    this._creditAllocations            = new Map();
-    this._ownerSettlements             = new Map();
-    this._esaInvoices                  = new Map();
-    this._monthlyReports               = new Map();
-    this._creditDocuments              = new Map();
-    this._creditAuditLog               = new Map();
-    this._hydrateCount                 = 0;
-    this._lastHydration                = null;
+    this._generatingUnits                  = new Map();
+    this._beneficiaryUnits                 = new Map();
+    this._generatingUnitMonthlyRecords     = new Map();
+    this._beneficiaryMonthlyRecords        = new Map();
+    this._creditAllocations                = new Map();
+    this._ownerSettlements                 = new Map();
+    this._esaInvoices                      = new Map();
+    this._monthlyReports                   = new Map();
+    this._creditDocuments                  = new Map();
+    this._creditAuditLog                   = new Map();
+    this._beneficiaryCreditBalanceRecords  = new Map();
+    this._hydrateCount                     = 0;
+    this._lastHydration                    = null;
   }
 
   // ── Helpers privados ─────────────────────────────────────────────────────
@@ -169,6 +170,14 @@ export class EnergyCreditsMemoryRepository {
 
   // ── Credit Audit Log ─────────────────────────────────────────────────────
 
+  // ── Beneficiary Credit Balance Records ──────────────────────────────────────
+
+  saveBeneficiaryCreditBalanceRecord(record)          { return this._save(this._beneficiaryCreditBalanceRecords, record); }
+  getBeneficiaryCreditBalanceRecord(id)               { return this._get(this._beneficiaryCreditBalanceRecords, id); }
+  listBeneficiaryCreditBalanceRecords(filters = {})   { return this._list(this._beneficiaryCreditBalanceRecords, filters); }
+
+  // ── Credit Audit Log ─────────────────────────────────────────────────────
+
   appendCreditAuditLog(entry) {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
       return this._failRequired('entry');
@@ -194,16 +203,17 @@ export class EnergyCreditsMemoryRepository {
   getSnapshot(options = {}) {
     const toArr = map => Array.from(map.values()).map(v => Object.assign({}, v));
     return EnergyCreditsRepositoryResult.ok({
-      generatingUnits:              toArr(this._generatingUnits),
-      beneficiaryUnits:             toArr(this._beneficiaryUnits),
-      generatingUnitMonthlyRecords: toArr(this._generatingUnitMonthlyRecords),
-      beneficiaryMonthlyRecords:    toArr(this._beneficiaryMonthlyRecords),
-      creditAllocations:            toArr(this._creditAllocations),
-      ownerSettlements:             toArr(this._ownerSettlements),
-      esaInvoices:                  toArr(this._esaInvoices),
-      monthlyReports:               toArr(this._monthlyReports),
-      creditDocuments:              toArr(this._creditDocuments),
-      creditAuditLog:               toArr(this._creditAuditLog),
+      generatingUnits:                 toArr(this._generatingUnits),
+      beneficiaryUnits:                toArr(this._beneficiaryUnits),
+      generatingUnitMonthlyRecords:    toArr(this._generatingUnitMonthlyRecords),
+      beneficiaryMonthlyRecords:       toArr(this._beneficiaryMonthlyRecords),
+      creditAllocations:               toArr(this._creditAllocations),
+      ownerSettlements:                toArr(this._ownerSettlements),
+      esaInvoices:                     toArr(this._esaInvoices),
+      monthlyReports:                  toArr(this._monthlyReports),
+      creditDocuments:                 toArr(this._creditDocuments),
+      creditAuditLog:                  toArr(this._creditAuditLog),
+      beneficiaryCreditBalanceRecords: toArr(this._beneficiaryCreditBalanceRecords),
     });
   }
 
@@ -227,16 +237,17 @@ export class EnergyCreditsMemoryRepository {
       }
     };
 
-    run(snapshot.generatingUnits,              this.saveGeneratingUnit.bind(this));
-    run(snapshot.beneficiaryUnits,             this.saveBeneficiaryUnit.bind(this));
-    run(snapshot.generatingUnitMonthlyRecords, this.saveGeneratingUnitMonthlyRecord.bind(this));
-    run(snapshot.beneficiaryMonthlyRecords,    this.saveBeneficiaryMonthlyRecord.bind(this));
-    run(snapshot.creditAllocations,            this.saveCreditAllocation.bind(this));
-    run(snapshot.ownerSettlements,             this.saveOwnerSettlement.bind(this));
-    run(snapshot.esaInvoices,                  this.saveEsaInvoice.bind(this));
-    run(snapshot.monthlyReports,               this.saveMonthlyReport.bind(this));
-    run(snapshot.creditDocuments,              this.saveCreditDocument.bind(this));
-    run(snapshot.creditAuditLog,               this.appendCreditAuditLog.bind(this));
+    run(snapshot.generatingUnits,                 this.saveGeneratingUnit.bind(this));
+    run(snapshot.beneficiaryUnits,                this.saveBeneficiaryUnit.bind(this));
+    run(snapshot.generatingUnitMonthlyRecords,    this.saveGeneratingUnitMonthlyRecord.bind(this));
+    run(snapshot.beneficiaryMonthlyRecords,       this.saveBeneficiaryMonthlyRecord.bind(this));
+    run(snapshot.creditAllocations,               this.saveCreditAllocation.bind(this));
+    run(snapshot.ownerSettlements,                this.saveOwnerSettlement.bind(this));
+    run(snapshot.esaInvoices,                     this.saveEsaInvoice.bind(this));
+    run(snapshot.monthlyReports,                  this.saveMonthlyReport.bind(this));
+    run(snapshot.creditDocuments,                 this.saveCreditDocument.bind(this));
+    run(snapshot.creditAuditLog,                  this.appendCreditAuditLog.bind(this));
+    run(snapshot.beneficiaryCreditBalanceRecords, this.saveBeneficiaryCreditBalanceRecord.bind(this));
 
     this._hydrateCount++;
     const result = { received, hydrated, skipped, replaced: replace, referenceDate: referenceDate || null };
@@ -257,6 +268,7 @@ export class EnergyCreditsMemoryRepository {
     this._monthlyReports.clear();
     this._creditDocuments.clear();
     this._creditAuditLog.clear();
+    this._beneficiaryCreditBalanceRecords.clear();
     this._hydrateCount  = 0;
     this._lastHydration = null;
   }
@@ -265,19 +277,20 @@ export class EnergyCreditsMemoryRepository {
 
   getStats() {
     return {
-      type:                             'memory',
-      generatingUnitCount:              this._generatingUnits.size,
-      beneficiaryUnitCount:             this._beneficiaryUnits.size,
-      generatingUnitMonthlyRecordCount: this._generatingUnitMonthlyRecords.size,
-      beneficiaryMonthlyRecordCount:    this._beneficiaryMonthlyRecords.size,
-      creditAllocationCount:            this._creditAllocations.size,
-      ownerSettlementCount:             this._ownerSettlements.size,
-      esaInvoiceCount:                  this._esaInvoices.size,
-      monthlyReportCount:               this._monthlyReports.size,
-      creditDocumentCount:              this._creditDocuments.size,
-      creditAuditLogCount:              this._creditAuditLog.size,
-      hydrateCount:                     this._hydrateCount,
-      lastHydration:                    this._lastHydration ? Object.assign({}, this._lastHydration) : null,
+      type:                                  'memory',
+      generatingUnitCount:                   this._generatingUnits.size,
+      beneficiaryUnitCount:                  this._beneficiaryUnits.size,
+      generatingUnitMonthlyRecordCount:      this._generatingUnitMonthlyRecords.size,
+      beneficiaryMonthlyRecordCount:         this._beneficiaryMonthlyRecords.size,
+      creditAllocationCount:                 this._creditAllocations.size,
+      ownerSettlementCount:                  this._ownerSettlements.size,
+      esaInvoiceCount:                       this._esaInvoices.size,
+      monthlyReportCount:                    this._monthlyReports.size,
+      creditDocumentCount:                   this._creditDocuments.size,
+      creditAuditLogCount:                   this._creditAuditLog.size,
+      beneficiaryCreditBalanceRecordCount:   this._beneficiaryCreditBalanceRecords.size,
+      hydrateCount:                          this._hydrateCount,
+      lastHydration:                         this._lastHydration ? Object.assign({}, this._lastHydration) : null,
     };
   }
 }

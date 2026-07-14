@@ -65,16 +65,17 @@ function _normalizeStatementMetadata(raw) {
 export class EnergyCreditsReadModel {
 
   constructor() {
-    this._generatingUnits              = new Map();
-    this._beneficiaryUnits             = new Map();
-    this._generatingUnitMonthlyRecords = new Map();
-    this._beneficiaryMonthlyRecords    = new Map();
-    this._creditAllocations            = new Map();
-    this._ownerSettlements             = new Map();
-    this._esaInvoices                  = new Map();
-    this._monthlyStatements            = new Map();
-    this._hydrationCount               = 0;
-    this._lastHydration                = null;
+    this._generatingUnits                  = new Map();
+    this._beneficiaryUnits                 = new Map();
+    this._generatingUnitMonthlyRecords     = new Map();
+    this._beneficiaryMonthlyRecords        = new Map();
+    this._creditAllocations                = new Map();
+    this._ownerSettlements                 = new Map();
+    this._esaInvoices                      = new Map();
+    this._monthlyStatements                = new Map();
+    this._beneficiaryCreditBalanceRecords  = new Map();
+    this._hydrationCount                   = 0;
+    this._lastHydration                    = null;
   }
 
   // ── Hydrate / Clear ────────────────────────────────────────────────────────
@@ -95,14 +96,15 @@ export class EnergyCreditsReadModel {
       }
     };
 
-    run(snapshot.generatingUnits,              this.upsertGeneratingUnit.bind(this));
-    run(snapshot.beneficiaryUnits,             this.upsertBeneficiaryUnit.bind(this));
-    run(snapshot.generatingUnitMonthlyRecords, this.upsertGeneratingUnitMonthlyRecord.bind(this));
-    run(snapshot.beneficiaryMonthlyRecords,    this.upsertBeneficiaryMonthlyRecord.bind(this));
-    run(snapshot.creditAllocations,            this.upsertCreditAllocation.bind(this));
-    run(snapshot.ownerSettlements,             this.upsertOwnerSettlement.bind(this));
-    run(snapshot.esaInvoices,                  this.upsertEsaInvoice.bind(this));
-    run(snapshot.monthlyStatements,            this.upsertMonthlyStatement.bind(this));
+    run(snapshot.generatingUnits,                 this.upsertGeneratingUnit.bind(this));
+    run(snapshot.beneficiaryUnits,                this.upsertBeneficiaryUnit.bind(this));
+    run(snapshot.generatingUnitMonthlyRecords,    this.upsertGeneratingUnitMonthlyRecord.bind(this));
+    run(snapshot.beneficiaryMonthlyRecords,       this.upsertBeneficiaryMonthlyRecord.bind(this));
+    run(snapshot.creditAllocations,               this.upsertCreditAllocation.bind(this));
+    run(snapshot.ownerSettlements,                this.upsertOwnerSettlement.bind(this));
+    run(snapshot.esaInvoices,                     this.upsertEsaInvoice.bind(this));
+    run(snapshot.monthlyStatements,               this.upsertMonthlyStatement.bind(this));
+    run(snapshot.beneficiaryCreditBalanceRecords, this.upsertBeneficiaryCreditBalanceRecord.bind(this));
 
     this._hydrationCount++;
     const result = { received, hydrated, skipped, replaced: replace, referenceDate: referenceDate || null };
@@ -119,21 +121,23 @@ export class EnergyCreditsReadModel {
     this._ownerSettlements.clear();
     this._esaInvoices.clear();
     this._monthlyStatements.clear();
+    this._beneficiaryCreditBalanceRecords.clear();
     this._lastHydration   = null;
     this._hydrationCount  = 0;
   }
 
   getStats() {
     return {
-      generatingUnitCount:              this._generatingUnits.size,
-      beneficiaryUnitCount:             this._beneficiaryUnits.size,
-      generatingUnitMonthlyRecordCount: this._generatingUnitMonthlyRecords.size,
-      beneficiaryMonthlyRecordCount:    this._beneficiaryMonthlyRecords.size,
-      creditAllocationCount:            this._creditAllocations.size,
-      ownerSettlementCount:             this._ownerSettlements.size,
-      esaInvoiceCount:                  this._esaInvoices.size,
-      monthlyStatementCount:            this._monthlyStatements.size,
-      hydrationCount:                   this._hydrationCount,
+      generatingUnitCount:                  this._generatingUnits.size,
+      beneficiaryUnitCount:                 this._beneficiaryUnits.size,
+      generatingUnitMonthlyRecordCount:     this._generatingUnitMonthlyRecords.size,
+      beneficiaryMonthlyRecordCount:        this._beneficiaryMonthlyRecords.size,
+      creditAllocationCount:                this._creditAllocations.size,
+      ownerSettlementCount:                 this._ownerSettlements.size,
+      esaInvoiceCount:                      this._esaInvoices.size,
+      monthlyStatementCount:                this._monthlyStatements.size,
+      beneficiaryCreditBalanceRecordCount:  this._beneficiaryCreditBalanceRecords.size,
+      hydrationCount:                       this._hydrationCount,
       lastHydration: this._lastHydration ? Object.assign({}, this._lastHydration) : null,
     };
   }
@@ -464,6 +468,60 @@ export class EnergyCreditsReadModel {
     items = _applyMonthFilter(items, filters);
     if (filters.generatingUnitId != null) items = items.filter(s => s.generatingUnitId === filters.generatingUnitId);
     if (filters.status           != null) items = items.filter(s => (s.metadata && s.metadata.status) === filters.status);
+    items.sort((a, b) => (a.referenceMonth || '').localeCompare(b.referenceMonth || ''));
+    return items;
+  }
+
+  // ── Upserts — Beneficiary Credit Balance Record ────────────────────────────
+
+  upsertBeneficiaryCreditBalanceRecord(record) {
+    if (!record || typeof record !== 'object') return false;
+    const bid   = _str(record.beneficiaryUnitId);
+    const month = _str(record.referenceMonth);
+    if (!bid || !month || !MONTH_RE.test(month)) return false;
+    const key = _str(record.id) || `beneficiary-credit-balance-${bid}-${month}`;
+    this._beneficiaryCreditBalanceRecords.set(key, this._normalizeBalanceRecord(record));
+    return true;
+  }
+
+  _normalizeBalanceRecord(r) {
+    return {
+      id:                           _str(r.id),
+      beneficiaryUnitId:            _str(r.beneficiaryUnitId),
+      generatingUnitId:             _str(r.generatingUnitId),
+      beneficiaryUc:                _str(r.beneficiaryUc),
+      referenceMonth:               _str(r.referenceMonth),
+      previousBalanceKwh:           _num(r.previousBalanceKwh),
+      creditsReceivedKwh:           _num(r.creditsReceivedKwh),
+      creditsCompensatedKwh:        _num(r.creditsCompensatedKwh),
+      positiveAdjustmentsKwh:       _num(r.positiveAdjustmentsKwh),
+      negativeAdjustmentsKwh:       _num(r.negativeAdjustmentsKwh),
+      currentBalanceKwh:            _num(r.currentBalanceKwh),
+      averageMonthlyConsumptionKwh: _num(r.averageMonthlyConsumptionKwh),
+      preventiveMarginPercentage:   _num(r.preventiveMarginPercentage),
+      targetCreditKwh:              _num(r.targetCreditKwh),
+      allocationPercentage:         _num(r.allocationPercentage),
+      coverageMonths:               _num(r.coverageMonths),
+      status:                       _str(r.status),
+      alerts: Array.isArray(r.alerts)
+        ? r.alerts.map(a => ({ code: _str(a.code), severity: _str(a.severity), message: _str(a.message) }))
+        : [],
+      metadata: (r.metadata && typeof r.metadata === 'object' && !Array.isArray(r.metadata))
+        ? Object.assign({}, r.metadata) : {},
+    };
+  }
+
+  getBeneficiaryCreditBalanceRecord(id) {
+    const rec = this._beneficiaryCreditBalanceRecords.get(String(id));
+    return rec ? Object.assign({}, rec) : null;
+  }
+
+  listBeneficiaryCreditBalanceRecords(filters = {}) {
+    let items = Array.from(this._beneficiaryCreditBalanceRecords.values()).map(r => Object.assign({}, r));
+    items = _applyMonthFilter(items, filters);
+    if (filters.beneficiaryUnitId != null) items = items.filter(r => r.beneficiaryUnitId === filters.beneficiaryUnitId);
+    if (filters.generatingUnitId  != null) items = items.filter(r => r.generatingUnitId  === filters.generatingUnitId);
+    if (filters.status            != null) items = items.filter(r => r.status            === filters.status);
     items.sort((a, b) => (a.referenceMonth || '').localeCompare(b.referenceMonth || ''));
     return items;
   }

@@ -6,8 +6,9 @@
  * Sem estado próprio. Sem Firebase. Sem efeitos colaterais.
  */
 
-import { EnergyCreditsQueryResult } from './energy-credits-query-result.js';
-import { roundKwh, roundMoney }     from '../../domains/energy/credits/rounding.js';
+import { EnergyCreditsQueryResult }            from './energy-credits-query-result.js';
+import { roundKwh, roundMoney }                from '../../domains/energy/credits/rounding.js';
+import { BeneficiaryConsumptionAverageCalculator } from '../../domains/energy/credits/allocation/consumption-average-calculator.js';
 
 // ── Helpers de módulo ─────────────────────────────────────────────────────────
 
@@ -47,7 +48,8 @@ function _sortAlerts(alerts) {
 export class EnergyCreditsQueryService {
 
   constructor(readModel) {
-    this._rm = readModel || null;
+    this._rm      = readModel || null;
+    this._avgCalc = new BeneficiaryConsumptionAverageCalculator();
   }
 
   _requireReadModel(queryName) {
@@ -148,6 +150,56 @@ export class EnergyCreditsQueryService {
     return this._result(data, { query: 'ec.getAlertsSummary', filters: Object.assign({}, filters) }, options);
   }
 
+  // ── Queries de Saldo e Rateio ──────────────────────────────────────────────
+
+  getBeneficiaryCreditBalance(beneficiaryUnitId, referenceMonth, options = {}) {
+    this._requireReadModel('getBeneficiaryCreditBalance');
+    const id = `beneficiary-credit-balance-${beneficiaryUnitId}-${referenceMonth}`;
+    const record = this._rm.getBeneficiaryCreditBalanceRecord
+      ? this._rm.getBeneficiaryCreditBalanceRecord(id)
+      : null;
+    return this._result(record, { query: 'ec.getBeneficiaryCreditBalance', beneficiaryUnitId, referenceMonth }, options);
+  }
+
+  getBeneficiaryCreditBalanceHistory(beneficiaryUnitId, filters = {}, options = {}) {
+    this._requireReadModel('getBeneficiaryCreditBalanceHistory');
+    const records = this._rm.listBeneficiaryCreditBalanceRecords
+      ? this._rm.listBeneficiaryCreditBalanceRecords({ ...filters, beneficiaryUnitId })
+      : [];
+    return this._result(records, {
+      query: 'ec.getBeneficiaryCreditBalanceHistory', beneficiaryUnitId,
+      filters: Object.assign({}, filters), count: records.length,
+    }, options);
+  }
+
+  getCreditAllocationPlan(generatingUnitId, referenceMonth, options = {}) {
+    this._requireReadModel('getCreditAllocationPlan');
+    const records = this._rm.listBeneficiaryCreditBalanceRecords
+      ? this._rm.listBeneficiaryCreditBalanceRecords({ generatingUnitId, referenceMonth })
+      : [];
+    const sorted = [...records].sort((a, b) => (a.beneficiaryUnitId || '').localeCompare(b.beneficiaryUnitId || ''));
+    const plan = {
+      generatingUnitId, referenceMonth,
+      beneficiaryCount:       sorted.length,
+      totalPlannedCreditsKwh: roundKwh(sorted.reduce((s, r) => s + (r.creditsReceivedKwh || 0), 0)),
+      beneficiaries:          sorted,
+    };
+    return this._result(plan, { query: 'ec.getCreditAllocationPlan', generatingUnitId, referenceMonth }, options);
+  }
+
+  getBeneficiaryConsumptionAverage(beneficiaryUnitId, filters = {}, options = {}) {
+    this._requireReadModel('getBeneficiaryConsumptionAverage');
+    const records = this._rm.listBeneficiaryMonthlyRecords({ ...filters, beneficiaryUnitId });
+    const history = records.map(r => ({ referenceMonth: r.referenceMonth, consumptionKwh: r.monthlyConsumptionKwh }));
+    const calcResult = this._avgCalc.calculate({
+      beneficiaryUnitId,
+      monthlyConsumptionHistory: history,
+      options: { monthWindow: filters.monthWindow || 12, referenceMonth: filters.referenceMonth || null },
+    });
+    const data = calcResult.ok ? calcResult.data : null;
+    return this._result(data, { query: 'ec.getBeneficiaryConsumptionAverage', beneficiaryUnitId }, options);
+  }
+
   // ── Builders privados ──────────────────────────────────────────────────────
 
   _buildExecutiveSummary(filters) {
@@ -207,25 +259,34 @@ export class EnergyCreditsQueryService {
     const unit    = this._rm.getBeneficiaryUnit(beneficiaryUnitId);
     const records = this._rm.listBeneficiaryMonthlyRecords({ ...filters, beneficiaryUnitId });
     const lastRec = records.length > 0 ? records[records.length - 1] : null;
+    const balRecs = this._rm.listBeneficiaryCreditBalanceRecords
+      ? this._rm.listBeneficiaryCreditBalanceRecords({ beneficiaryUnitId })
+      : [];
+    const lastBal = balRecs.length > 0 ? balRecs[balRecs.length - 1] : null;
     const paymentStatusSummary = {};
     for (const r of records) {
       const s = r.paymentStatus || 'unknown';
       paymentStatusSummary[s] = (paymentStatusSummary[s] || 0) + 1;
     }
     return {
-      beneficiaryUnit:          unit,
-      monthlyRecordCount:       records.length,
-      totalConsumptionKwh:      roundKwh(_sum(records, 'monthlyConsumptionKwh')),
-      totalAllocatedKwh:        roundKwh(_sum(records, 'allocatedKwh')),
-      totalCompensatedKwh:      roundKwh(_sum(records, 'compensatedKwh')),
-      totalResidualKwh:         roundKwh(_sum(records, 'residualKwh')),
-      totalEsaInvoiceAmount:    roundMoney(_sum(records, 'esaInvoiceAmount')),
-      totalBillWithoutEsa:      roundMoney(_sum(records, 'billWithoutEsa')),
-      totalBillWithEsa:         roundMoney(_sum(records, 'billWithEsa')),
-      totalMonthlyDiscount:     roundMoney(_sum(records, 'monthlyDiscount')),
-      accumulatedDiscountTotal: lastRec ? (lastRec.accumulatedDiscountTotal || 0) : 0,
+      beneficiaryUnit:              unit,
+      monthlyRecordCount:           records.length,
+      totalConsumptionKwh:          roundKwh(_sum(records, 'monthlyConsumptionKwh')),
+      totalAllocatedKwh:            roundKwh(_sum(records, 'allocatedKwh')),
+      totalCompensatedKwh:          roundKwh(_sum(records, 'compensatedKwh')),
+      totalResidualKwh:             roundKwh(_sum(records, 'residualKwh')),
+      totalEsaInvoiceAmount:        roundMoney(_sum(records, 'esaInvoiceAmount')),
+      totalBillWithoutEsa:          roundMoney(_sum(records, 'billWithoutEsa')),
+      totalBillWithEsa:             roundMoney(_sum(records, 'billWithEsa')),
+      totalMonthlyDiscount:         roundMoney(_sum(records, 'monthlyDiscount')),
+      accumulatedDiscountTotal:     lastRec ? (lastRec.accumulatedDiscountTotal || 0) : 0,
       paymentStatusSummary,
-      lastMonthlyRecord:        lastRec,
+      lastMonthlyRecord:            lastRec,
+      averageMonthlyConsumptionKwh: lastBal ? lastBal.averageMonthlyConsumptionKwh : (unit ? unit.averageConsumption12Months : null),
+      currentCreditBalanceKwh:      lastBal ? lastBal.currentBalanceKwh : null,
+      coverageMonths:               lastBal ? lastBal.coverageMonths : null,
+      preventiveMarginPercentage:   lastBal ? lastBal.preventiveMarginPercentage : null,
+      allocationPercentage:         lastBal ? lastBal.allocationPercentage : null,
     };
   }
 
