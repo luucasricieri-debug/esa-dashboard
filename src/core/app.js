@@ -31,6 +31,8 @@ import { energyCreditsRepository,
          EnergyCreditsFirebaseRepository }  from '../repositories/energy-credits/index.js';
 import { energyCreditsImportService,
          EnergyCreditsImportService }        from '../importers/energy-credits/index.js';
+import { energyBillingEngine,
+         EnergyBillingEngine }               from '../engines/energy-billing/index.js';
 
 class ESAApplication {
 
@@ -302,6 +304,16 @@ class ESAApplication {
     if (enriched.persist && !enriched.repository) enriched.repository = energyCreditsRepository;
     if (enriched.hydrateReadModel && !enriched.hydrator) enriched.hydrator = energyCreditsRepositoryHydrator;
     return enriched;
+  }
+
+  // ── Energy Billing Engine ──────────────────────────────────────────────────
+
+  getEnergyBillingEngine() {
+    return energyBillingEngine;
+  }
+
+  calculateEnergyBeneficiaryBilling(input = {}) {
+    return energyBillingEngine.calculateBeneficiaryBilling(input);
   }
 
 }

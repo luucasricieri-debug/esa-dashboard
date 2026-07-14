@@ -221,7 +221,7 @@ export class EnergyCreditsReportService {
 
   buildBeneficiaryMonthlyReport(beneficiaryUnitId, referenceMonth, options = {}) {
     this._requireQueryService('buildBeneficiaryMonthlyReport');
-    const qOpts   = { referenceDate: options.referenceDate || null };
+    const qOpts    = { referenceDate: options.referenceDate || null };
     const filters  = { referenceMonth };
 
     const benSum = this._qs.getBeneficiarySummary(beneficiaryUnitId, filters, qOpts);
@@ -232,6 +232,7 @@ export class EnergyCreditsReportService {
     const rec     = hist.length > 0 ? hist[0] : null;
     const aFilters = { ...filters, generatingUnitId: unit.generatingUnitId };
     const alerts  = this._qs.getAlertsSummary(aFilters, qOpts).data.alerts;
+    const billingSnapshot = options.billingSnapshot || null;
     const SECTIONS = ['identification', 'consumption', 'billingComparison', 'savings', 'payment', 'alerts', 'documentsPlaceholder'];
 
     const report = _sanitize({
@@ -242,9 +243,10 @@ export class EnergyCreditsReportService {
       target:        this._benTarget(unit),
       title:         `Relatório Mensal da Unidade Beneficiária — ${unit.name} — ${referenceMonth}`,
       summary:       this._benSummary(unit, rec, referenceMonth),
-      sections:      this._benSections(unit, rec, alerts, referenceMonth),
+      sections:      this._benSections(unit, rec, alerts, referenceMonth, billingSnapshot),
       totals:        this._benTotals(rec),
       alerts,
+      billingSnapshot,
       distribution:  Object.assign({}, DISTRIBUTION_DEFAULTS),
       metadata:      _reportMetadata(alerts, SECTIONS, []),
     });
@@ -287,12 +289,12 @@ export class EnergyCreditsReportService {
     };
   }
 
-  _benSections(unit, rec, alerts, referenceMonth) {
+  _benSections(unit, rec, alerts, referenceMonth, billingSnapshot = null) {
     return {
       identification:     this._benIdentification(unit),
       consumption:        this._consumptionSection(rec),
-      billingComparison:  this._billingSection(rec),
-      savings:            this._savingsSection(rec),
+      billingComparison:  this._billingComparisonSection(rec, billingSnapshot),
+      savings:            this._savingsSection(rec, billingSnapshot),
       payment:            this._paymentSection(rec),
       alerts:             { count: alerts.length, items: alerts },
       documentsPlaceholder: { pdfReport: null, signed: null, attachments: [] },
@@ -334,22 +336,49 @@ export class EnergyCreditsReportService {
     };
   }
 
-  _billingSection(rec) {
+  _billingComparisonSection(rec, billingSnapshot = null) {
+    if (billingSnapshot) {
+      return {
+        source:                 'billing-snapshot',
+        calculationSource:      billingSnapshot.calculationSource,
+        billWithoutEsa:         billingSnapshot.contaConcessionaria?.total ?? null,
+        billWithEsa:            billingSnapshot.contaEsa?.total            ?? null,
+        esaKwhPrice:            billingSnapshot.inputs?.preco_kwh          ?? null,
+        utilityReferenceTariff: billingSnapshot.inputs?.te_com             ?? null,
+        esaInvoiceAmount:       billingSnapshot.contaEsa?.total            ?? null,
+        residualUtilityAmount:  billingSnapshot.contaEsa?.fioB             ?? null,
+        componentesTarifarios:  billingSnapshot.componentesTarifarios      || null,
+      };
+    }
+    if (!rec) return { source: 'unavailable' };
     return {
-      esaKwhPrice:            rec ? rec.esaKwhPrice : null,
-      utilityReferenceTariff: rec ? rec.utilityReferenceTariff : null,
-      billWithoutEsa:         rec ? rec.billWithoutEsa : null,
-      esaInvoiceAmount:       rec ? rec.esaInvoiceAmount : null,
-      residualUtilityAmount:  rec ? rec.residualUtilityAmount : null,
-      billWithEsa:            rec ? rec.billWithEsa : null,
+      source:                 'operational-record',
+      esaKwhPrice:            rec.esaKwhPrice            || null,
+      utilityReferenceTariff: rec.utilityReferenceTariff || null,
+      billWithoutEsa:         rec.billWithoutEsa         || null,
+      esaInvoiceAmount:       rec.esaInvoiceAmount       || null,
+      residualUtilityAmount:  rec.residualUtilityAmount  || null,
+      billWithEsa:            rec.billWithEsa            || null,
     };
   }
 
-  _savingsSection(rec) {
+  _savingsSection(rec, billingSnapshot = null) {
+    if (billingSnapshot) {
+      return {
+        source:               'billing-snapshot',
+        monthlySavings:       billingSnapshot.economiaMensal      ?? null,
+        savingsPercentage:    billingSnapshot.economiaPercentual   ?? null,
+        annualSavings:        billingSnapshot.economiaAnual        ?? null,
+        monthlyDiscount:             rec ? rec.monthlyDiscount             : null,
+        previousAccumulatedDiscount: rec ? rec.previousAccumulatedDiscount : null,
+        accumulatedDiscountTotal:    rec ? rec.accumulatedDiscountTotal    : null,
+      };
+    }
     return {
-      monthlyDiscount:             rec ? rec.monthlyDiscount : null,
+      source:                      'operational-record',
+      monthlyDiscount:             rec ? rec.monthlyDiscount             : null,
       previousAccumulatedDiscount: rec ? rec.previousAccumulatedDiscount : null,
-      accumulatedDiscountTotal:    rec ? rec.accumulatedDiscountTotal : null,
+      accumulatedDiscountTotal:    rec ? rec.accumulatedDiscountTotal    : null,
     };
   }
 
