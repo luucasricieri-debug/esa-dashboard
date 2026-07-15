@@ -1,348 +1,745 @@
+/**
+ * preview-provider.ts
+ *
+ * Réplica fiel do energyCreditsProvider (Lovable original).
+ * Usa exatamente os mesmos dados, lógica de cálculo e shapes do mock original.
+ * Propósito exclusivo: preview/teste visual. Não conecta Firebase.
+ * Não expõe calculationMemory. Não usa localStorage para dados operacionais.
+ */
 import type { EsaProvider } from '../src/lib/esa/EsaProviderContext';
 import type {
-  GeneratingUnit, BeneficiaryUnit, Alert, SettlementResult, AllocationPlan,
-  ExecutiveSummary, FinancialSummary, TrendRow, MonthOption, CycleStatus,
+  GeneratingUnit,
+  BeneficiaryUnit,
+  Alert,
+  SettlementResult,
+  SettlementRow,
+  AllocationPlan,
+  AllocationRow,
+  ExecutiveSummary,
+  FinancialSummary,
+  TrendRow,
+  MonthOption,
+  KpiDelta,
+  PeriodFilter,
 } from '../src/lib/esa/types';
 
-const MONTHS: MonthOption[] = [
-  { value: '2026-07', label: 'Julho 2026' },
-  { value: '2026-06', label: 'Junho 2026' },
-  { value: '2026-05', label: 'Maio 2026' },
-  { value: '2026-04', label: 'Abril 2026' },
-  { value: '2026-03', label: 'Março 2026' },
-];
+// ============================================================
+// DADOS — cópia exata do Lovable mockData.ts
+// ============================================================
 
 const UGS: GeneratingUnit[] = [
   {
-    id: 'UG-001', name: 'Usina Solar Piauí', owner: 'João da Silva', document: '12.345.678/0001-90',
-    uc: 'UC-001', distributor: 'EQUATORIAL', status: 'ativa', purchasePrice: 0.35,
-    previousBalance: 2500, monthlyGeneration: 58500, beneficiaries: ['UB-001', 'UB-002', 'UB-003'],
-    payee: { name: 'João da Silva', document: '123.456.789-00', pixType: 'cpf', pixKey: '123.456.789-00' },
+    id: 'UG-001',
+    name: 'UG Solar Assaí',
+    owner: 'João Pereira',
+    document: '123.456.789-00',
+    uc: '123456789',
+    distributor: 'Copel',
+    status: 'ativa',
+    purchasePrice: 0.35,
+    previousBalance: 2500,
+    monthlyGeneration: 13000,
+    beneficiaries: ['UB-001', 'UB-002', 'UB-003', 'UB-004'],
+    payee: { name: 'João Pereira', document: '123.456.789-00', pixKey: 'joao.pereira@esaenergia.com.br', pixType: 'email' },
   },
   {
-    id: 'UG-002', name: 'Usina Solar Maranhão', owner: 'Maria Santos', document: '98.765.432/0001-10',
-    uc: 'UC-002', distributor: 'EQUATORIAL', status: 'ativa', purchasePrice: 0.33,
-    previousBalance: 1800, monthlyGeneration: 34200, beneficiaries: ['UB-004', 'UB-005'],
-    payee: { name: 'Maria Santos', document: '987.654.321-00', pixType: 'email', pixKey: 'maria@exemplo.com' },
+    id: 'UG-002',
+    name: 'UG Solar Londrina',
+    owner: 'Maria Silva',
+    document: '987.654.321-00',
+    uc: '987654321',
+    distributor: 'Copel',
+    status: 'ativa',
+    purchasePrice: 0.34,
+    previousBalance: 1800,
+    monthlyGeneration: 9500,
+    beneficiaries: ['UB-005', 'UB-006'],
+    payee: { name: 'Maria Silva', document: '987.654.321-00', pixKey: '987.654.321-00', pixType: 'cpf' },
+  },
+  {
+    id: 'UG-003',
+    name: 'UG Solar Maringá',
+    owner: 'Construtora Norte Ltda',
+    document: '12.345.678/0001-90',
+    uc: '555666777',
+    distributor: 'Copel',
+    status: 'manutencao',
+    purchasePrice: 0.36,
+    previousBalance: 500,
+    monthlyGeneration: 4200,
+    beneficiaries: ['UB-007'],
+    payee: { name: 'Construtora Norte Ltda', document: '12.345.678/0001-90', pixKey: '12.345.678/0001-90', pixType: 'cnpj' },
   },
 ];
 
 const UBS: BeneficiaryUnit[] = [
-  { id: 'UB-001', name: 'Mercado Central', document: '11.111.111/0001-11', uc: 'UC-101', distributor: 'EQUATORIAL', ugId: 'UG-001', status: 'ativa', paymentStatus: 'pago', monthlyConsumption: 3200, annualAverage: 37200, previousCreditBalance: 800, allocationPct: 0.20, preventiveMargin: 0.10, esaPrice: 0.72, distributorTariff: 0.98, taxes: 180, cip: 25, otherCharges: 0, customerSince: '2025-01', accumulatedSavings: 3200 },
-  { id: 'UB-002', name: 'Condomínio Jardins', document: '22.222.222/0001-22', uc: 'UC-102', distributor: 'EQUATORIAL', ugId: 'UG-001', status: 'ativa', paymentStatus: 'aberto', monthlyConsumption: 4100, annualAverage: 48000, previousCreditBalance: 1200, allocationPct: 0.25, preventiveMargin: 0.10, esaPrice: 0.71, distributorTariff: 0.98, taxes: 220, cip: 25, otherCharges: 0, customerSince: '2025-02', accumulatedSavings: 4100 },
-  { id: 'UB-003', name: 'Hospital São Lucas', document: '33.333.333/0001-33', uc: 'UC-103', distributor: 'EQUATORIAL', ugId: 'UG-001', status: 'ativa', paymentStatus: 'vencido', monthlyConsumption: 8500, annualAverage: 98400, previousCreditBalance: 2000, allocationPct: 0.55, preventiveMargin: 0.15, esaPrice: 0.69, distributorTariff: 0.98, taxes: 450, cip: 40, otherCharges: 0, customerSince: '2024-11', accumulatedSavings: 8500 },
-  { id: 'UB-004', name: 'Escola Municipal', document: '44.444.444/0001-44', uc: 'UC-201', distributor: 'EQUATORIAL', ugId: 'UG-002', status: 'ativa', paymentStatus: 'aberto', monthlyConsumption: 1800, annualAverage: 21000, previousCreditBalance: 400, allocationPct: 0.35, preventiveMargin: 0.10, esaPrice: 0.70, distributorTariff: 0.98, taxes: 95, cip: 20, otherCharges: 0, customerSince: '2025-03', accumulatedSavings: 1800 },
-  { id: 'UB-005', name: 'Supermercado Bom Preço', document: '55.555.555/0001-55', uc: 'UC-202', distributor: 'EQUATORIAL', ugId: 'UG-002', status: 'ativa', paymentStatus: 'pago', monthlyConsumption: 5200, annualAverage: 60000, previousCreditBalance: 1500, allocationPct: 0.65, preventiveMargin: 0.10, esaPrice: 0.68, distributorTariff: 0.98, taxes: 280, cip: 30, otherCharges: 0, customerSince: '2024-12', accumulatedSavings: 5200 },
+  { id: 'UB-001', name: 'Mercado Central', document: '11.222.333/0001-44', uc: '111222333', distributor: 'Copel', ugId: 'UG-001', status: 'ativa', monthlyConsumption: 3950, annualAverage: 48000, previousCreditBalance: 350, allocationPct: 0.323, preventiveMargin: 0.05, esaPrice: 0.55, distributorTariff: 0.85, taxes: 420, cip: 51.97, otherCharges: 0, paymentStatus: 'pago', customerSince: '2025-08', accumulatedSavings: 14870.45 },
+  { id: 'UB-002', name: 'Panificadora Sol', document: '22.333.444/0001-55', uc: '222333444', distributor: 'Copel', ugId: 'UG-001', status: 'ativa', monthlyConsumption: 2900, annualAverage: 36000, previousCreditBalance: 180, allocationPct: 0.245, preventiveMargin: 0.05, esaPrice: 0.55, distributorTariff: 0.85, taxes: 310, cip: 42.5, otherCharges: 0, paymentStatus: 'aberto', customerSince: '2025-10', accumulatedSavings: 8210.30 },
+  { id: 'UB-003', name: 'Clínica Vida', document: '33.444.555/0001-66', uc: '333444555', distributor: 'Copel', ugId: 'UG-001', status: 'ativa', monthlyConsumption: 2050, annualAverage: 24000, previousCreditBalance: 120, allocationPct: 0.16, preventiveMargin: 0.05, esaPrice: 0.55, distributorTariff: 0.85, taxes: 220, cip: 38.9, otherCharges: 0, paymentStatus: 'vencido', customerSince: '2025-06', accumulatedSavings: 9120.00 },
+  { id: 'UB-004', name: 'Auto Posto Norte', document: '44.555.666/0001-77', uc: '444555666', distributor: 'Copel', ugId: 'UG-001', status: 'ativa', monthlyConsumption: 3500, annualAverage: 42000, previousCreditBalance: 280, allocationPct: 0.272, preventiveMargin: 0.05, esaPrice: 0.55, distributorTariff: 0.88, taxes: 380, cip: 55.2, otherCharges: 0, paymentStatus: 'pago', customerSince: '2025-09', accumulatedSavings: 11450.70 },
+  { id: 'UB-005', name: 'Restaurante Sabor', document: '55.666.777/0001-88', uc: '555666777', distributor: 'Copel', ugId: 'UG-002', status: 'ativa', monthlyConsumption: 3800, annualAverage: 45000, previousCreditBalance: 210, allocationPct: 0.66, preventiveMargin: 0.05, esaPrice: 0.55, distributorTariff: 0.85, taxes: 400, cip: 48.5, otherCharges: 0, paymentStatus: 'pago', customerSince: '2025-07', accumulatedSavings: 12980.00 },
+  { id: 'UB-006', name: 'Farmácia Popular', document: '66.777.888/0001-99', uc: '666777888', distributor: 'Copel', ugId: 'UG-002', status: 'ativa', monthlyConsumption: 1800, annualAverage: 21600, previousCreditBalance: 90, allocationPct: 0.34, preventiveMargin: 0.05, esaPrice: 0.55, distributorTariff: 0.86, taxes: 195, cip: 32.0, otherCharges: 0, paymentStatus: 'aberto', customerSince: '2025-11', accumulatedSavings: 4820.15 },
+  { id: 'UB-007', name: 'Escola Aprender', document: '77.888.999/0001-11', uc: '777888999', distributor: 'Copel', ugId: 'UG-003', status: 'ativa', monthlyConsumption: 2600, annualAverage: 30000, previousCreditBalance: 4800, allocationPct: 1.0, preventiveMargin: 0.05, esaPrice: 0.55, distributorTariff: 0.84, taxes: 280, cip: 40.0, otherCharges: 0, paymentStatus: 'aberto', customerSince: '2025-05', accumulatedSavings: 6850.90 },
 ];
 
 const ALERTS: Alert[] = [
-  { id: 'A-001', severity: 'critico', code: 'CREDIT_BALANCE_ZERO', message: 'Saldo de créditos zerado', unit: 'Hospital São Lucas', month: '2026-07', action: 'Alocar créditos adicionais imediatamente' },
-  { id: 'A-002', severity: 'risco', code: 'PAYMENT_OVERDUE', message: 'Fatura vencida há 15 dias', unit: 'Hospital São Lucas', month: '2026-07', action: 'Entrar em contato com o cliente' },
-  { id: 'A-003', severity: 'atencao', code: 'LOW_COVERAGE', message: 'Cobertura de créditos abaixo do recomendado', unit: 'Mercado Central', month: '2026-07', action: 'Revisar rateio na apuração' },
-  { id: 'A-004', severity: 'info', code: 'NEW_CYCLE_OPEN', message: 'Ciclo de agosto disponível para apuração', unit: 'Usina Solar Piauí', month: '2026-08', action: 'Iniciar apuração de agosto' },
+  { id: 'A-001', severity: 'critico', code: 'ALLOCATION_PERCENTAGE_TOTAL_INVALID', message: 'A soma dos percentuais de rateio deve totalizar 100%.', unit: 'UG-002', month: '2026-07', action: 'Ajustar percentuais na tela de Apuração Mensal.' },
+  { id: 'A-002', severity: 'risco', code: 'HIGH_BENEFICIARY_CREDIT_BALANCE', message: 'Saldo acumulado superior a 1,5 mês da média de consumo.', unit: 'UB-007', month: '2026-07', action: 'Reduzir percentual de rateio ou margem preventiva.' },
+  { id: 'A-003', severity: 'risco', code: 'LOW_BENEFICIARY_CREDIT_BALANCE', message: 'Saldo disponível e crédito planejado abaixo do crédito alvo.', unit: 'UB-003', month: '2026-07', action: 'Aumentar percentual de rateio ou revisar margem preventiva.' },
+  { id: 'A-004', severity: 'atencao', code: 'CONSUMPTION_ABOVE_AVERAGE', message: 'Consumo real acima de 110% da média mensal.', unit: 'UB-004', month: '2026-07', action: 'Revisar média e planejamento de créditos.' },
+  { id: 'A-005', severity: 'atencao', code: 'LOW_BENEFICIARY_CREDIT_BALANCE', message: 'Cobertura do saldo inferior a 0,25 mês.', unit: 'UB-006', month: '2026-07', action: 'Aumentar percentual de rateio para elevar o saldo mínimo.' },
+  { id: 'A-006', severity: 'info', code: 'HIGH_BENEFICIARY_CREDIT_BALANCE', message: 'Cobertura do saldo elevada — acima de 2 meses.', unit: 'UB-001', month: '2026-06', action: 'Considerar reduzir margem preventiva no próximo ciclo.' },
 ];
 
-function makeCycleSummary(ugId: string) {
+const AVAILABLE_MONTHS: MonthOption[] = [
+  { value: '2026-07', label: 'Julho de 2026', status: 'em_apuracao' },
+  { value: '2026-06', label: 'Junho de 2026', status: 'fechado' },
+  { value: '2026-05', label: 'Maio de 2026', status: 'fechado' },
+  { value: '2026-04', label: 'Abril de 2026', status: 'fechado' },
+  { value: '2026-03', label: 'Março de 2026', status: 'fechado' },
+];
+
+// Fator determinístico por mês — idêntico ao Lovable
+const MONTH_FACTOR: Record<string, number> = {
+  '2026-07': 1.0,
+  '2026-06': 0.92,
+  '2026-05': 0.88,
+  '2026-04': 0.83,
+  '2026-03': 0.79,
+};
+
+// criticalByMonth — idêntico ao Lovable
+const CRITICAL_BY_MONTH: Record<string, number> = {
+  '2026-07': 2,
+  '2026-06': 3,
+  '2026-05': 2,
+  '2026-04': 4,
+  '2026-03': 3,
+};
+
+// ============================================================
+// MOTOR DE LIQUIDAÇÃO — idêntico ao Lovable computeSettlement
+// ============================================================
+
+function computeSettlement(ug: GeneratingUnit, ubs: BeneficiaryUnit[]): SettlementResult {
+  const available = ug.previousBalance + ug.monthlyGeneration;
+  let remaining = available;
+  const rows: SettlementRow[] = ubs.map((ub) => {
+    const allocated = Math.min(ub.monthlyConsumption, remaining);
+    remaining -= allocated;
+    const compensated = allocated;
+    const pending = ub.monthlyConsumption - compensated;
+    const contaSemEsa = ub.monthlyConsumption * ub.distributorTariff + ub.taxes + ub.cip + ub.otherCharges;
+    const faturaEsa = compensated * ub.esaPrice;
+    const contaComEsa = faturaEsa + pending * ub.distributorTariff + ub.taxes + ub.cip + ub.otherCharges;
+    const economia = contaSemEsa - contaComEsa;
+    return { ub, allocated, compensated, pending, contaSemEsa, faturaEsa, contaComEsa, economia };
+  });
+  const totalAllocated = rows.reduce((s, r) => s + r.allocated, 0);
+  const totalCompensated = rows.reduce((s, r) => s + r.compensated, 0);
+  const totalPending = rows.reduce((s, r) => s + r.pending, 0);
+  const currentBalance = available - totalAllocated;
+  const ownerPayment = totalCompensated * ug.purchasePrice;
+  const esaRevenue = rows.reduce((s, r) => s + r.faturaEsa, 0);
   return {
-    ugId,
-    month: '2026-07',
-    cycleStatus: 'aberto' as CycleStatus,
-    generationKwh: ugId === 'UG-001' ? 58500 : 34200,
-    totalRecommendedKwh: ugId === 'UG-001' ? 56000 : 32000,
-    totalPlannedKwh: ugId === 'UG-001' ? 55000 : 31500,
-    totalReceivedKwh: ugId === 'UG-001' ? 54800 : 31200,
-    totalCompensatedKwh: ugId === 'UG-001' ? 52000 : 29800,
-    totalFinalBalanceKwh: ugId === 'UG-001' ? 3800 : 2900,
-    beneficiariesCount: ugId === 'UG-001' ? 3 : 2,
-    ownerPayment: ugId === 'UG-001' ? 19180 : 10296,
-    esaRevenue: ugId === 'UG-001' ? 37440 : 20256,
+    ug,
+    previousBalance: ug.previousBalance,
+    generation: ug.monthlyGeneration,
+    available,
+    totalAllocated,
+    totalCompensated,
+    totalPending,
+    currentBalance,
+    ownerPayment,
+    esaRevenue,
+    spread: esaRevenue - ownerPayment,
+    rows,
   };
 }
 
+function computeAllResults(): SettlementResult[] {
+  return UGS.map((ug) => computeSettlement(ug, UBS.filter((u) => u.ugId === ug.id)));
+}
+
+function scaledResults(month: string, ugId?: string): SettlementResult[] {
+  const factor = MONTH_FACTOR[month] ?? 1;
+  const all = computeAllResults();
+  const filtered = ugId ? all.filter((r) => r.ug.id === ugId) : all;
+  return filtered.map((r) => ({
+    ...r,
+    generation: r.generation * factor,
+    available: r.available * factor,
+    totalAllocated: r.totalAllocated * factor,
+    totalCompensated: r.totalCompensated * factor,
+    totalPending: r.totalPending * factor,
+    currentBalance: r.currentBalance * factor,
+    ownerPayment: r.ownerPayment * factor,
+    esaRevenue: r.esaRevenue * factor,
+    spread: r.spread * factor,
+    rows: r.rows.map((row) => ({
+      ...row,
+      allocated: row.allocated * factor,
+      compensated: row.compensated * factor,
+      faturaEsa: row.faturaEsa * factor,
+      economia: row.economia * factor,
+    })),
+  }));
+}
+
+function aggregate(results: SettlementResult[]) {
+  return {
+    generation: results.reduce((s, r) => s + r.generation, 0),
+    compensated: results.reduce((s, r) => s + r.totalCompensated, 0),
+    balance: results.reduce((s, r) => s + r.currentBalance, 0),
+    revenue: results.reduce((s, r) => s + r.esaRevenue, 0),
+    ownerPayment: results.reduce((s, r) => s + r.ownerPayment, 0),
+    spread: results.reduce((s, r) => s + r.spread, 0),
+    savings: results.reduce((s, r) => s + r.rows.reduce((a, x) => a + x.economia, 0), 0),
+  };
+}
+
+function makeDelta(current: number, previous: number): KpiDelta {
+  if (previous === 0) return { value: current, pct: 0, direction: current > 0 ? 'up' : 'flat' };
+  const diff = current - previous;
+  const pct = (diff / Math.abs(previous)) * 100;
+  const direction: KpiDelta['direction'] = Math.abs(pct) < 0.5 ? 'flat' : diff > 0 ? 'up' : 'down';
+  return { value: diff, pct, direction };
+}
+
+function prevMonthOf(month: string): string | undefined {
+  const idx = AVAILABLE_MONTHS.findIndex((m) => m.value === month);
+  return AVAILABLE_MONTHS[idx + 1]?.value;
+}
+
+// ============================================================
+// MOTOR DE RATEIO — idêntico ao Lovable computeAllocationPlan
+// ============================================================
+
+function computeAllocationPlan(
+  ug: GeneratingUnit,
+  ubs: BeneficiaryUnit[],
+  overrides?: Record<string, { allocationPct?: number; preventiveMargin?: number }>,
+): AllocationPlan {
+  const gen = ug.monthlyGeneration;
+  const monthlyAverages = ubs.map((u) => u.annualAverage / 12);
+  const recommendedNeeds = ubs.map((u, i) => {
+    const margin = overrides?.[u.id]?.preventiveMargin ?? u.preventiveMargin;
+    const target = monthlyAverages[i] * (1 + margin);
+    return Math.max(0, target - u.previousCreditBalance);
+  });
+  const sumRec = recommendedNeeds.reduce((a, b) => a + b, 0);
+
+  const rows: AllocationRow[] = ubs.map((ub, i) => {
+    const ov = overrides?.[ub.id] ?? {};
+    const allocationPct = ov.allocationPct ?? ub.allocationPct;
+    const preventiveMargin = ov.preventiveMargin ?? ub.preventiveMargin;
+    const monthlyAverage = monthlyAverages[i];
+    const targetCredit = monthlyAverage * (1 + preventiveMargin);
+    const currentBalance = ub.previousCreditBalance;
+    const recommendedAdd = Math.max(0, targetCredit - currentBalance);
+    const recommendedPct = sumRec > 0 ? recommendedAdd / sumRec : 0;
+    const plannedCredits = gen * allocationPct;
+    const receivedCredits = plannedCredits;
+    const consumption = ub.monthlyConsumption;
+    const available = currentBalance + receivedCredits;
+    const compensated = Math.min(consumption, available);
+    const finalBalance = available - compensated;
+    const coverageMonths = monthlyAverage > 0 ? finalBalance / monthlyAverage : 0;
+    return {
+      ub,
+      averageMonthlyConsumptionKwh: monthlyAverage,
+      preventiveMarginPercentage: preventiveMargin,
+      targetCreditKwh: targetCredit,
+      currentBalanceKwh: currentBalance,
+      recommendedCreditsToReceiveKwh: recommendedAdd,
+      recommendedAllocationPercentage: recommendedPct,
+      allocationPercentage: allocationPct,
+      plannedCreditsReceivedKwh: plannedCredits,
+      creditsReceivedKwh: receivedCredits,
+      monthlyConsumptionKwh: consumption,
+      creditsCompensatedKwh: compensated,
+      previousBalanceKwh: currentBalance,
+      finalBalanceKwh: finalBalance,
+      coverageMonths,
+      monthlyAverage,
+      previousBalance: currentBalance,
+      preventiveMargin,
+      targetCredit,
+      allocationPct,
+      projectedCredits: plannedCredits,
+      receivedCredits,
+      consumption,
+      compensated,
+      finalBalance,
+      recommendedPct,
+    };
+  });
+
+  const totalPct = rows.reduce((s, r) => s + r.allocationPercentage, 0);
+  const totalProjected = rows.reduce((s, r) => s + r.plannedCreditsReceivedKwh, 0);
+  const totalCompensated = rows.reduce((s, r) => s + r.creditsCompensatedKwh, 0);
+  const totalFinalBalance = rows.reduce((s, r) => s + r.finalBalanceKwh, 0);
+  const totalRecommended = rows.reduce((s, r) => s + r.recommendedCreditsToReceiveKwh, 0);
+  const totalTargetCredit = rows.reduce((s, r) => s + r.targetCreditKwh, 0);
+  const totalConsumption = rows.reduce((s, r) => s + r.monthlyConsumptionKwh, 0);
+  const ownerPayment = totalCompensated * ug.purchasePrice;
+  const esaRevenue = rows.reduce((s, r) => s + r.creditsCompensatedKwh * r.ub.esaPrice, 0);
+
+  return {
+    ug, generation: gen, rows, totalPct, totalProjected, totalCompensated,
+    totalFinalBalance, ownerPayment, esaRevenue, totalRecommended,
+    totalTargetCredit, totalConsumption,
+  };
+}
+
+// ============================================================
+// FATURA — idêntico ao Lovable buildInvoice
+// ============================================================
+
+function monthsBetween(from: string, to: string): number {
+  const [fy, fm] = from.split('-').map(Number);
+  const [ty, tm] = to.split('-').map(Number);
+  return (ty - fy) * 12 + (tm - fm) + 1;
+}
+
+function buildSavingsHistory(from: string, to: string, accumulated: number) {
+  const LABELS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const list: { month: string; label: string }[] = [];
+  const [fy, fm] = from.split('-').map(Number);
+  const [ty, tm] = to.split('-').map(Number);
+  let y = fy; let m = fm;
+  while (y < ty || (y === ty && m <= tm)) {
+    list.push({ month: `${y}-${String(m).padStart(2, '0')}`, label: LABELS[m - 1] });
+    m += 1;
+    if (m > 12) { m = 1; y += 1; }
+  }
+  const n = list.length;
+  if (n === 0) return [];
+  const base = accumulated / n;
+  let cum = 0;
+  return list.map((it, i) => {
+    const factor = 0.85 + (i / Math.max(1, n - 1)) * 0.3;
+    const monthly = base * factor;
+    cum += monthly;
+    return { month: it.month, label: it.label, monthly, cumulative: cum };
+  });
+}
+
+function buildInvoice(ubId: string, month: string) {
+  const ub = UBS.find((u) => u.id === ubId);
+  if (!ub) return null;
+  const ug = UGS.find((g) => g.id === ub.ugId)!;
+  const receivedCredits = ug.monthlyGeneration * ub.allocationPct;
+  const previousBalance = ub.previousCreditBalance;
+  const availableCredits = previousBalance + receivedCredits;
+  const compensated = Math.min(ub.monthlyConsumption, availableCredits);
+  const finalBalance = availableCredits - compensated;
+  const faturaEsa = compensated * ub.esaPrice;
+  const totalWithEsa = faturaEsa + ub.taxes + ub.cip + ub.otherCharges;
+  const energyWithoutEsa = ub.monthlyConsumption * ub.distributorTariff;
+  const totalWithoutEsa = energyWithoutEsa + ub.taxes + ub.cip + ub.otherCharges;
+  const monthlySavings = totalWithoutEsa - totalWithEsa;
+  const discountPct = totalWithoutEsa > 0 ? (monthlySavings / totalWithoutEsa) * 100 : 0;
+  const monthsAsCustomer = monthsBetween(ub.customerSince, month);
+  const savingsHistory = buildSavingsHistory(ub.customerSince, month, ub.accumulatedSavings);
+  const [y, m2] = month.split('-').map(Number);
+  const dueDate = `10/${String(m2 + 1).padStart(2, '0')}/${y}`;
+  return {
+    ub, ug, month,
+    docNumber: `ESA-${month.replace('-', '')}-${ub.id.replace('-', '')}`,
+    dueDate,
+    consumption: ub.monthlyConsumption, previousBalance, receivedCredits,
+    availableCredits, compensated, finalBalance, faturaEsa,
+    taxes: ub.taxes, cip: ub.cip, otherCharges: ub.otherCharges,
+    totalWithEsa, energyWithoutEsa, totalWithoutEsa,
+    monthlySavings, discountPct,
+    customerSince: ub.customerSince, monthsAsCustomer,
+    accumulatedSavings: ub.accumulatedSavings, savingsHistory,
+  };
+}
+
+function getBeneficiaryMonthlyHistoryLocal(id: string) {
+  const ub = UBS.find((u) => u.id === id);
+  const base = ub?.monthlyConsumption ?? 3800;
+  return [
+    { month: '2026-07', label: 'Jul/2026', consumptionKwh: Math.round(base), source: 'utility_bill_import' as const, sourceLabel: 'Fatura importada', fileName: 'conta-copel-jul-2026.pdf', importedAt: '2026-07-08', status: 'confirmado' as const, includedInAverage: true },
+    { month: '2026-06', label: 'Jun/2026', consumptionKwh: Math.round(base * 0.965), source: 'csv_import' as const, sourceLabel: 'CSV', fileName: 'ubm-2026-06.csv', importedAt: '2026-06-05', status: 'confirmado' as const, includedInAverage: true },
+    { month: '2026-05', label: 'Mai/2026', consumptionKwh: Math.round(base * 1.04), source: 'manual_entry' as const, sourceLabel: 'Manual', fileName: null as string | null, importedAt: '2026-05-03', status: 'confirmado' as const, includedInAverage: true },
+  ];
+}
+
+// ============================================================
+// PREVIEW PROVIDER — EsaProvider completo
+// ============================================================
+
 export const previewProvider: EsaProvider = {
-  listMonths: () => MONTHS,
-  getCycleStatus: (_month) => 'aberto' as CycleStatus,
+  listMonths: () => AVAILABLE_MONTHS,
+
+  getCycleStatus: (month) => AVAILABLE_MONTHS.find((m) => m.value === month)?.status ?? 'aberto',
+
   listGeneratingUnits: () => UGS,
   listBeneficiaryUnits: () => UBS,
   listAlerts: () => ALERTS,
 
-  computeAll: (): SettlementResult[] =>
-    UGS.map((ug) => {
-      const ubsForUg = UBS.filter((u) => u.ugId === ug.id);
-      const totalCompensated = ubsForUg.reduce((s, u) => s + u.monthlyConsumption * 0.92, 0);
-      const ownerPayment = totalCompensated * ug.purchasePrice;
-      const esaRevenue = ubsForUg.reduce((s, u) => s + u.monthlyConsumption * u.esaPrice, 0);
-      const generation = ug.monthlyGeneration;
-      const totalAllocated = generation * 0.95;
-      return {
-        ug,
-        previousBalance: ug.previousBalance,
-        generation,
-        available: generation + ug.previousBalance,
-        totalAllocated,
-        totalCompensated,
-        totalPending: totalAllocated - totalCompensated,
-        currentBalance: ug.previousBalance + generation - totalCompensated,
-        ownerPayment,
-        esaRevenue,
-        spread: esaRevenue - ownerPayment,
-        rows: ubsForUg.map((u) => ({
-          ub: u,
-          allocated: u.allocationPct * generation,
-          compensated: u.monthlyConsumption * 0.92,
-          pending: u.allocationPct * generation - u.monthlyConsumption * 0.92,
-          contaSemEsa: u.monthlyConsumption * u.distributorTariff,
-          faturaEsa: u.monthlyConsumption * u.esaPrice,
-          contaComEsa: u.monthlyConsumption * u.esaPrice + u.taxes + u.cip,
-          economia: u.monthlyConsumption * (u.distributorTariff - u.esaPrice),
-        })),
-      };
-    }),
+  computeAll: (): SettlementResult[] => computeAllResults(),
 
-  getExecutiveSummary: (filters): ExecutiveSummary => {
-    const zd = { value: 0, pct: 0, direction: 'flat' as const };
+  getExecutiveSummary: (filters: PeriodFilter): ExecutiveSummary => {
+    const results = scaledResults(filters.month, filters.ugId);
+    const curr = aggregate(results);
+    const prevM = prevMonthOf(filters.month);
+    const prev = prevM ? aggregate(scaledResults(prevM, filters.ugId)) : curr;
+
+    const currCritical = CRITICAL_BY_MONTH[filters.month] ?? 0;
+    const prevCritical = prevM ? (CRITICAL_BY_MONTH[prevM] ?? currCritical) : currCritical;
+
+    const activeUgs = filters.ugId
+      ? UGS.filter((u) => u.id === filters.ugId && u.status === 'ativa').length
+      : UGS.filter((u) => u.status === 'ativa').length;
+    const totalUgs = filters.ugId ? 1 : UGS.length;
+    const ubList = filters.ugId ? UBS.filter((b) => b.ugId === filters.ugId) : UBS;
+
     return {
-      month: filters.month ?? '2026-07',
-      cycleStatus: 'em_apuracao',
-      operational: { generatingUnits: { total: 2, active: 2 }, beneficiaryUnits: { total: 5, active: 5 }, generation: 92700, compensated: 81800, balance: 10900 },
-      financial: { revenue: 57696, ownerPayment: 29476, spread: 28220, savings: 14200, criticalAlerts: 1 },
-      deltas: { generation: zd, compensated: zd, balance: zd, revenue: zd, ownerPayment: zd, spread: zd, savings: zd, criticalAlerts: zd },
-      results: [],
+      month: filters.month,
+      cycleStatus: AVAILABLE_MONTHS.find((m) => m.value === filters.month)?.status ?? 'aberto',
+      operational: {
+        generatingUnits: { total: totalUgs, active: activeUgs },
+        beneficiaryUnits: {
+          total: ubList.length,
+          active: ubList.filter((u) => u.status === 'ativa').length,
+        },
+        generation: curr.generation,
+        compensated: curr.compensated,
+        balance: curr.balance,
+      },
+      financial: {
+        revenue: curr.revenue,
+        ownerPayment: curr.ownerPayment,
+        spread: curr.spread,
+        savings: curr.savings,
+        criticalAlerts: currCritical,
+      },
+      deltas: {
+        generation: makeDelta(curr.generation, prev.generation),
+        compensated: makeDelta(curr.compensated, prev.compensated),
+        balance: makeDelta(curr.balance, prev.balance),
+        revenue: makeDelta(curr.revenue, prev.revenue),
+        ownerPayment: makeDelta(curr.ownerPayment, prev.ownerPayment),
+        spread: makeDelta(curr.spread, prev.spread),
+        savings: makeDelta(curr.savings, prev.savings),
+        criticalAlerts: makeDelta(currCritical, prevCritical),
+      },
+      results,
     };
   },
 
-  getAlertsSummary: (_filters): Alert[] => ALERTS,
+  getAlertsSummary: (filters: PeriodFilter): Alert[] =>
+    ALERTS.filter(
+      (a) => a.month === filters.month && (!filters.ugId || a.unit === filters.ugId),
+    ),
 
-  getMonthlyTrend: (_filters): TrendRow[] =>
-    MONTHS.slice().reverse().map((m, i) => ({
-      label: m.label.slice(0, 3),
-      Receita: 45000 + i * 3200,
-      Repasse: 27000 + i * 1800,
-    })),
-
-  getFinancialSummary: (_filters): FinancialSummary => ({
-    generation: 92700,
-    compensated: 81800,
-    balance: 10900,
-    revenue: 57696,
-    ownerPayment: 29476,
-    spread: 28220,
-    savings: 14200,
-  }),
-
-  getGeneratingUnitCycleSummary: (ugId, _filters) => makeCycleSummary(ugId),
-
-  getCreditAllocationPlan: (ugId, _month, overrides): AllocationPlan => {
-    const ug = UGS.find((u) => u.id === ugId)!;
-    const ubsForUg = UBS.filter((u) => u.ugId === ugId);
-    const generation = ugId === 'UG-001' ? 58500 : 34200;
-    const rows = ubsForUg.map((ub) => {
-      const monthlyAvg = ub.annualAverage / 12;
-      const totalMonthlyAvg = ubsForUg.reduce((s, u) => s + u.annualAverage / 12, 0);
-      const recommendedPct = monthlyAvg / totalMonthlyAvg;
-      const override = (overrides as any)?.[ub.id];
-      const allocationPct = override?.allocationPct ?? recommendedPct;
-      const marginPct = override?.preventiveMargin ?? ub.preventiveMargin;
-      const targetKwh = monthlyAvg * (1 + marginPct);
-      const currentBal = ub.previousCreditBalance;
-      const received = generation * recommendedPct * 0.98;
-      const finalBal = currentBal + received - ub.monthlyConsumption;
+  // TrendRow exige: month, label, Receita, Repasse, Spread, Geracao, Consumo
+  getMonthlyTrend: (filters): TrendRow[] =>
+    [...AVAILABLE_MONTHS].reverse().map((m) => {
+      const agg = aggregate(scaledResults(m.value, filters.ugId));
       return {
-        ub,
-        averageMonthlyConsumptionKwh: monthlyAvg,
-        preventiveMarginPercentage: marginPct,
-        targetCreditKwh: targetKwh,
-        currentBalanceKwh: currentBal,
-        recommendedCreditsToReceiveKwh: Math.max(0, targetKwh - currentBal),
-        recommendedAllocationPercentage: recommendedPct,
-        allocationPercentage: allocationPct,
-        plannedCreditsReceivedKwh: generation * allocationPct,
-        creditsReceivedKwh: received,
-        monthlyConsumptionKwh: ub.monthlyConsumption,
-        creditsCompensatedKwh: Math.min(ub.monthlyConsumption, currentBal + received),
-        previousBalanceKwh: currentBal,
-        finalBalanceKwh: finalBal,
-        coverageMonths: finalBal / monthlyAvg,
-        monthlyAverage: monthlyAvg,
-        previousBalance: currentBal,
-        preventiveMargin: marginPct,
-        targetCredit: targetKwh,
-        allocationPct,
-        projectedCredits: generation * allocationPct,
-        receivedCredits: received,
-        consumption: ub.monthlyConsumption,
-        compensated: Math.min(ub.monthlyConsumption, currentBal + received),
-        finalBalance: finalBal,
-        recommendedPct,
+        month: m.value,
+        label: m.label.split(' ')[0].slice(0, 3),
+        Receita: agg.revenue,
+        Repasse: agg.ownerPayment,
+        Spread: agg.spread,
+        Geracao: agg.generation,
+        Consumo: agg.compensated + agg.generation * 0.05,
       };
-    });
-    const totalConsumption = ubsForUg.reduce((s, u) => s + u.monthlyConsumption, 0);
-    return {
-      ug,
-      generation,
-      rows,
-      totalConsumption,
-      ownerPayment: generation * ug.purchasePrice,
-      esaRevenue: ubsForUg.reduce((s, u) => s + u.monthlyConsumption * u.esaPrice, 0),
-    } as AllocationPlan;
+    }),
+
+  getFinancialSummary: (filters: PeriodFilter): FinancialSummary => {
+    return aggregate(scaledResults(filters.month, filters.ugId));
   },
 
-  getGeneratingUnitCommercialTerms: (ugId) => ({
-    ugId,
-    purchasePricePerKwh: UGS.find((u) => u.id === ugId)?.purchasePrice ?? 0.35,
-    effectiveDate: '2026-01-01',
-    contractType: 'fixo',
-  }) as any,
+  getGeneratingUnitCycleSummary: (id, filters) => {
+    const ug = UGS.find((u) => u.id === id);
+    if (!ug) return null;
+    const ubs = UBS.filter((u) => u.ugId === id);
+    const plan = computeAllocationPlan(ug, ubs);
+    return {
+      ug,
+      month: filters.month,
+      cycleStatus: AVAILABLE_MONTHS.find((m) => m.value === filters.month)?.status ?? 'aberto',
+      generationKwh: plan.generation,
+      totalRecommendedKwh: plan.totalRecommended,
+      totalPlannedKwh: plan.totalProjected,
+      totalReceivedKwh: plan.totalProjected,
+      totalCompensatedKwh: plan.totalCompensated,
+      totalFinalBalanceKwh: plan.totalFinalBalance,
+      beneficiariesCount: plan.rows.length,
+      allocationPercentageTotal: plan.totalPct,
+    };
+  },
+
+  getCreditAllocationPlan: (ugId, _month, overrides): AllocationPlan | null => {
+    const ug = UGS.find((u) => u.id === ugId);
+    if (!ug) return null;
+    return computeAllocationPlan(ug, UBS.filter((u) => u.ugId === ugId), overrides);
+  },
+
+  getGeneratingUnitCommercialTerms: (id) => {
+    const ug = UGS.find((u) => u.id === id);
+    if (!ug) return null;
+    return {
+      purchasePricePerKwh: ug.purchasePrice,
+      effectiveDate: '2026-01-01',
+      lastAppliedPricePerKwh: ug.purchasePrice,
+      lastAppliedMonth: '2026-07',
+      observation: 'Valor padrão utilizado para cálculo do repasse ao proprietário.',
+    };
+  },
+
+  getGeneratingUnitCreditDestinationReport: (id, month) => {
+    const ug = UGS.find((u) => u.id === id);
+    if (!ug) return null;
+    const plan = computeAllocationPlan(ug, UBS.filter((u) => u.ugId === id));
+    return {
+      ug, month,
+      generation: plan.generation,
+      totalDistributed: plan.totalProjected,
+      totalConsumed: plan.totalConsumption,
+      totalCompensated: plan.totalCompensated,
+      totalAccumulatedBalance: plan.totalFinalBalance,
+      beneficiariesCount: plan.rows.length,
+      ownerPayment: plan.ownerPayment,
+      rows: plan.rows.map((r) => ({
+        ub: r.ub,
+        allocationPct: r.allocationPercentage,
+        received: r.creditsReceivedKwh,
+        consumption: r.monthlyConsumptionKwh,
+        compensated: r.creditsCompensatedKwh,
+        previousBalance: r.previousBalanceKwh,
+        finalBalance: r.finalBalanceKwh,
+        coverageMonths: r.coverageMonths,
+      })),
+    };
+  },
+
+  createGeneratingUnit: (input) => ({ id: (input.id as string) ?? `UG-${Date.now()}`, ok: true }),
+  updateGeneratingUnit: (id, _input) => ({ id, ok: true }),
+
+  getBeneficiaryConsumptionAverage: (id) => {
+    const ub = UBS.find((u) => u.id === id);
+    if (!ub) return null;
+    return { annual: ub.annualAverage, monthly: ub.annualAverage / 12 };
+  },
+
+  getBeneficiaryCreditBalance: (id, month) => {
+    const inv = buildInvoice(id, month);
+    if (!inv) return null;
+    return {
+      previous: inv.previousBalance,
+      received: inv.receivedCredits,
+      compensated: inv.compensated,
+      final: inv.finalBalance,
+      coverageMonths: inv.ub.monthlyConsumption > 0 ? inv.finalBalance / inv.ub.monthlyConsumption : 0,
+    };
+  },
+
+  getBeneficiaryMonthlyHistory: (id) => getBeneficiaryMonthlyHistoryLocal(id),
+
+  getBeneficiaryAverageComposition: (id) => {
+    const history = getBeneficiaryMonthlyHistoryLocal(id);
+    const considered = history.filter((h) => h.includedInAverage);
+    const bySource = considered.reduce(
+      (acc: Record<string, number>, r) => { acc[r.source] = (acc[r.source] ?? 0) + 1; return acc; },
+      {},
+    );
+    const avg = considered.reduce((s, r) => s + r.consumptionKwh, 0) / Math.max(1, considered.length);
+    return {
+      monthsConsidered: considered.length,
+      monthlyAverageKwh: Math.round(avg),
+      bySource: {
+        utility_bill_import: bySource.utility_bill_import ?? 0,
+        csv_import: bySource.csv_import ?? 0,
+        manual_entry: bySource.manual_entry ?? 0,
+      },
+    };
+  },
+
+  getBeneficiaryMonthlyRecord: (id, month) => {
+    const ub = UBS.find((u) => u.id === id);
+    if (!ub) return null;
+    return {
+      beneficiaryUnitId: id,
+      referenceMonth: month,
+      utilityConsumerUnit: ub.uc,
+      consumptionKwh: ub.monthlyConsumption,
+      teValue: 320.4,
+      tusdValue: 512.75,
+      fioB: 88.9,
+      flagValue: 12.5,
+      cipValue: ub.cip,
+      taxesValue: ub.taxes,
+      minimumBillableKwh: 30,
+      totalBillValue: ub.monthlyConsumption * ub.distributorTariff + ub.taxes + ub.cip,
+      fileName: 'conta-copel-jul-2026.pdf',
+      importedAt: '2026-07-08',
+      source: 'utility_bill_import' as const,
+    };
+  },
+
+  getBeneficiarySavingsHistory: (id, upToMonth = '2026-07') => {
+    const inv = buildInvoice(id, upToMonth);
+    return inv?.savingsHistory ?? [];
+  },
+
+  createBeneficiaryUnit: (input) => ({ id: (input.id as string) ?? `UB-${Date.now()}`, ok: true }),
+  updateBeneficiaryUnit: (id, _input) => ({ id, ok: true }),
+
+  getBeneficiaryInvoice: (ubId, month) => {
+    const inv = buildInvoice(ubId, month);
+    if (!inv) return null;
+
+    const componentesTarifarios = [
+      { label: 'Créditos cobrados pela ESA', value: inv.faturaEsa },
+      { label: 'Impostos', value: inv.taxes },
+      { label: 'Iluminação Pública / CIP', value: inv.cip },
+      { label: 'Outros encargos', value: inv.otherCharges },
+    ];
+
+    // billingSnapshot.contaEsa = totalWithEsa (inclui impostos/CIP/outros)
+    // Separado de faturaEsa (só a energia — compensated × esaPrice)
+    const billingSnapshot = {
+      contaConcessionaria: inv.totalWithoutEsa,
+      contaEsa: inv.totalWithEsa,
+      economiaMensal: inv.monthlySavings,
+      economiaPercentual: inv.discountPct,
+      economiaAnual: inv.monthlySavings * 12,
+      componentesTarifarios,
+      creditos: {
+        previousBalanceKwh: inv.previousBalance,
+        creditsReceivedKwh: inv.receivedCredits,
+        creditsCompensatedKwh: inv.compensated,
+        finalBalanceKwh: inv.finalBalance,
+        consumptionKwh: inv.consumption,
+      },
+      calculationSource: 'legacy-copel-calculator' as const,
+    };
+
+    const creditBalance = {
+      previousBalanceKwh: inv.previousBalance,
+      creditsReceivedKwh: inv.receivedCredits,
+      creditsCompensatedKwh: inv.compensated,
+      currentBalanceKwh: inv.finalBalance,
+      coverageMonths: inv.ub.monthlyConsumption > 0 ? inv.finalBalance / inv.ub.monthlyConsumption : 0,
+    };
+
+    const settlementRecipient = {
+      recipientName: inv.ug.payee.name,
+      recipientDocument: inv.ug.payee.document,
+      pixKey: inv.ug.payee.pixKey,
+      pixKeyType: inv.ug.payee.pixType,
+    };
+
+    const beneficiarySavingsHistory = inv.savingsHistory.map((h) => ({
+      referenceMonth: h.month,
+      label: h.label,
+      billWithoutEsa: inv.totalWithoutEsa,
+      billWithEsa: inv.totalWithEsa,
+      monthlySavings: h.monthly,
+      savingsPercentage: inv.discountPct,
+      accumulatedSavings: h.cumulative,
+    }));
+
+    return { raw: inv, billingSnapshot, creditBalance, settlementRecipient, beneficiarySavingsHistory };
+  },
 
   getSettlementRecipient: (ugId) => {
     const ug = UGS.find((u) => u.id === ugId);
     if (!ug) return null;
-    return { recipientName: ug.payee.name, recipientDocument: ug.payee.document, pixKeyType: ug.payee.pixType, pixKey: ug.payee.pixKey } as any;
-  },
-
-  getGeneratingUnitCreditDestinationReport: (ugId, _month) => {
-    const ug = UGS.find((u) => u.id === ugId);
-    if (!ug) return null;
-    const ubsForUg = UBS.filter((u) => u.ugId === ugId);
-    const generation = ugId === 'UG-001' ? 58500 : 34200;
-    const rows = ubsForUg.map((ub) => {
-      const received = generation / ubsForUg.length;
-      const finalBal = ub.previousCreditBalance + received - ub.monthlyConsumption;
-      const monthlyAvg = ub.annualAverage / 12;
-      return {
-        ub,
-        allocationPct: 1 / ubsForUg.length,
-        received,
-        consumption: ub.monthlyConsumption,
-        compensated: Math.min(ub.monthlyConsumption, received),
-        previousBalance: ub.previousCreditBalance,
-        finalBalance: finalBal,
-        coverageMonths: finalBal / monthlyAvg,
-      };
-    });
     return {
-      ug, rows, generation,
-      totalDistributed: generation,
-      totalCompensated: rows.reduce((s, r) => s + r.compensated, 0),
-      totalAccumulatedBalance: rows.reduce((s, r) => s + r.finalBalance, 0),
-      totalConsumed: ubsForUg.reduce((s, u) => s + u.monthlyConsumption, 0),
-      beneficiariesCount: ubsForUg.length,
-      ownerPayment: generation * ug.purchasePrice,
-    } as any;
+      recipientName: ug.payee.name,
+      recipientDocument: ug.payee.document,
+      pixKey: ug.payee.pixKey,
+      pixKeyType: ug.payee.pixType,
+    };
   },
 
-  createGeneratingUnit: (_data) => ({ id: `UG-${Date.now()}` }) as any,
-  getBeneficiaryMonthlyHistory: (_ubId) => [] as any,
-  getBeneficiaryAverageComposition: (_ubId) => ({ averageConsumptionKwh: 3000 }) as any,
-  getBeneficiaryMonthlyRecord: (_ubId, _month) => ({
-    consumptionKwh: 3200,
-    teValue: 350,
-    tusdValue: 480,
-    fioB: 220,
-    flagValue: 45,
-    cipValue: 30,
-    taxesValue: 180,
-    totalBillValue: 1305,
-  }) as any,
-  createBeneficiaryUnit: (_data) => ({ id: `UB-${Date.now()}` }) as any,
+  confirmInvoicePayment: (_id, _payment) => ({ ok: true }),
+  reopenInvoicePayment: (_id) => ({ ok: true }),
+  confirmOwnerSettlementPayment: (_id, _payment) => ({ ok: true }),
 
-  getBeneficiaryInvoice: (ubId, month) => {
-    const ub = UBS.find((u) => u.id === ubId);
-    const ug = ub ? UGS.find((g) => g.id === ub.ugId) : null;
-    if (!ub || !ug) return null;
-    return {
-      raw: {
-        ub, ug, month, docNumber: 'FAT-2026-07-001', dueDate: '15/08/2026',
-        faturaEsa: ub.monthlyConsumption * ub.esaPrice,
-        consumption: ub.monthlyConsumption,
-        customerSince: '2025-01-01',
-        monthsAsCustomer: 18,
-        accumulatedSavings: 8500,
-      },
-      billingSnapshot: {
-        contaConcessionaria: ub.monthlyConsumption * 0.98,
-        contaEsa: ub.monthlyConsumption * ub.esaPrice,
-        economiaMensal: ub.monthlyConsumption * (0.98 - ub.esaPrice),
-        economiaPercentual: ((0.98 - ub.esaPrice) / 0.98) * 100,
-        componentesTarifarios: [
-          { label: 'Energia Elétrica (TE)', value: ub.monthlyConsumption * 0.35 },
-          { label: 'Uso da Rede (TUSD)', value: ub.monthlyConsumption * 0.25 },
-          { label: 'Fio B', value: ub.monthlyConsumption * 0.15 },
-          { label: 'Bandeira tarifária', value: ub.monthlyConsumption * 0.02 },
-          { label: 'CIP / Iluminação pública', value: 25 },
-          { label: 'Impostos (ICMS + PIS/COFINS)', value: ub.monthlyConsumption * 0.12 },
-        ],
-        calculationSource: 'billing-engine-v2',
-      },
-      creditBalance: {
-        previousBalanceKwh: ub.previousCreditBalance,
-        creditsReceivedKwh: 2400,
-        creditsCompensatedKwh: ub.monthlyConsumption,
-        currentBalanceKwh: ub.previousCreditBalance + 2400 - ub.monthlyConsumption,
-        coverageMonths: (ub.previousCreditBalance + 2400 - ub.monthlyConsumption) / (ub.annualAverage / 12),
-      },
-      settlementRecipient: { recipientName: ug.payee.name, recipientDocument: ug.payee.document, pixKeyType: ug.payee.pixType, pixKey: ug.payee.pixKey },
-      beneficiarySavingsHistory: MONTHS.slice().reverse().map((m, i) => ({ label: m.label.slice(0, 3), accumulatedSavings: 3000 + i * 1100 })),
-    } as any;
+  getCsvTemplate: (type) => {
+    const templates: Record<string, { filename: string; headers: string[]; example: string }> = {
+      ug: { filename: 'modelo-unidades-geradoras.csv', headers: ['id','nome','proprietario','documento','unidadeConsumidora','distribuidora','status'], example: 'id;nome;proprietario;documento;unidadeConsumidora;distribuidora;status\nug-assai;UG Solar Assaí;João Pereira;12345678900;123456789;Copel;active' },
+      ub: { filename: 'modelo-unidades-beneficiarias.csv', headers: ['id','unidadeGeradoraId','nome','documento','unidadeConsumidora','distribuidora','status'], example: 'id;unidadeGeradoraId;nome;documento;unidadeConsumidora;distribuidora;status\nub-001;ug-assai;Mercado Central;12222333000144;111222333;Copel;active' },
+      rug: { filename: 'modelo-registros-mensais-ug.csv', headers: ['id','unidadeGeradoraId','mesReferencia','saldoAnteriorKwh','geracaoMensalKwh','precoCompraKwh','status'], example: 'id;unidadeGeradoraId;mesReferencia;saldoAnteriorKwh;geracaoMensalKwh;precoCompraKwh;status\nugm-ug-assai-2026-07;ug-assai;2026-07;2500;13000;0,35;review' },
+      rub: { filename: 'modelo-registros-mensais-ub.csv', headers: ['id','unidadeBeneficiariaId','unidadeGeradoraId','mesReferencia','consumoMensalKwh','creditosAlocadosKwh','creditosCompensadosKwh','precoEsaKwh','tarifaDistribuidoraKwh','statusPagamento'], example: 'id;unidadeBeneficiariaId;unidadeGeradoraId;mesReferencia;consumoMensalKwh;creditosAlocadosKwh;creditosCompensadosKwh;precoEsaKwh;tarifaDistribuidoraKwh;statusPagamento\nubm-ub-001-2026-07;ub-001;ug-assai;2026-07;3950;4199;3950;0,55;0,85;paid' },
+    };
+    return templates[type];
   },
 
-  getSettlementRecipientForBeneficiary: (ubId) => {
-    const ub = UBS.find((u) => u.id === ubId);
-    if (!ub) return null;
-    const ug = UGS.find((g) => g.id === ub.ugId);
-    if (!ug) return null;
-    return { recipientName: ug.payee.name, recipientDocument: ug.payee.document, pixKeyType: ug.payee.pixType, pixKey: ug.payee.pixKey } as any;
+  simulateUtilityBillExtraction: (_file, scenario = 'matched') => {
+    const ub = UBS[0];
+    const ug = UGS.find((g) => g.id === ub.ugId)!;
+    const base = {
+      extractionId: `EXT-${Date.now()}`,
+      confidence: 'review' as const,
+      fileName: (_file as { name?: string } | null)?.name ?? 'conta-copel-jul-2026.pdf',
+      referenceMonth: '2026-07',
+      teValue: 320.4, tusdValue: 512.75, fioB: 88.9, flagValue: 12.5, minimumBillableKwh: 30,
+      scenario,
+    };
+    if (scenario === 'unmatched') {
+      return { ...base, confidence: 'unknown' as const, utilityConsumerUnit: '999888777', beneficiaryUnitId: null as string | null, beneficiaryName: 'PADARIA NOVO HORIZONTE LTDA', beneficiaryDocument: '31.222.444/0001-90', distributor: 'Copel', consumptionKwh: 2840, cipValue: 24.5, taxesValue: 380.15, totalBillValue: 2840 * 0.85 + 380.15 + 24.5 };
+    }
+    const dupAdj = scenario === 'duplicate';
+    return { ...base, confidence: 'high' as const, utilityConsumerUnit: ub.uc, beneficiaryUnitId: ub.id, beneficiaryName: ub.name, beneficiaryDocument: ub.document, distributor: ug.distributor, consumptionKwh: dupAdj ? ub.monthlyConsumption + 180 : ub.monthlyConsumption, cipValue: ub.cip, taxesValue: dupAdj ? ub.taxes + 22.4 : ub.taxes, totalBillValue: (dupAdj ? ub.monthlyConsumption + 180 : ub.monthlyConsumption) * ub.distributorTariff + ub.taxes + ub.cip };
   },
 
-  confirmInvoicePayment: (_invoiceId, _data) => ({ ok: true }) as any,
-  confirmOwnerSettlementPayment: (_settlementId, _data) => ({ ok: true }) as any,
-
-  getCsvTemplate: (type) => ({
-    filename: `modelo-${type}.csv`,
-    example: type === 'ug'
-      ? 'id;nome;proprietario;documento;uc;distribuidora\nUG-001;Usina Solar Exemplo;João Silva;12.345.678/0001-90;UC-001;EQUATORIAL'
-      : type === 'ub'
-      ? 'id;nome;documento;uc;distribuidora;ugId\nUB-001;Mercado Central;11.111.111/0001-11;UC-101;EQUATORIAL;UG-001'
-      : type === 'rug'
-      ? 'ugId;mes;geracaoKwh\nUG-001;2026-07;58500'
-      : 'ubId;mes;consumoKwh;creditosRecebidosKwh\nUB-001;2026-07;3200;2400',
-  }) as any,
-
-  simulateUtilityBillExtraction: (_file, scenario) => ({
-    extractionId: `EXT-${Date.now()}`,
-    fileName: 'fatura-exemplo.pdf',
-    confidence: scenario === 'matched' ? 'high' : scenario === 'unmatched' ? 'review' : 'high',
-    utilityConsumerUnit: scenario === 'matched' ? 'UC-101' : 'UC-999',
-    distributor: 'EQUATORIAL',
-    referenceMonth: '2026-07',
-    consumptionKwh: 3200,
-    teValue: 350, tusdValue: 480, fioB: 220, flagValue: 45, cipValue: 30, taxesValue: 180,
-    minimumBillableKwh: 100,
-    totalBillValue: 1305,
-    beneficiaryName: scenario === 'matched' ? 'Mercado Central' : undefined,
-  }) as any,
+  confirmUtilityBillExtraction: (extractionId, _data) => ({ extractionId, ok: true }),
 
   matchUtilityBillToBeneficiary: ({ utilityConsumerUnit }) => {
     const ub = UBS.find((u) => u.uc === utilityConsumerUnit);
-    if (!ub) return { matched: false, beneficiaryUnitId: '', beneficiaryName: '', beneficiaryDocument: '', uc: '', distributor: '', generatingUnitId: '', generatingUnitName: '' };
+    if (!ub) return { matched: false as const };
     const ug = UGS.find((g) => g.id === ub.ugId);
-    return { matched: true, beneficiaryUnitId: ub.id, beneficiaryName: ub.name, beneficiaryDocument: ub.document, uc: ub.uc, distributor: ub.distributor, generatingUnitId: ub.ugId, generatingUnitName: ug?.name ?? '—' };
+    return { matched: true as const, beneficiaryUnitId: ub.id, beneficiaryName: ub.name, beneficiaryDocument: ub.document, uc: ub.uc, distributor: ub.distributor, generatingUnitId: ub.ugId, generatingUnitName: ug?.name ?? '—' };
   },
 
-  linkUtilityBillToBeneficiary: (_extractionId, _ubId) => ({ ok: true }) as any,
-  confirmBeneficiaryMonthlyRecordFromUtilityBill: (_extractionId, _data) => ({ ok: true }) as any,
-  replaceBeneficiaryMonthlyRecordFromUtilityBill: (_extractionId, _reason) => ({ ok: true }) as any,
+  linkUtilityBillToBeneficiary: (_extractionId, _ubId) => ({ ok: true }),
 
-  compareUtilityBillWithExistingRecord: (_extractionId, current, incoming) => ({
-    fields: [
-      { label: 'Consumo (kWh)', current: current.consumptionKwh, incoming: incoming.consumptionKwh, delta: incoming.consumptionKwh - current.consumptionKwh },
-      { label: 'TE (R$)', current: current.teValue, incoming: incoming.teValue, delta: incoming.teValue - current.teValue },
-      { label: 'TUSD (R$)', current: current.tusdValue, incoming: incoming.tusdValue, delta: incoming.tusdValue - current.tusdValue },
-      { label: 'Fio B (R$)', current: current.fioB, incoming: incoming.fioB, delta: incoming.fioB - current.fioB },
-      { label: 'Bandeira (R$)', current: current.flagValue, incoming: incoming.flagValue, delta: incoming.flagValue - current.flagValue },
-      { label: 'CIP (R$)', current: current.cipValue, incoming: incoming.cipValue, delta: incoming.cipValue - current.cipValue },
-      { label: 'Impostos (R$)', current: current.taxesValue, incoming: incoming.taxesValue, delta: incoming.taxesValue - current.taxesValue },
-      { label: 'Total fatura (R$)', current: current.totalBillValue, incoming: incoming.totalBillValue, delta: incoming.totalBillValue - current.totalBillValue },
-    ],
-  }) as any,
+  prepareBeneficiaryFromUtilityBill: (extractionId) => ({
+    extractionId,
+    prefill: { name: '', document: '', uc: '', distributor: '' },
+  }),
+
+  confirmBeneficiaryMonthlyRecordFromUtilityBill: (extractionId, data) => ({
+    extractionId,
+    beneficiaryUnitId: data.beneficiaryUnitId,
+    referenceMonth: data.referenceMonth,
+    recordId: `UBM-${data.beneficiaryUnitId}-${data.referenceMonth}`,
+    status: 'confirmado' as const,
+    source: 'utility_bill_import' as const,
+  }),
+
+  replaceBeneficiaryMonthlyRecordFromUtilityBill: (extractionId, reason) => ({
+    extractionId, status: 'replaced' as const, reason, replacedAt: new Date().toISOString(),
+  }),
+
+  compareUtilityBillWithExistingRecord: (_extractionId, existing, incoming) => {
+    const diff = (a: number, b: number) => +(b - a).toFixed(2);
+    return {
+      fields: [
+        { label: 'Consumo (kWh)', current: existing.consumptionKwh, incoming: incoming.consumptionKwh, delta: diff(existing.consumptionKwh, incoming.consumptionKwh) },
+        { label: 'TE', current: existing.teValue, incoming: incoming.teValue, delta: diff(existing.teValue, incoming.teValue) },
+        { label: 'TUSD', current: existing.tusdValue, incoming: incoming.tusdValue, delta: diff(existing.tusdValue, incoming.tusdValue) },
+        { label: 'Fio B', current: existing.fioB, incoming: incoming.fioB, delta: diff(existing.fioB, incoming.fioB) },
+        { label: 'Bandeira', current: existing.flagValue, incoming: incoming.flagValue, delta: diff(existing.flagValue, incoming.flagValue) },
+        { label: 'CIP', current: existing.cipValue, incoming: incoming.cipValue, delta: diff(existing.cipValue, incoming.cipValue) },
+        { label: 'Impostos', current: existing.taxesValue, incoming: incoming.taxesValue, delta: diff(existing.taxesValue, incoming.taxesValue) },
+        { label: 'Valor total', current: existing.totalBillValue, incoming: incoming.totalBillValue, delta: diff(existing.totalBillValue, incoming.totalBillValue) },
+      ],
+    };
+  },
+
+  getUnlinkedUtilityBills: () => [],
+
+  shouldEmitLowBalanceAlert: ({ currentBalanceKwh, plannedCreditsReceivedKwh, targetCreditKwh }) =>
+    currentBalanceKwh + plannedCreditsReceivedKwh < targetCreditKwh,
 };

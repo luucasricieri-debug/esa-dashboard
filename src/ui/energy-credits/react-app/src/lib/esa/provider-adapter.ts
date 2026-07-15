@@ -74,8 +74,8 @@ export function createProviderAdapter(uiProvider: any): EsaProvider {
     },
 
     computeAll(): SettlementResult[] {
-      const data = unwrap(uiProvider.getFinancialSummary({}));
-      return data?.settlements ?? [];
+      const data = unwrap(uiProvider.getExecutiveSummary({ referenceMonth: AVAILABLE_MONTHS[0].value }));
+      return data?.results ?? [];
     },
 
     listAlerts(): Alert[] {
