@@ -39,6 +39,8 @@ import { consumptionAverageCalculator,
 import { UtilityBillImportService,
          buildBillingInputFromUtilityBillMonthlyRecord } from '../importers/energy-utility-bills/index.js';
 import { UtilityBillQueryService }            from '../queries/energy-utility-bills/index.js';
+import { energyCreditsCsvTemplateService }    from '../importers/energy-credits/csv-template-service.js';
+import { EnergyCreditsUIProvider }            from '../ui/energy-credits/index.js';
 
 class ESAApplication {
 
@@ -426,6 +428,278 @@ class ESAApplication {
 
   buildEnergyBillingInputFromUtilityBillMonthlyRecord(monthlyRecord, context = {}) {
     return buildBillingInputFromUtilityBillMonthlyRecord(monthlyRecord, context);
+  }
+
+  // ── Energy Credits Cadastros ───────────────────────────────────────────────
+
+  createEnergyCreditsGeneratingUnit(input, options = {}) {
+    const svc    = this.getEnergyCreditsService();
+    const result = svc.createGeneratingUnit(input);
+    if (!result.ok || !options.persist) return result;
+    const repo = options.repository || energyCreditsRepository;
+    repo.saveGeneratingUnit(result.data);
+    return result;
+  }
+
+  createEnergyCreditsBeneficiaryUnit(input, options = {}) {
+    const svc    = this.getEnergyCreditsService();
+    const result = svc.createBeneficiaryUnit(input);
+    if (!result.ok || !options.persist) return result;
+    const repo = options.repository || energyCreditsRepository;
+    repo.saveBeneficiaryUnit(result.data);
+    return result;
+  }
+
+  updateEnergyCreditsGeneratingUnit(id, input, options = {}) {
+    let existing = options.existing || null;
+    if (options.persist) {
+      const repo   = options.repository || energyCreditsRepository;
+      const loaded = repo.getGeneratingUnit(id);
+      if (!loaded.ok || !loaded.data) {
+        return { ok: false, data: null, errors: [{ code: 'GU_NOT_FOUND', message: `UG ${id} não encontrada`, field: 'id', metadata: {} }], warnings: [], metadata: {} };
+      }
+      existing = loaded.data;
+    }
+    if (!existing) {
+      return { ok: false, data: null, errors: [{ code: 'GU_NOT_FOUND', message: `UG ${id} não encontrada. Forneça options.existing para modo preview.`, field: 'id', metadata: {} }], warnings: [], metadata: {} };
+    }
+    const updated = Object.assign({}, existing, input, { id });
+    if (options.persist) {
+      const repo = options.repository || energyCreditsRepository;
+      repo.saveGeneratingUnit(updated);
+    }
+    return { ok: true, data: updated, errors: [], warnings: [], metadata: {} };
+  }
+
+  updateEnergyCreditsBeneficiaryUnit(id, input, options = {}) {
+    let existing = options.existing || null;
+    if (options.persist) {
+      const repo   = options.repository || energyCreditsRepository;
+      const loaded = repo.getBeneficiaryUnit(id);
+      if (!loaded.ok || !loaded.data) {
+        return { ok: false, data: null, errors: [{ code: 'UB_NOT_FOUND', message: `UB ${id} não encontrada`, field: 'id', metadata: {} }], warnings: [], metadata: {} };
+      }
+      existing = loaded.data;
+    }
+    if (!existing) {
+      return { ok: false, data: null, errors: [{ code: 'UB_NOT_FOUND', message: `UB ${id} não encontrada. Forneça options.existing para modo preview.`, field: 'id', metadata: {} }], warnings: [], metadata: {} };
+    }
+    const updated = Object.assign({}, existing, input, { id });
+    if (options.persist) {
+      const repo = options.repository || energyCreditsRepository;
+      repo.saveBeneficiaryUnit(updated);
+    }
+    return { ok: true, data: updated, errors: [], warnings: [], metadata: {} };
+  }
+
+  // ── Energy Credits Commercial Terms ────────────────────────────────────────
+
+  getEnergyCreditsGeneratingUnitCommercialTerms(generatingUnitId, options = {}) {
+    let unit = options.existing || null;
+    if (!unit) {
+      const q = energyCreditsQueryService.getGeneratingUnit(generatingUnitId, options);
+      unit = q.data;
+    }
+    if (!unit) {
+      return { ok: false, data: null, errors: [{ code: 'GU_NOT_FOUND', message: `UG ${generatingUnitId} não encontrada`, field: 'generatingUnitId', metadata: {} }], warnings: [], metadata: {} };
+    }
+    const terms = {
+      generatingUnitId,
+      purchasePricePerKwh: unit.purchasePricePerKwh || null,
+      effectiveFrom:       unit.effectiveFrom       || null,
+      notes:               unit.notes               || null,
+    };
+    return { ok: true, data: terms, errors: [], warnings: [], metadata: {} };
+  }
+
+  updateEnergyCreditsGeneratingUnitCommercialTerms(generatingUnitId, input, options = {}) {
+    const COMMERCIAL_FIELDS = ['purchasePricePerKwh', 'effectiveFrom', 'notes'];
+    const patch = {};
+    for (const f of COMMERCIAL_FIELDS) {
+      if (input[f] !== undefined) patch[f] = input[f];
+    }
+    return this.updateEnergyCreditsGeneratingUnit(generatingUnitId, patch, options);
+  }
+
+  // ── Energy Credits Settlement Recipient ────────────────────────────────────
+
+  getEnergyCreditsSettlementRecipient(generatingUnitId, options = {}) {
+    let unit = options.existing || null;
+    if (!unit) {
+      const q = energyCreditsQueryService.getGeneratingUnit(generatingUnitId, options);
+      unit = q.data;
+    }
+    if (!unit) {
+      return { ok: false, data: null, errors: [{ code: 'GU_NOT_FOUND', message: `UG ${generatingUnitId} não encontrada`, field: 'generatingUnitId', metadata: {} }], warnings: [], metadata: {} };
+    }
+    const recipient = {
+      generatingUnitId,
+      recipientName:     unit.recipientName     || unit.ownerName     || null,
+      recipientDocument: unit.recipientDocument || unit.ownerDocument || null,
+      pixKeyType:        unit.pixKeyType        || null,
+      pixKey:            unit.pixKey            || null,
+    };
+    return { ok: true, data: recipient, errors: [], warnings: [], metadata: {} };
+  }
+
+  updateEnergyCreditsSettlementRecipient(generatingUnitId, input, options = {}) {
+    const RECIPIENT_FIELDS = ['recipientName', 'recipientDocument', 'pixKeyType', 'pixKey'];
+    const patch = {};
+    for (const f of RECIPIENT_FIELDS) {
+      if (input[f] !== undefined) patch[f] = input[f];
+    }
+    return this.updateEnergyCreditsGeneratingUnit(generatingUnitId, patch, options);
+  }
+
+  // ── Energy Credits Invoice Payment ─────────────────────────────────────────
+
+  confirmEnergyCreditsInvoicePayment(invoiceId, paymentData, options = {}) {
+    let invoice = options.invoice || null;
+    if (!invoice && options.persist) {
+      const repo   = options.repository || energyCreditsRepository;
+      const loaded = repo.getEsaInvoice(invoiceId);
+      if (!loaded.ok || !loaded.data) {
+        return { ok: false, data: null, errors: [{ code: 'INVOICE_NOT_FOUND', message: `Fatura ${invoiceId} não encontrada`, field: 'invoiceId', metadata: {} }], warnings: [], metadata: {} };
+      }
+      invoice = loaded.data;
+    }
+    if (!invoice) {
+      return { ok: false, data: null, errors: [{ code: 'INVOICE_NOT_FOUND', message: `Fatura ${invoiceId} não encontrada. Forneça options.invoice para modo preview.`, field: 'invoiceId', metadata: {} }], warnings: [], metadata: {} };
+    }
+    const confirmed = Object.assign({}, invoice, {
+      paymentStatus: 'paid',
+      paidAt:        paymentData.paidAt        || options.referenceDate || null,
+      paidAmount:    paymentData.paidAmount     != null ? paymentData.paidAmount : (invoice.invoiceAmount || null),
+      paymentNotes:  paymentData.paymentNotes   || null,
+      paymentMethod: paymentData.paymentMethod  || null,
+    });
+    if (options.persist) {
+      const repo = options.repository || energyCreditsRepository;
+      repo.saveEsaInvoice(confirmed);
+    }
+    return { ok: true, data: confirmed, errors: [], warnings: [], metadata: { action: 'invoice.payment.confirmed' } };
+  }
+
+  reopenEnergyCreditsInvoicePayment(invoiceId, reason, options = {}) {
+    if (!reason || typeof reason !== 'string' || !reason.trim()) {
+      return { ok: false, data: null, errors: [{ code: 'REOPEN_REASON_REQUIRED', message: 'Motivo de reabertura é obrigatório', field: 'reason', metadata: {} }], warnings: [], metadata: {} };
+    }
+    let invoice = options.invoice || null;
+    if (!invoice && options.persist) {
+      const repo   = options.repository || energyCreditsRepository;
+      const loaded = repo.getEsaInvoice(invoiceId);
+      if (!loaded.ok || !loaded.data) {
+        return { ok: false, data: null, errors: [{ code: 'INVOICE_NOT_FOUND', message: `Fatura ${invoiceId} não encontrada`, field: 'invoiceId', metadata: {} }], warnings: [], metadata: {} };
+      }
+      invoice = loaded.data;
+    }
+    if (!invoice) {
+      return { ok: false, data: null, errors: [{ code: 'INVOICE_NOT_FOUND', message: `Fatura ${invoiceId} não encontrada. Forneça options.invoice para modo preview.`, field: 'invoiceId', metadata: {} }], warnings: [], metadata: {} };
+    }
+    const reopened = Object.assign({}, invoice, {
+      paymentStatus: 'open',
+      paidAt:        null,
+      paidAmount:    null,
+      paymentNotes:  null,
+      paymentMethod: null,
+      reopenReason:  reason.trim(),
+    });
+    if (options.persist) {
+      const repo = options.repository || energyCreditsRepository;
+      repo.saveEsaInvoice(reopened);
+    }
+    return { ok: true, data: reopened, errors: [], warnings: [], metadata: { action: 'invoice.payment.reopened' } };
+  }
+
+  // ── Energy Credits Owner Settlement Payment ────────────────────────────────
+
+  confirmEnergyCreditsOwnerSettlementPayment(settlementId, paymentData, options = {}) {
+    let settlement = options.settlement || null;
+    if (!settlement && options.persist) {
+      const repo   = options.repository || energyCreditsRepository;
+      const loaded = repo.getOwnerSettlement(settlementId);
+      if (!loaded.ok || !loaded.data) {
+        return { ok: false, data: null, errors: [{ code: 'SETTLEMENT_NOT_FOUND', message: `Repasse ${settlementId} não encontrado`, field: 'settlementId', metadata: {} }], warnings: [], metadata: {} };
+      }
+      settlement = loaded.data;
+    }
+    if (!settlement) {
+      return { ok: false, data: null, errors: [{ code: 'SETTLEMENT_NOT_FOUND', message: `Repasse ${settlementId} não encontrado. Forneça options.settlement para modo preview.`, field: 'settlementId', metadata: {} }], warnings: [], metadata: {} };
+    }
+    const confirmed = Object.assign({}, settlement, {
+      paymentStatus: 'paid',
+      paidAt:        paymentData.paidAt       || options.referenceDate || null,
+      paidAmount:    paymentData.paidAmount    != null ? paymentData.paidAmount : (settlement.netReturn || null),
+      paymentNotes:  paymentData.paymentNotes  || null,
+      paymentMethod: paymentData.paymentMethod || null,
+    });
+    if (options.persist) {
+      const repo = options.repository || energyCreditsRepository;
+      repo.saveOwnerSettlement(confirmed);
+    }
+    return { ok: true, data: confirmed, errors: [], warnings: [], metadata: { action: 'settlement.payment.confirmed' } };
+  }
+
+  reopenEnergyCreditsOwnerSettlementPayment(settlementId, reason, options = {}) {
+    if (!reason || typeof reason !== 'string' || !reason.trim()) {
+      return { ok: false, data: null, errors: [{ code: 'REOPEN_REASON_REQUIRED', message: 'Motivo de reabertura é obrigatório', field: 'reason', metadata: {} }], warnings: [], metadata: {} };
+    }
+    let settlement = options.settlement || null;
+    if (!settlement && options.persist) {
+      const repo   = options.repository || energyCreditsRepository;
+      const loaded = repo.getOwnerSettlement(settlementId);
+      if (!loaded.ok || !loaded.data) {
+        return { ok: false, data: null, errors: [{ code: 'SETTLEMENT_NOT_FOUND', message: `Repasse ${settlementId} não encontrado`, field: 'settlementId', metadata: {} }], warnings: [], metadata: {} };
+      }
+      settlement = loaded.data;
+    }
+    if (!settlement) {
+      return { ok: false, data: null, errors: [{ code: 'SETTLEMENT_NOT_FOUND', message: `Repasse ${settlementId} não encontrado. Forneça options.settlement para modo preview.`, field: 'settlementId', metadata: {} }], warnings: [], metadata: {} };
+    }
+    const reopened = Object.assign({}, settlement, {
+      paymentStatus: 'open',
+      paidAt:        null,
+      paidAmount:    null,
+      paymentNotes:  null,
+      paymentMethod: null,
+      reopenReason:  reason.trim(),
+    });
+    if (options.persist) {
+      const repo = options.repository || energyCreditsRepository;
+      repo.saveOwnerSettlement(reopened);
+    }
+    return { ok: true, data: reopened, errors: [], warnings: [], metadata: { action: 'settlement.payment.reopened' } };
+  }
+
+  // ── Energy Credits CSV Template ────────────────────────────────────────────
+
+  getEnergyCreditsCsvTemplate(importType, options = {}) {
+    return energyCreditsCsvTemplateService.getTemplate(importType, options);
+  }
+
+  // ── Energy Credits Beneficiary Queries ────────────────────────────────────
+
+  getEnergyCreditsBeneficiaryConsumptionAverage(beneficiaryUnitId, filters = {}, options = {}) {
+    return energyCreditsQueryService.getBeneficiaryConsumptionAverage(beneficiaryUnitId, filters, options).toJSON();
+  }
+
+  getEnergyCreditsBeneficiaryMonthlyDataSources(beneficiaryUnitId, referenceMonth, options = {}) {
+    this._ensureUtilityBillServices();
+    const historyResult  = energyCreditsQueryService.getBeneficiaryMonthlyHistory(beneficiaryUnitId, referenceMonth ? { referenceMonth } : {}, options).toJSON();
+    const importsResult  = this._utilityBillQueryService.searchUtilityBillImports({ beneficiaryUnitId, referenceMonth });
+    const monthlyRecords = Array.isArray(historyResult.data) ? historyResult.data : [];
+    const utilityBillImports = (importsResult.ok && Array.isArray(importsResult.data)) ? importsResult.data : [];
+    return {
+      data:     { monthlyRecords, utilityBillImports },
+      metadata: { beneficiaryUnitId, referenceMonth, monthlyRecordCount: monthlyRecords.length, utilityBillImportCount: utilityBillImports.length },
+      generatedAt: options.referenceDate || null,
+    };
+  }
+
+  // ── Energy Credits UI Provider ─────────────────────────────────────────────
+
+  getEnergyCreditsUIProvider(options = {}) {
+    return new EnergyCreditsUIProvider(this);
   }
 
 }
