@@ -1,3 +1,4 @@
+import './index.css';
 import { StrictMode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { Toaster } from 'sonner';
