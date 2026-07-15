@@ -1,0 +1,35 @@
+{
+  "name": "@esa/energy-credits-react",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --config vite.energy-credits.config.ts",
+    "build": "tsc --noEmit && vite build --config vite.energy-credits.config.ts",
+    "typecheck": "tsc --noEmit",
+    "preview-dev": "vite --config vite.energy-credits.config.ts --open /preview/energy-credits-react-preview.html"
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "lucide-react": "^0.511.0",
+    "recharts": "^2.15.3",
+    "sonner": "^2.0.5",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.3.0",
+    "@radix-ui/react-dialog": "^1.1.14",
+    "@radix-ui/react-select": "^2.2.5"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "typescript": "^5.8.3",
+    "vite": "^8.0.16",
+    "@types/node": "^22.0.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "@tailwindcss/vite": "^4.2.1",
+    "tailwindcss": "^4.2.1",
+    "tw-animate-css": "^1.3.4"
+  }
+}
