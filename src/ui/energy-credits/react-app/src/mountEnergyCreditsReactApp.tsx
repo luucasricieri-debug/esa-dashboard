@@ -12,6 +12,8 @@ export interface MountOptions {
   options?: {
     defaultView?: string;
     locale?: string;
+    persistenceMode?: 'preview' | 'live';
+    onExit?: () => void;
   };
 }
 

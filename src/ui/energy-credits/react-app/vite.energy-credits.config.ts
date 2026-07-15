@@ -15,7 +15,7 @@ export default defineConfig({
   },
   root: __dirname,
   build: {
-    outDir: path.resolve(__dirname, '../../../../../assets/energy-credits'),
+    outDir: path.resolve(__dirname, '../../../../assets/energy-credits'),
     emptyOutDir: true,
     lib: {
       entry: path.resolve(__dirname, 'src/entry/energy-credits-entry.tsx'),
