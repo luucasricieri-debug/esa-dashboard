@@ -16,7 +16,7 @@ import { EnergyCreditsUIProvider } from './energy-credits-ui-provider.js';
 
 const HOST_ID   = 'esa-energy-credits-react-root';
 const BANNER_ID = 'esa-preview-banner';
-const BUNDLE    = './assets/energy-credits/energy-credits-react.js';
+const BUNDLE    = '/assets/energy-credits/energy-credits-react.js';
 
 let _unmount  = null;
 let _mounted  = false;
