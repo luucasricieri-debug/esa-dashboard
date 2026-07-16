@@ -113,6 +113,56 @@ function mapCoreFinancialSummary(data: any): FinancialSummary {
   };
 }
 
+// Returns a minimal valid GeneratingUnit with safe zero values.
+// Used when Core does not provide the Lovable GeneratingUnit shape (e.g. inside AllocationPlan).
+function emptyGeneratingUnit(ugId: string): GeneratingUnit {
+  return {
+    id: ugId, name: '', owner: '', document: '', uc: '', distributor: '',
+    status: 'ativa', purchasePrice: 0, previousBalance: 0, monthlyGeneration: 0,
+    beneficiaries: [],
+    payee: { name: '', document: '', pixKey: '', pixType: 'cpf' },
+  };
+}
+
+// Returns a valid AllocationPlan with rows: [] so MonthlySettlement can render an empty state.
+// Core's getCreditAllocationPlan returns { generatingUnitId, beneficiaries } — no rows, no ug.
+function emptyAllocationPlan(ugId: string): AllocationPlan {
+  return {
+    ug: emptyGeneratingUnit(ugId),
+    generation: 0,
+    rows: [],
+    totalPct: 0,
+    totalProjected: 0,
+    totalCompensated: 0,
+    totalFinalBalance: 0,
+    ownerPayment: 0,
+    esaRevenue: 0,
+    totalRecommended: 0,
+    totalTargetCredit: 0,
+    totalConsumption: 0,
+  };
+}
+
+// Maps Core's _buildGeneratingUnitSummary shape to the fields used by MonthlySettlement.
+// Core: { totalGenerationKwh, totalAllocatedKwh, totalCompensatedKwh, currentBalanceKwh, beneficiaryCount }
+// Component: { cycleStatus, generationKwh, totalRecommendedKwh, totalPlannedKwh, totalReceivedKwh,
+//              totalCompensatedKwh, totalFinalBalanceKwh, beneficiariesCount }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapCoreCycleSummary(data: any, id: string, month: string) {
+  return {
+    generatingUnitId:     id,
+    referenceMonth:       month,
+    cycleStatus:          AVAILABLE_MONTHS.find((m) => m.value === month)?.status ?? 'aberto',
+    generationKwh:        data.totalGenerationKwh  ?? 0,
+    totalRecommendedKwh:  0,
+    totalPlannedKwh:      data.totalAllocatedKwh   ?? 0,
+    totalReceivedKwh:     data.totalAllocatedKwh   ?? 0,
+    totalCompensatedKwh:  data.totalCompensatedKwh ?? 0,
+    totalFinalBalanceKwh: data.currentBalanceKwh   ?? 0,
+    beneficiariesCount:   data.beneficiaryCount    ?? 0,
+  };
+}
+
 export function createProviderAdapter(uiProvider: any): EsaProvider {
   return {
     listMonths(): MonthOption[] {
@@ -174,11 +224,19 @@ export function createProviderAdapter(uiProvider: any): EsaProvider {
     },
 
     getGeneratingUnitCycleSummary(id: string, filters: PeriodFilter) {
-      return unwrap(uiProvider.getGeneratingUnitSummary(id, { referenceMonth: filters.month }));
+      if (!id) return null;
+      const data = unwrap(uiProvider.getGeneratingUnitSummary(id, { referenceMonth: filters.month }));
+      if (!data) return null;
+      return mapCoreCycleSummary(data, id, filters.month);
     },
 
     getCreditAllocationPlan(ugId: string, month: string, overrides?: Record<string, any>): AllocationPlan | null {
-      return unwrap(uiProvider.getAllocationPlan(ugId, month, { overrides }));
+      if (!ugId) return null;
+      const data = unwrap(uiProvider.getAllocationPlan(ugId, month, { overrides }));
+      if (!data) return null;
+      // Core shape ({ generatingUnitId, beneficiaries }) has no AllocationPlan fields.
+      // Return empty valid plan — rows: [] prevents plan.rows.map(undefined) crash.
+      return emptyAllocationPlan(ugId);
     },
 
     getGeneratingUnitCommercialTerms(id: string) {

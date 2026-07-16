@@ -38253,6 +38253,57 @@ function aW(e) {
 }
 function oW(e) {
 	return {
+		id: e,
+		name: "",
+		owner: "",
+		document: "",
+		uc: "",
+		distributor: "",
+		status: "ativa",
+		purchasePrice: 0,
+		previousBalance: 0,
+		monthlyGeneration: 0,
+		beneficiaries: [],
+		payee: {
+			name: "",
+			document: "",
+			pixKey: "",
+			pixType: "cpf"
+		}
+	};
+}
+function sW(e) {
+	return {
+		ug: oW(e),
+		generation: 0,
+		rows: [],
+		totalPct: 0,
+		totalProjected: 0,
+		totalCompensated: 0,
+		totalFinalBalance: 0,
+		ownerPayment: 0,
+		esaRevenue: 0,
+		totalRecommended: 0,
+		totalTargetCredit: 0,
+		totalConsumption: 0
+	};
+}
+function cW(e, t, n) {
+	return {
+		generatingUnitId: t,
+		referenceMonth: n,
+		cycleStatus: eW.find((e) => e.value === n)?.status ?? "aberto",
+		generationKwh: e.totalGenerationKwh ?? 0,
+		totalRecommendedKwh: 0,
+		totalPlannedKwh: e.totalAllocatedKwh ?? 0,
+		totalReceivedKwh: e.totalAllocatedKwh ?? 0,
+		totalCompensatedKwh: e.totalCompensatedKwh ?? 0,
+		totalFinalBalanceKwh: e.currentBalanceKwh ?? 0,
+		beneficiariesCount: e.beneficiaryCount ?? 0
+	};
+}
+function lW(e) {
+	return {
 		listMonths() {
 			return eW;
 		},
@@ -38305,10 +38356,12 @@ function oW(e) {
 			return n ? aW(n) : rW();
 		},
 		getGeneratingUnitCycleSummary(t, n) {
-			return $U(e.getGeneratingUnitSummary(t, { referenceMonth: n.month }));
+			if (!t) return null;
+			let r = $U(e.getGeneratingUnitSummary(t, { referenceMonth: n.month }));
+			return r ? cW(r, t, n.month) : null;
 		},
 		getCreditAllocationPlan(t, n, r) {
-			return $U(e.getAllocationPlan(t, n, { overrides: r }));
+			return !t || !$U(e.getAllocationPlan(t, n, { overrides: r })) ? null : sW(t);
 		},
 		getGeneratingUnitCommercialTerms(t) {
 			return $U(e.getGeneratingUnitCommercialTerms(t));
@@ -38406,4 +38459,4 @@ function oW(e) {
 	};
 }
 //#endregion
-export { oW as createProviderAdapter, QU as mountEnergyCreditsReactApp };
+export { lW as createProviderAdapter, QU as mountEnergyCreditsReactApp };
