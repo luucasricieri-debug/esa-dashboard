@@ -288,7 +288,15 @@ export function createProviderAdapter(uiProvider: any): EsaProvider {
     },
 
     getGeneratingUnitCreditDestinationReport(id: string, month: string) {
-      return unwrap(uiProvider.getOwnerMonthlyReport(id, month));
+      if (!id) return null;
+      try {
+        return unwrap(uiProvider.getOwnerMonthlyReport(id, month));
+      } catch (err: unknown) {
+        const msg = (err as Error)?.message ?? '';
+        // Known: Core throws when generating unit does not exist in the read model.
+        if (/\[buildOwnerMonthlyReport\]/.test(msg) && /não encontrada/.test(msg)) return null;
+        throw err;
+      }
     },
 
     createGeneratingUnit(input: Record<string, unknown>) {
@@ -332,7 +340,15 @@ export function createProviderAdapter(uiProvider: any): EsaProvider {
     },
 
     getBeneficiaryInvoice(id: string, month: string) {
-      return unwrap(uiProvider.getBeneficiaryMonthlyReport(id, month));
+      if (!id) return null;
+      try {
+        return unwrap(uiProvider.getBeneficiaryMonthlyReport(id, month));
+      } catch (err: unknown) {
+        const msg = (err as Error)?.message ?? '';
+        // Known: Core throws when beneficiary unit does not exist in the read model.
+        if (/\[buildBeneficiaryMonthlyReport\]/.test(msg) && /não encontrada/.test(msg)) return null;
+        throw err;
+      }
     },
 
     getSettlementRecipient(ugId: string) {

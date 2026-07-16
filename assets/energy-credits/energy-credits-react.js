@@ -38400,7 +38400,14 @@ function pW(e) {
 			return $U(e.getGeneratingUnitCommercialTerms(t));
 		},
 		getGeneratingUnitCreditDestinationReport(t, n) {
-			return $U(e.getOwnerMonthlyReport(t, n));
+			if (!t) return null;
+			try {
+				return $U(e.getOwnerMonthlyReport(t, n));
+			} catch (e) {
+				let t = e?.message ?? "";
+				if (/\[buildOwnerMonthlyReport\]/.test(t) && /não encontrada/.test(t)) return null;
+				throw e;
+			}
 		},
 		createGeneratingUnit(t) {
 			return $U(e.createGeneratingUnit(t)) ?? { ok: !0 };
@@ -38433,7 +38440,14 @@ function pW(e) {
 			return $U(e.updateBeneficiaryUnit(t, n)) ?? { ok: !0 };
 		},
 		getBeneficiaryInvoice(t, n) {
-			return $U(e.getBeneficiaryMonthlyReport(t, n));
+			if (!t) return null;
+			try {
+				return $U(e.getBeneficiaryMonthlyReport(t, n));
+			} catch (e) {
+				let t = e?.message ?? "";
+				if (/\[buildBeneficiaryMonthlyReport\]/.test(t) && /não encontrada/.test(t)) return null;
+				throw e;
+			}
 		},
 		getSettlementRecipient(t) {
 			return $U(e.getSettlementRecipient(t));
