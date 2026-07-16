@@ -69,8 +69,8 @@ Nota: o protótipo usa `@import "tailwindcss" source(none)` + `@source "../src"`
 | Shell / Layout | — | `src__components__esa__Shell.tsx` | ✅ ALINHADO | `components/esa/Shell.tsx` | Ver §4.1 |
 | Visão Geral | `dashboard` | `src__components__esa__views__Dashboard.tsx` | ✅ ALINHADO | `views/Dashboard.tsx` | Ver §4.2 |
 | Apuração Mensal | `apuracao` | `src__components__esa__views__MonthlySettlement.tsx` | ✅ ALINHADO | `views/MonthlySettlement.tsx` | Ver §4.3 |
-| Unidades Geradoras | `ug` | *(não disponível)* | 🔜 PENDENTE | `views/GeneratingUnits.tsx` | Ver §4.4 |
-| Unidades Beneficiárias | `ub` | *(não disponível)* | 🔜 PENDENTE | `views/BeneficiaryUnits.tsx` | Ver §4.5 |
+| Unidades Geradoras | `ug` | *(não disponível)* | ✅ MIGRADO | `views/GeneratingUnits.tsx` | Ver §4.4 |
+| Unidades Beneficiárias | `ub` | *(não disponível)* | ✅ MIGRADO | `views/BeneficiaryUnits.tsx` | Ver §4.5 |
 | Importação CSV | `csv` | *(não disponível)* | 🔜 PENDENTE | `views/CsvImport.tsx` | Ver §4.6 |
 | Relatórios | `relatorios` | *(não disponível)* | 🔜 PENDENTE | `views/Reports.tsx` | Ver §4.7 |
 | Financeiro | `financeiro` | *(não disponível)* | 🔜 PENDENTE | `views/Financial.tsx` | Ver §4.8 |
@@ -157,21 +157,39 @@ Nota: o protótipo usa `@import "tailwindcss" source(none)` + `@source "../src"`
 
 ---
 
-### 4.4 Unidades Geradoras — 🔜 PENDENTE
+### 4.4 Unidades Geradoras — ✅ MIGRADO (Missão 21)
 
 **Arquivo:** `components/esa/views/GeneratingUnits.tsx`  
-**Referência:** *(arquivo não disponível no material exportado)*
+**Referência:** Spec textual da Missão 21 (`.dc.html` não disponível para comparação pixel)
 
-Revisão visual pendente via `.dc.html`. O arquivo existente usa `useEsaProvider()` e implementa CRUD de UGs. Comparação detalhada agendada para etapa futura.
+| Elemento | Descrição | Status |
+|---|---|---|
+| Lista UGs com filtro | Busca por nome, proprietário e UC; colunas: UG, Proprietário, UC, Distribuidora, Geração, Saldo, Créditos comp., Beneficiárias, Status | ✅ |
+| Estado vazio | Mensagem diferenciada: sem UGs cadastradas vs. sem resultados de busca | ✅ |
+| UGDetail — 5 abas | Resumo, Beneficiárias, Histórico, Termos Comerciais, Destinatário | ✅ |
+| UGResumoTab | Geração do mês, Saldo atual, Créditos compensados, Beneficiárias, Preço padrão, Repasse do mês, Alertas recentes | ✅ |
+| UGBenefTab | Plano de alocação via `getCreditAllocationPlan`; colunas: Beneficiária, UC, Consumo, Compensado, Saldo, Cobertura | ✅ |
+| UGHistoricoTab | Histórico mensal via `listMonths()` + `getGeneratingUnitCreditDestinationReport`; CycleBadge por status; estado vazio | ✅ |
+| Wizard cadastro UG | 3 etapas: Dados Básicos, Termos Comerciais, Revisar; botão "Cadastrar Unidade Geradora"; banner de modo prévia | ✅ |
+| `getCreditAllocationPlan` null safety | `(plan?.rows ?? [])` — seguro para null (repo vazio) e emptyAllocationPlan | ✅ |
 
 ---
 
-### 4.5 Unidades Beneficiárias — 🔜 PENDENTE
+### 4.5 Unidades Beneficiárias — ✅ MIGRADO (Missão 21)
 
 **Arquivo:** `components/esa/views/BeneficiaryUnits.tsx`  
-**Referência:** *(arquivo não disponível no material exportado)*
+**Referência:** Spec textual da Missão 21 (`.dc.html` não disponível para comparação pixel)
 
-Revisão visual pendente via `.dc.html`.
+| Elemento | Descrição | Status |
+|---|---|---|
+| Lista UBs com filtro | Busca por nome, documento e UC; colunas novas: Saldo atual, Cobertura via `getBeneficiaryCreditBalance` | ✅ |
+| 4 botões de ação | Ver detalhes (Eye), Editar (Pencil), Histórico mensal (History → abre aba histórico), Ver Fatura ESA (FileText) | ✅ |
+| UBDetail com `initialTab` | Aceita `tab: 'overview' \| 'history'`; botão Histórico abre diretamente na aba correta | ✅ |
+| UBOverviewTab expandido | 4 KPI cards (Consumo, Compensado, Saldo, Cobertura); 4 média cards; Movimentação de créditos; Condição comercial | ✅ |
+| Wizard cadastro UB — 5 etapas | Dados Básicos, Condição Comercial, Método de Cálculo, Revisar, Confirmar; botão "Cadastrar Unidade Beneficiária" | ✅ |
+| UBStep1: UGSummaryCard | Exibe info da UG selecionada: proprietário, geração, UBs vinculadas, preço padrão | ✅ |
+| UBStep2: observações | Campo `commercialObservation` adicionado ao formulário | ✅ |
+| `hasSufficientHistory` | Constante `false` para nova UB (sem histórico existente); badge "HISTÓRICO INSUFICIENTE"; campo média manual; opção histórico desabilitada | ✅ |
 
 ---
 
@@ -231,8 +249,8 @@ As regras abaixo devem ser observadas em todas as etapas futuras:
 
 | Etapa | Escopo | Status |
 |---|---|---|
-| **Etapa 1 (atual)** | Design system + Shell + Visão Geral | ✅ CONCLUÍDO |
-| Etapa 2 | Unidades Geradoras + Unidades Beneficiárias | 🔜 Pendente |
+| **Etapa 1** | Design system + Shell + Visão Geral | ✅ CONCLUÍDO |
+| **Etapa 2** | Unidades Geradoras + Unidades Beneficiárias | ✅ CONCLUÍDO |
 | Etapa 3 | Apuração Mensal (refinamentos visuais) | 🔜 Pendente |
 | Etapa 4 | Importação CSV + Relatórios | 🔜 Pendente |
 | Etapa 5 | Financeiro + Alertas | 🔜 Pendente |
