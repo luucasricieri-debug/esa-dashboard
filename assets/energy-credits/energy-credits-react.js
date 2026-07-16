@@ -38302,7 +38302,40 @@ function cW(e, t, n) {
 		beneficiariesCount: e.beneficiaryCount ?? 0
 	};
 }
-function lW(e) {
+var lW = {
+	ug: "generating-units",
+	ub: "beneficiary-units",
+	rug: "generating-unit-monthly-records",
+	rub: "beneficiary-monthly-records"
+}, uW = {
+	ug: "modelo-unidades-geradoras.csv",
+	ub: "modelo-unidades-beneficiarias.csv",
+	rug: "modelo-registros-mensais-ug.csv",
+	rub: "modelo-registros-mensais-ub.csv"
+};
+function dW(e, t) {
+	return {
+		importType: e.importType ?? t,
+		delimiter: e.delimiter ?? ";",
+		headers: e.headers ?? [],
+		exampleRows: e.exampleRows ?? [],
+		aliases: e.aliases ?? {},
+		example: e.csvText ?? "",
+		filename: uW[t] ?? `modelo-${t}.csv`
+	};
+}
+function fW(e) {
+	return {
+		importType: e,
+		delimiter: ";",
+		headers: [],
+		exampleRows: [],
+		aliases: {},
+		example: "",
+		filename: uW[e] ?? `modelo-${e}.csv`
+	};
+}
+function pW(e) {
 	return {
 		listMonths() {
 			return eW;
@@ -38415,7 +38448,8 @@ function lW(e) {
 			return $U(e.confirmOwnerSettlementPayment(t, n)) ?? { ok: !0 };
 		},
 		getCsvTemplate(t) {
-			return $U(e.getCsvTemplate(t));
+			let n = lW[t] ?? t, r = $U(e.getCsvTemplate(n));
+			return r ? dW(r, t) : fW(t);
 		},
 		simulateUtilityBillExtraction(t, n = "matched") {
 			return $U(e.createUtilityBillImport({
@@ -38459,4 +38493,4 @@ function lW(e) {
 	};
 }
 //#endregion
-export { lW as createProviderAdapter, QU as mountEnergyCreditsReactApp };
+export { pW as createProviderAdapter, QU as mountEnergyCreditsReactApp };

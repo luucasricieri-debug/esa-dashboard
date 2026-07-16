@@ -163,6 +163,50 @@ function mapCoreCycleSummary(data: any, id: string, month: string) {
   };
 }
 
+// Maps CsvImport.tsx short type keys to the Core's full import type keys.
+const CSV_TYPE_MAP: Record<string, string> = {
+  'ug':  'generating-units',
+  'ub':  'beneficiary-units',
+  'rug': 'generating-unit-monthly-records',
+  'rub': 'beneficiary-monthly-records',
+};
+
+// Download filenames for each short type key.
+const CSV_FILENAME: Record<string, string> = {
+  'ug':  'modelo-unidades-geradoras.csv',
+  'ub':  'modelo-unidades-beneficiarias.csv',
+  'rug': 'modelo-registros-mensais-ug.csv',
+  'rub': 'modelo-registros-mensais-ub.csv',
+};
+
+// Maps Core's getCsvTemplate shape { importType, delimiter, headers, exampleRows, csvText, aliases }
+// to the shape expected by CsvImport.tsx: { example, filename, importType, delimiter, headers, exampleRows, aliases }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapCoreCsvTemplate(data: any, shortType: string) {
+  return {
+    importType:  data.importType   ?? shortType,
+    delimiter:   data.delimiter    ?? ';',
+    headers:     data.headers      ?? [],
+    exampleRows: data.exampleRows  ?? [],
+    aliases:     data.aliases      ?? {},
+    example:     data.csvText      ?? '',
+    filename:    CSV_FILENAME[shortType] ?? `modelo-${shortType}.csv`,
+  };
+}
+
+// Safe empty CSV template contract — returned when Core errors or type is unknown.
+function emptyCsvTemplate(shortType: string) {
+  return {
+    importType:  shortType,
+    delimiter:   ';',
+    headers:     [] as string[],
+    exampleRows: [] as string[][],
+    aliases:     {} as Record<string, string[]>,
+    example:     '',
+    filename:    CSV_FILENAME[shortType] ?? `modelo-${shortType}.csv`,
+  };
+}
+
 export function createProviderAdapter(uiProvider: any): EsaProvider {
   return {
     listMonths(): MonthOption[] {
@@ -308,7 +352,10 @@ export function createProviderAdapter(uiProvider: any): EsaProvider {
     },
 
     getCsvTemplate(type: 'ug' | 'ub' | 'rug' | 'rub') {
-      return unwrap(uiProvider.getCsvTemplate(type));
+      const coreType = CSV_TYPE_MAP[type] ?? type;
+      const data = unwrap(uiProvider.getCsvTemplate(coreType));
+      if (!data) return emptyCsvTemplate(type);
+      return mapCoreCsvTemplate(data, type);
     },
 
     simulateUtilityBillExtraction(file: any, scenario: 'matched' | 'unmatched' | 'duplicate' = 'matched') {
