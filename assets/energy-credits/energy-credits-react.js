@@ -36900,38 +36900,11 @@ function IU() {
 		value: e.ownerPayment,
 		status: e.ug.id === "UG-001" ? "pago" : "aberto",
 		paidAt: e.ug.id === "UG-001" ? "10/08/2026" : void 0
-	}))), l = a.filter((e) => e.status === "pago").length, u = a.filter((e) => e.status === "aberto").length, d = a.filter((e) => e.status === "vencido").length, f = a.filter((e) => e.status === "aberto" || e.status === "vencido").reduce((e, t) => e + t.value, 0), p = [
-		{
-			m: "Fev",
-			Receita: 18500,
-			Repasse: 11200
-		},
-		{
-			m: "Mar",
-			Receita: 19800,
-			Repasse: 12100
-		},
-		{
-			m: "Abr",
-			Receita: 21200,
-			Repasse: 12900
-		},
-		{
-			m: "Mai",
-			Receita: 22e3,
-			Repasse: 13400
-		},
-		{
-			m: "Jun",
-			Receita: 23100,
-			Repasse: 14100
-		},
-		{
-			m: "Jul",
-			Receita: r,
-			Repasse: i
-		}
-	], m = p.map((e) => ({
+	}))), l = a.filter((e) => e.status === "pago").length, u = a.filter((e) => e.status === "aberto").length, d = a.filter((e) => e.status === "vencido").length, f = a.filter((e) => e.status === "aberto" || e.status === "vencido").reduce((e, t) => e + t.value, 0), p = e.getMonthlyTrend({}).map((e) => ({
+		m: e.label,
+		Receita: e.Receita,
+		Repasse: e.Repasse
+	})), m = p.map((e) => ({
 		m: e.m,
 		Spread: e.Receita - e.Repasse
 	})), [h, g] = (0, v.useState)("faturas"), [_, y] = (0, v.useState)(null), [b, x] = (0, v.useState)(null);

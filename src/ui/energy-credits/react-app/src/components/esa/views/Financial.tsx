@@ -76,14 +76,11 @@ export function Financial() {
   const lateCount = invoices.filter((i) => i.status === 'vencido').length;
   const openValue = invoices.filter((i) => i.status === 'aberto' || i.status === 'vencido').reduce((s, i) => s + i.value, 0);
 
-  const trend = [
-    { m: 'Fev', Receita: 18500, Repasse: 11200 },
-    { m: 'Mar', Receita: 19800, Repasse: 12100 },
-    { m: 'Abr', Receita: 21200, Repasse: 12900 },
-    { m: 'Mai', Receita: 22000, Repasse: 13400 },
-    { m: 'Jun', Receita: 23100, Repasse: 14100 },
-    { m: 'Jul', Receita: revenue, Repasse: owner },
-  ];
+  const trend = provider.getMonthlyTrend({}).map((r) => ({
+    m: r.label,
+    Receita: r.Receita,
+    Repasse: r.Repasse,
+  }));
   const spreadTrend = trend.map((t) => ({ m: t.m, Spread: t.Receita - t.Repasse }));
 
   const [tab, setTab] = useState<'faturas' | 'repasses'>('faturas');
