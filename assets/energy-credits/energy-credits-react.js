@@ -38202,7 +38202,56 @@ function rW() {
 		savings: 0
 	};
 }
-function iW(e) {
+function iW(e, t) {
+	let n = tW();
+	return {
+		month: t,
+		cycleStatus: eW.find((e) => e.value === t)?.status ?? "aberto",
+		operational: {
+			generatingUnits: {
+				total: e.generatingUnitCount ?? 0,
+				active: e.generatingUnitCount ?? 0
+			},
+			beneficiaryUnits: {
+				total: e.beneficiaryUnitCount ?? 0,
+				active: e.beneficiaryUnitCount ?? 0
+			},
+			generation: e.totalGenerationKwh ?? 0,
+			compensated: e.totalCompensatedKwh ?? 0,
+			balance: e.totalCurrentBalanceKwh ?? 0
+		},
+		financial: {
+			revenue: e.totalEsaRevenue ?? 0,
+			ownerPayment: e.totalOwnerReturn ?? 0,
+			spread: e.grossSpread ?? 0,
+			savings: e.totalMonthlyDiscount ?? 0,
+			criticalAlerts: e.criticalAlertCount ?? 0
+		},
+		deltas: {
+			generation: n,
+			compensated: n,
+			balance: n,
+			revenue: n,
+			ownerPayment: n,
+			spread: n,
+			savings: n,
+			criticalAlerts: n
+		},
+		results: []
+	};
+}
+function aW(e) {
+	return {
+		generation: 0,
+		compensated: 0,
+		balance: 0,
+		revenue: e.totalEsaRevenue ?? 0,
+		ownerPayment: e.totalOwnerReturn ?? 0,
+		spread: e.grossSpread ?? 0,
+		savings: 0
+	};
+}
+function oW(e) {
 	return {
 		listMonths() {
 			return eW;
@@ -38211,22 +38260,25 @@ function iW(e) {
 			return eW.find((t) => t.value === e)?.status ?? "aberto";
 		},
 		listGeneratingUnits() {
-			return $U(e.searchGeneratingUnits({}))?.items ?? [];
+			let t = $U(e.searchGeneratingUnits({}));
+			return Array.isArray(t) ? t : t?.items ?? [];
 		},
 		listBeneficiaryUnits() {
-			return $U(e.searchBeneficiaryUnits({}))?.items ?? [];
+			let t = $U(e.searchBeneficiaryUnits({}));
+			return Array.isArray(t) ? t : t?.items ?? [];
 		},
 		computeAll() {
-			return $U(e.getExecutiveSummary({ referenceMonth: eW[0].value }))?.results ?? [];
+			return [];
 		},
 		listAlerts() {
 			return $U(e.getAlertsSummary({}))?.alerts ?? [];
 		},
 		getExecutiveSummary(t) {
-			return $U(e.getExecutiveSummary({
+			let n = $U(e.getExecutiveSummary({
 				referenceMonth: t.month,
 				ugId: t.ugId
-			})) ?? nW(t.month);
+			}));
+			return n ? iW(n, t.month) : nW(t.month);
 		},
 		getAlertsSummary(t) {
 			return $U(e.getAlertsSummary({ referenceMonth: t.month }))?.alerts ?? [];
@@ -38240,16 +38292,17 @@ function iW(e) {
 				return {
 					month: n.value,
 					label: n.label.split(" ")[0].slice(0, 3),
-					Receita: r?.revenue ?? 0,
-					Repasse: r?.ownerPayment ?? 0,
-					Spread: r?.spread ?? 0,
-					Geracao: r?.generation ?? 0,
-					Consumo: r?.compensated ?? 0
+					Receita: r?.totalEsaRevenue ?? 0,
+					Repasse: r?.totalOwnerReturn ?? 0,
+					Spread: r?.grossSpread ?? 0,
+					Geracao: 0,
+					Consumo: 0
 				};
 			});
 		},
 		getFinancialSummary(t) {
-			return $U(e.getFinancialSummary({ referenceMonth: t.month })) ?? rW();
+			let n = $U(e.getFinancialSummary({ referenceMonth: t.month }));
+			return n ? aW(n) : rW();
 		},
 		getGeneratingUnitCycleSummary(t, n) {
 			return $U(e.getGeneratingUnitSummary(t, { referenceMonth: n.month }));
@@ -38321,8 +38374,8 @@ function iW(e) {
 			return $U(e.reviewUtilityBillImport(t, n)) ?? { ok: !0 };
 		},
 		matchUtilityBillToBeneficiary(t) {
-			let n = $U(e.searchBeneficiaryUnits({}))?.items ?? [];
-			return $U(e.matchUtilityBillImport(t.utilityConsumerUnit, n));
+			let n = $U(e.searchBeneficiaryUnits({})), r = Array.isArray(n) ? n : n?.items ?? [];
+			return $U(e.matchUtilityBillImport(t.utilityConsumerUnit, r));
 		},
 		linkUtilityBillToBeneficiary(t, n) {
 			return $U(e.linkUtilityBillToBeneficiary(t, n)) ?? { ok: !0 };
@@ -38353,4 +38406,4 @@ function iW(e) {
 	};
 }
 //#endregion
-export { iW as createProviderAdapter, QU as mountEnergyCreditsReactApp };
+export { oW as createProviderAdapter, QU as mountEnergyCreditsReactApp };

@@ -5,6 +5,15 @@
  * Bridges the Lovable UI provider API → EnergyCreditsUIProvider (UIResult).
  * No financial formulas (no scaledResults, aggregate, etc.).
  * Maps method calls and unwraps UIResult<T> → T.
+ *
+ * Core field name mapping:
+ *  searchGeneratingUnits  → returns array directly (not {items:[]})
+ *  searchBeneficiaryUnits → returns array directly (not {items:[]})
+ *  getExecutiveSummary    → { generatingUnitCount, totalGenerationKwh, totalCompensatedKwh,
+ *                             totalCurrentBalanceKwh, totalOwnerReturn, totalEsaRevenue,
+ *                             grossSpread, totalMonthlyDiscount, criticalAlertCount, ... }
+ *  getFinancialSummary    → { totalEsaRevenue, totalOwnerReturn, grossSpread, ... }
+ *  getAlertsSummary       → { alerts: [], totalAlerts, bySeverity, ... }
  */
 import type { EsaProvider } from './EsaProviderContext';
 import type {
@@ -55,6 +64,55 @@ function emptyFinancialSummary(): FinancialSummary {
   return { generation: 0, compensated: 0, balance: 0, revenue: 0, ownerPayment: 0, spread: 0, savings: 0 };
 }
 
+// Maps the Core executive summary shape to the Lovable ExecutiveSummary shape.
+// Core: { generatingUnitCount, totalGenerationKwh, totalCompensatedKwh, totalCurrentBalanceKwh,
+//         totalEsaRevenue, totalOwnerReturn, grossSpread, totalMonthlyDiscount, criticalAlertCount }
+// Lovable: { month, cycleStatus, operational, financial, deltas, results }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapCoreExecutiveSummary(data: any, month: string): ExecutiveSummary {
+  const zeroKpi = flatDelta();
+  return {
+    month,
+    cycleStatus: AVAILABLE_MONTHS.find((m) => m.value === month)?.status ?? 'aberto',
+    operational: {
+      generatingUnits:  { total: data.generatingUnitCount  ?? 0, active: data.generatingUnitCount  ?? 0 },
+      beneficiaryUnits: { total: data.beneficiaryUnitCount ?? 0, active: data.beneficiaryUnitCount ?? 0 },
+      generation:  data.totalGenerationKwh     ?? 0,
+      compensated: data.totalCompensatedKwh    ?? 0,
+      balance:     data.totalCurrentBalanceKwh ?? 0,
+    },
+    financial: {
+      revenue:        data.totalEsaRevenue      ?? 0,
+      ownerPayment:   data.totalOwnerReturn     ?? 0,
+      spread:         data.grossSpread          ?? 0,
+      savings:        data.totalMonthlyDiscount ?? 0,
+      criticalAlerts: data.criticalAlertCount   ?? 0,
+    },
+    deltas: {
+      generation: zeroKpi, compensated: zeroKpi, balance: zeroKpi,
+      revenue: zeroKpi, ownerPayment: zeroKpi, spread: zeroKpi,
+      savings: zeroKpi, criticalAlerts: zeroKpi,
+    },
+    results: [],
+  };
+}
+
+// Maps the Core financial summary shape to the Lovable FinancialSummary shape.
+// Core: { totalEsaRevenue, totalOwnerReturn, grossSpread, totalInvoices, ... }
+// Lovable: { generation, compensated, balance, revenue, ownerPayment, spread, savings }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapCoreFinancialSummary(data: any): FinancialSummary {
+  return {
+    generation:   0,
+    compensated:  0,
+    balance:      0,
+    revenue:      data.totalEsaRevenue  ?? 0,
+    ownerPayment: data.totalOwnerReturn ?? 0,
+    spread:       data.grossSpread      ?? 0,
+    savings:      0,
+  };
+}
+
 export function createProviderAdapter(uiProvider: any): EsaProvider {
   return {
     listMonths(): MonthOption[] {
@@ -66,16 +124,17 @@ export function createProviderAdapter(uiProvider: any): EsaProvider {
     },
 
     listGeneratingUnits(): GeneratingUnit[] {
-      return unwrap(uiProvider.searchGeneratingUnits({}))?.items ?? [];
+      const data = unwrap(uiProvider.searchGeneratingUnits({}));
+      return (Array.isArray(data) ? data : data?.items ?? []) as GeneratingUnit[];
     },
 
     listBeneficiaryUnits(): BeneficiaryUnit[] {
-      return unwrap(uiProvider.searchBeneficiaryUnits({}))?.items ?? [];
+      const data = unwrap(uiProvider.searchBeneficiaryUnits({}));
+      return (Array.isArray(data) ? data : data?.items ?? []) as BeneficiaryUnit[];
     },
 
     computeAll(): SettlementResult[] {
-      const data = unwrap(uiProvider.getExecutiveSummary({ referenceMonth: AVAILABLE_MONTHS[0].value }));
-      return data?.results ?? [];
+      return [];
     },
 
     listAlerts(): Alert[] {
@@ -85,7 +144,8 @@ export function createProviderAdapter(uiProvider: any): EsaProvider {
 
     getExecutiveSummary(filters: PeriodFilter): ExecutiveSummary {
       const data = unwrap(uiProvider.getExecutiveSummary({ referenceMonth: filters.month, ugId: filters.ugId }));
-      return data ?? emptyExecutiveSummary(filters.month);
+      if (!data) return emptyExecutiveSummary(filters.month);
+      return mapCoreExecutiveSummary(data, filters.month);
     },
 
     getAlertsSummary(filters: PeriodFilter): Alert[] {
@@ -97,19 +157,20 @@ export function createProviderAdapter(uiProvider: any): EsaProvider {
       return AVAILABLE_MONTHS.slice().reverse().map((m) => {
         const data = unwrap(uiProvider.getFinancialSummary({ referenceMonth: m.value, ugId: filters.ugId }));
         return {
-          month: m.value,
-          label: m.label.split(' ')[0].slice(0, 3),
-          Receita: data?.revenue ?? 0,
-          Repasse: data?.ownerPayment ?? 0,
-          Spread: data?.spread ?? 0,
-          Geracao: data?.generation ?? 0,
-          Consumo: data?.compensated ?? 0,
+          month:   m.value,
+          label:   m.label.split(' ')[0].slice(0, 3),
+          Receita: data?.totalEsaRevenue  ?? 0,
+          Repasse: data?.totalOwnerReturn ?? 0,
+          Spread:  data?.grossSpread      ?? 0,
+          Geracao: 0,
+          Consumo: 0,
         };
       });
     },
 
     getFinancialSummary(filters: PeriodFilter): FinancialSummary {
-      return unwrap(uiProvider.getFinancialSummary({ referenceMonth: filters.month })) ?? emptyFinancialSummary();
+      const data = unwrap(uiProvider.getFinancialSummary({ referenceMonth: filters.month }));
+      return data ? mapCoreFinancialSummary(data) : emptyFinancialSummary();
     },
 
     getGeneratingUnitCycleSummary(id: string, filters: PeriodFilter) {
@@ -201,8 +262,9 @@ export function createProviderAdapter(uiProvider: any): EsaProvider {
     },
 
     matchUtilityBillToBeneficiary(extracted: { utilityConsumerUnit: string; distributor?: string }) {
-      const ubs = unwrap(uiProvider.searchBeneficiaryUnits({}))?.items ?? [];
-      return unwrap(uiProvider.matchUtilityBillImport(extracted.utilityConsumerUnit, ubs));
+      const ubs = unwrap(uiProvider.searchBeneficiaryUnits({}));
+      const ubList = Array.isArray(ubs) ? ubs : ubs?.items ?? [];
+      return unwrap(uiProvider.matchUtilityBillImport(extracted.utilityConsumerUnit, ubList));
     },
 
     linkUtilityBillToBeneficiary(extractionId: string, ubId: string) {
