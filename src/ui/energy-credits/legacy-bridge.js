@@ -44,6 +44,7 @@ async function activate() {
   const b = banner();
   const c = content();
 
+  document.body.classList.add('esa-energy-credits-active');
   if (h) h.style.display = 'block';
   if (b) b.style.display = 'block';
   if (c) c.style.display = 'none';
@@ -86,6 +87,7 @@ function deactivate() {
   const b = banner();
   const c = content();
 
+  document.body.classList.remove('esa-energy-credits-active');
   if (h) h.style.display = 'none';
   if (b) b.style.display = 'none';
   if (c) c.style.display = '';

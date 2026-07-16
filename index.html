@@ -535,6 +535,33 @@ body{font-family:DM Sans,sans-serif;background:var(--bg);color:var(--bk);min-hei
   .rel-print-footer{display:block!important;font-size:10px;color:#4A7A5E;border-top:1px solid #ccc;padding-top:6px;margin-top:16px;text-align:right}
   @page{margin:1.5cm}
 }
+/* === ESA Energy Credits — Modo Imersivo ========================= */
+/* Oculta o chrome legado e expande o host React para largura total  */
+body.esa-energy-credits-active #sidebar{display:none}
+body.esa-energy-credits-active #mob-btn{display:none!important}
+body.esa-energy-credits-active #mob-overlay{display:none!important}
+body.esa-energy-credits-active .main{
+  margin-left:0;
+  display:flex;
+  flex-direction:column;
+  height:100vh;
+  overflow:hidden;
+}
+body.esa-energy-credits-active .topbar{
+  flex-shrink:0;
+  position:static;
+}
+body.esa-energy-credits-active #esa-preview-banner{
+  flex-shrink:0;
+  position:static;
+}
+body.esa-energy-credits-active #esa-energy-credits-react-root{
+  flex:1 1 0;
+  min-height:0;
+  height:auto!important;
+}
+body.esa-energy-credits-active #content{display:none}
+body.esa-energy-credits-active #esa-back-btn{display:inline-flex!important}
 </style>
 </head>
 <body>
@@ -592,6 +619,7 @@ body{font-family:DM Sans,sans-serif;background:var(--bg);color:var(--bk);min-hei
     <div class="topbar">
       <div class="topbar-title" id="page-title">Dashboard</div>
       <div style="display:flex;align-items:center;gap:12px">
+        <button id="esa-back-btn" onclick="window.goPage('prosp')" style="display:none;align-items:center;gap:5px;background:rgba(13,36,24,.06);border:1px solid rgba(13,36,24,.15);border-radius:8px;padding:6px 13px;font-size:12px;font-weight:600;font-family:'DM Sans',sans-serif;color:#0D2418;cursor:pointer;white-space:nowrap">← Dashboard ESA</button>
         <div class="rt-badge" id="rt-badge" style="display:none"><div class="rt-dot"></div>Ao vivo</div>
         <div class="sync-pill conn" id="sync-pill"><div class="sdot"></div><span id="sync-txt">Conectando...</span></div>
       </div>
