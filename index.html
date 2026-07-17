@@ -6378,5 +6378,24 @@ var _origInitDash=window.initDashboard||null;
 </script>
 <!-- ESA Energia — Gestão de Créditos Bridge -->
 <script type="module" src="./src/ui/energy-credits/legacy-bridge.js"></script>
+<!-- ESA Energy Credits Design App v2 — activated via ?energyCreditsDesignV2=1 -->
+<script type="module">
+  (function () {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('energyCreditsDesignV2') !== '1') return;
+    import('/assets/energy-credits-design/energy-credits-design.js')
+      .then(function (m) {
+        var host = document.createElement('div');
+        host.id = 'esa-credits-design-v2-root';
+        document.body.appendChild(host);
+        m.mountDesignApp(host, {
+          onExit: function () { host.remove(); },
+        });
+      })
+      .catch(function (err) {
+        console.error('[ESA Design V2] Failed to load:', err);
+      });
+  })();
+</script>
 </body>
 </html>
