@@ -1,4 +1,4 @@
-# INTEGRATION-CSS-AUDIT — Missão 23
+# INTEGRATION-CSS-AUDIT — Missões 23 e 24
 
 **Data:** 2026-07-17  
 **Branch:** `core-v2`  
@@ -120,6 +120,62 @@ h1, h2, h3, h4, h5, h6 { font-size: inherit; font-weight: inherit; }
 | Firebase Rules intocadas | ✅ |
 | Alterações mínimas em `index.html` | ✅ — apenas bloco de imersão CSS atualizado |
 | `legacy-bridge.js` intocado | ✅ — sem alterações necessárias (onExit já estava passado) |
+
+---
+
+---
+
+## 5. Revisão Missão 24 — Fullscreen e remoção de all:unset
+
+### 5.1 Abordagem fullscreen (NOVA ESTRATÉGIA)
+
+A validação da Missão 23 foi reprovada porque a abordagem flex-column dependia do layout do legacy dashboard para dimensionar o host. Qualquer discrepância no layout legado comprimia o módulo.
+
+**Nova abordagem:** `position:fixed; inset:0; width:100vw; height:100vh; z-index:9000` no host quando `esa-energy-credits-active` está ativo. O host flutua sobre o dashboard legado, sem depender de nenhum elemento legado.
+
+**Benefícios:**
+- Independência total do layout legado
+- Sem dois headers empilhados
+- Sem compressão por topbar/banner
+- Sem `overflow:hidden` do host clippando o Shell
+
+**Fix em `index.html`:** O bloco CSS imersivo foi simplificado para apenas:
+```css
+body.esa-energy-credits-active #esa-energy-credits-react-root {
+  display: block !important;
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 9000 !important;
+  overflow: hidden !important;
+  background-color: #f6f8f6 !important;
+}
+```
+
+Remoção do texto "A" stray que estava na linha 1 do arquivo (causava o "texto A visível no topo").
+
+### 5.2 Remoção de all:unset
+
+`all:unset` para `.btn`, `.card`, `.badge`, `.tab` foi substituído por reset seguro:
+```css
+#esa-energy-credits-react-root .btn,
+#esa-energy-credits-react-root .card,
+#esa-energy-credits-react-root .badge,
+#esa-energy-credits-react-root .tab {
+  font: inherit;
+  color: inherit;
+  box-sizing: border-box;
+}
+```
+
+`all:unset` tinha especificidade `(0,1,1)` que sobrescrevia as Tailwind utilities `(0,1,0)` aplicadas ao mesmo elemento, destruindo estilos de background, border-radius, padding etc.
+
+### 5.3 Shell layout — min-h-0
+
+`min-h-0` adicionado ao painel direito e ao `<main>` do Shell. Em flex columns, `min-height: auto` (default) impede que `flex-1` calcule a altura corretamente quando o conteúdo é taller que o container. `min-h-0` resolve isso.
+
+`overflow-x-auto` (era `overflow-x-hidden`) no `<main>`: permite scroll horizontal em tabelas largas em vez de clipar.
 
 ---
 

@@ -188,3 +188,46 @@ As seguintes telas devem ser validadas visualmente no browser após integração
 - [ ] Tipografia: `ui-sans-serif` (não DM Sans) dentro do módulo
 - [ ] Botões: padding e font-size corretos (não herdados do legado)
 - [ ] Sem zoom ou transform scale em nenhuma tela
+
+---
+
+## Missão 24 — Fullscreen e restauração de escala visual
+
+**Branch:** `core-v2`
+**Data:** 2026-07-17
+**Status:** PRONTO PARA VALIDAÇÃO MANUAL
+
+### Problema que motivou a missão
+
+A validação da Missão 23 foi reprovada: dois headers visíveis (topbar legado 58px + Shell header 64px), Shell comprimida, escala visual incorreta. A abordagem flex-column dependia do layout legado para dimensionar o host.
+
+### Solução implementada
+
+**Estratégia fullscreen:** `position:fixed; inset:0; width:100vw; height:100vh; z-index:9000` no host `#esa-energy-credits-react-root` quando `body.esa-energy-credits-active` está ativo. O módulo flutua sobre o dashboard legado, completamente independente do layout legado.
+
+**Arquivos alterados:**
+
+| Arquivo | Mudança |
+|---|---|
+| `index.html` | Stray "A" removido; CSS imersivo reescrito com abordagem fullscreen |
+| `Shell.tsx` | `min-h-0` adicionado ao painel direito e ao `<main>`; `overflow-x-auto` (era `hidden`) |
+| `src/index.css` | `height:100%` removido; `all:unset` substituído por reset seguro |
+| `css-isolation.manual-test.ts` | 59 asserções estruturais cobrindo fullscreen, namespace, Shell layout |
+
+### Resultados de testes
+
+- **577 asserções** no total (8 arquivos manual-test)
+- **577 passando, 0 falhando**
+- TypeScript: limpo (`tsc --noEmit` sem erros)
+- Build: ✅ (`energy-credits-react.js` 1,256 kB, `energy-credits-react.css` 59.66 kB)
+
+### Checklist de validação manual
+
+- [ ] Módulo cobre 100% da viewport (sem topbar legado visível, sem header duplo)
+- [ ] Shell ocupa 100vw × 100vh com sidebar e main corretos
+- [ ] Botão "← Dashboard" aparece no header React e navega de volta
+- [ ] Scroll funciona no main sem corte de footer
+- [ ] Tabelas largas em Financial/Reports scrollam horizontalmente
+- [ ] Botões, cards e badges com estilos Tailwind preservados (sem all:unset)
+- [ ] Tipografia `ui-sans-serif` (não DM Sans) dentro do módulo
+- [ ] Sem zoom ou transform scale em nenhuma tela

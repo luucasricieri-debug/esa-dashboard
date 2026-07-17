@@ -1,4 +1,4 @@
-A<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -536,30 +536,18 @@ body{font-family:DM Sans,sans-serif;background:var(--bg);color:var(--bk);min-hei
   @page{margin:1.5cm}
 }
 /* === ESA Energy Credits — Modo Imersivo ========================= */
-/* Oculta todo o chrome legado; o Shell React possui header próprio  */
-body.esa-energy-credits-active #sidebar{display:none}
-body.esa-energy-credits-active #mob-btn{display:none!important}
-body.esa-energy-credits-active #mob-overlay{display:none!important}
-/* Topbar ocultado — React Shell tem header próprio com botão de volta */
-body.esa-energy-credits-active .topbar{display:none!important}
-body.esa-energy-credits-active .main{
-  margin-left:0;
-  display:flex;
-  flex-direction:column;
-  height:100vh;
-  overflow:hidden;
-}
-body.esa-energy-credits-active #esa-preview-banner{
-  flex-shrink:0;
-  position:static;
-}
+/* Camada fullscreen position:fixed que cobre integralmente o legado */
+/* Não depende de nenhum elemento do layout legado para dimensionar  */
 body.esa-energy-credits-active #esa-energy-credits-react-root{
-  flex:1 1 0;
-  min-height:0;
-  height:auto!important;
-  overflow:hidden;
+  display:block!important;
+  position:fixed!important;
+  inset:0!important;
+  width:100vw!important;
+  height:100vh!important;
+  z-index:9000!important;
+  overflow:hidden!important;
+  background-color:#f6f8f6!important;
 }
-body.esa-energy-credits-active #content{display:none}
 </style>
 </head>
 <body>

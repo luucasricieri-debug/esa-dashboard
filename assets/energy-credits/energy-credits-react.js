@@ -38171,7 +38171,7 @@ function WH({ onExit: e }) {
 				children: r ? /* @__PURE__ */ (0, U.jsx)(Fe, { className: "h-3.5 w-3.5" }) : /* @__PURE__ */ (0, U.jsx)(Pe, { className: "h-3.5 w-3.5" })
 			})]
 		}), /* @__PURE__ */ (0, U.jsxs)("div", {
-			className: "flex-1 flex flex-col min-w-0",
+			className: "flex-1 flex flex-col min-w-0 min-h-0",
 			children: [/* @__PURE__ */ (0, U.jsxs)("header", {
 				className: "h-16 border-b border-slate-200 bg-white flex items-center justify-between px-3 md:px-6 gap-3",
 				children: [/* @__PURE__ */ (0, U.jsxs)("div", {
@@ -38229,7 +38229,7 @@ function WH({ onExit: e }) {
 					})]
 				})]
 			}), /* @__PURE__ */ (0, U.jsx)("main", {
-				className: "flex-1 p-3 md:p-6 overflow-y-auto overflow-x-hidden",
+				className: "flex-1 min-h-0 p-3 md:p-6 overflow-y-auto overflow-x-auto",
 				children: s[t]
 			})]
 		})]

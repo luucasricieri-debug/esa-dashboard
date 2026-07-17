@@ -146,7 +146,7 @@ export function Shell({ onExit }: { onExit?: () => void }) {
         </button>
       </aside>
 
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <header className="h-16 border-b border-slate-200 bg-white flex items-center justify-between px-3 md:px-6 gap-3">
           <div className="flex items-center gap-2 min-w-0 flex-1">
             {onExit && (
@@ -184,7 +184,7 @@ export function Shell({ onExit }: { onExit?: () => void }) {
             </div>
           </div>
         </header>
-        <main className="flex-1 p-3 md:p-6 overflow-y-auto overflow-x-hidden">{content[view]}</main>
+        <main className="flex-1 min-h-0 p-3 md:p-6 overflow-y-auto overflow-x-auto">{content[view]}</main>
       </div>
     </div>
   );

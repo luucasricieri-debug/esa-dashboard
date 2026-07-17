@@ -139,7 +139,6 @@
   color: oklch(0.129 0.042 264.695);
   -webkit-font-smoothing: antialiased;
   box-sizing: border-box;
-  height: 100%;
 }
 
 /* Garante que elementos interativos herdam do namespace, não do body legado */
@@ -164,25 +163,12 @@
   box-sizing: border-box;
 }
 
-/* Desfaz quaisquer regras de .btn, .card, .badge, .tab herdadas do legado */
-#esa-energy-credits-react-root .btn {
-  all: unset;
-  box-sizing: border-box;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-}
-
-#esa-energy-credits-react-root .card {
-  all: unset;
-  box-sizing: border-box;
-  display: block;
-}
-
+/* Reset seguro sem all:unset — preserva Tailwind utilities e design system */
+#esa-energy-credits-react-root .btn,
+#esa-energy-credits-react-root .card,
 #esa-energy-credits-react-root .badge,
 #esa-energy-credits-react-root .tab {
-  all: unset;
+  font: inherit;
+  color: inherit;
   box-sizing: border-box;
-  display: inline-flex;
-  align-items: center;
 }
