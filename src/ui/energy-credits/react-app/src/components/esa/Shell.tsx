@@ -50,7 +50,7 @@ function SidebarBody({
   return (
     <div className="flex flex-col h-full">
       <div className={cn('flex items-center gap-2.5 h-16 border-b border-slate-100 px-4', collapsed && 'justify-center px-2')}>
-        <div className="grid place-items-center h-9 w-9 shrink-0 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 shadow-sm shadow-emerald-300/50">
+        <div className="grid place-items-center h-9 w-9 shrink-0 rounded-xl bg-gradient-to-br from-[#00bd78] to-[#006644] shadow-sm shadow-emerald-300/50">
           <Zap className="h-5 w-5 text-white" />
         </div>
         {!collapsed && (
@@ -92,7 +92,7 @@ function SidebarBody({
       </nav>
       {!collapsed && (
         <div className="p-3 border-t border-slate-100">
-          <div className="rounded-xl bg-gradient-to-br from-emerald-600 to-emerald-800 p-3.5 text-white shadow-sm">
+          <div className="rounded-xl bg-gradient-to-br from-[#00875a] to-[#063a28] p-3.5 text-white shadow-sm">
             <div className="text-[10px] uppercase tracking-wider text-emerald-100 font-semibold">Ciclo atual</div>
             <div className="text-base font-semibold mt-0.5">Julho / 2026</div>
             <div className="text-[10px] text-emerald-100 mt-1.5">Fechamento em 5 dias úteis</div>
@@ -127,7 +127,7 @@ export function Shell() {
     apuracao: <MonthlySettlement />,
     csv: <CsvImport />,
     relatorios: <Reports />,
-    financeiro: <Financial />,
+    financeiro: <Financial onNavigate={(v) => setView(v as ViewKey)} />,
     alertas: <AlertsView />,
   };
 
@@ -147,7 +147,7 @@ export function Shell() {
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-14 md:h-16 border-b border-slate-200 bg-white flex items-center justify-between px-3 md:px-6 gap-3">
+        <header className="h-16 border-b border-slate-200 bg-white flex items-center justify-between px-3 md:px-6 gap-3">
           <div className="flex items-center gap-2 min-w-0 flex-1">
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
               <SheetTrigger asChild>
@@ -160,7 +160,7 @@ export function Shell() {
               </SheetContent>
             </Sheet>
             <div className="min-w-0">
-              <h1 className="text-sm md:text-lg font-semibold text-slate-900 truncate leading-tight">{t.title}</h1>
+              <h1 className="text-sm md:text-lg font-semibold text-[#062e20] truncate leading-tight">{t.title}</h1>
               <p className="text-[10px] md:text-xs text-slate-500 truncate hidden sm:block">{t.sub}</p>
             </div>
           </div>

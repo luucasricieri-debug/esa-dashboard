@@ -139,8 +139,8 @@ export function Dashboard({ onNavigate }: { onNavigate: (v: any) => void }) {
         </div>
       </section>
 
-      <div className="grid lg:grid-cols-3 gap-4">
-        <Card className="p-4 md:p-5 lg:col-span-2">
+      <div className="grid md:grid-cols-2 gap-4">
+        <Card className="p-4 md:p-5">
           <SectionTitle
             title="Geração vs. Consumo"
             desc={chartMode === 'por_ug' ? `Por unidade geradora — ${monthLabel}` : 'Evolução consolidada dos últimos ciclos'}
@@ -160,8 +160,8 @@ export function Dashboard({ onNavigate }: { onNavigate: (v: any) => void }) {
                   <YAxis tick={{ fontSize: 11 }} stroke="#94a3b8" />
                   <Tooltip formatter={(v: number) => kwh(v)} labelFormatter={(l, p) => p?.[0]?.payload?.fullName ?? l} contentStyle={{ borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.06)' }} />
                   <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
-                  <Bar dataKey="Geração" fill="#059669" radius={[6, 6, 0, 0]} />
-                  <Bar dataKey="Consumo" fill="#a7f3d0" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="Geração" fill="#00a86b" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="Consumo" fill="#a9e4cb" radius={[6, 6, 0, 0]} />
                 </BarChart>
               ) : (
                 <LineChart data={trend}>
@@ -170,8 +170,8 @@ export function Dashboard({ onNavigate }: { onNavigate: (v: any) => void }) {
                   <YAxis tick={{ fontSize: 11 }} stroke="#94a3b8" />
                   <Tooltip formatter={(v: number) => kwh(v)} contentStyle={{ borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 12 }} />
                   <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
-                  <Line type="monotone" dataKey="Geracao" name="Geração" stroke="#059669" strokeWidth={2.5} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="Consumo" name="Consumo" stroke="#a7f3d0" strokeWidth={2.5} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="Geracao" name="Geração" stroke="#00a86b" strokeWidth={2.5} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="Consumo" name="Consumo" stroke="#a9e4cb" strokeWidth={2.5} dot={{ r: 3 }} />
                 </LineChart>
               )}
             </ResponsiveContainer>
@@ -199,7 +199,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (v: any) => void }) {
                 <YAxis tick={{ fontSize: 11 }} stroke="#94a3b8" />
                 <Tooltip formatter={(v: number, name) => [brl(v), name as string]} contentStyle={{ borderRadius: 10, border: '1px solid #e2e8f0', fontSize: 12 }} />
                 <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
-                <Line type="monotone" dataKey="Receita" name="Receita ESA" stroke="#059669" strokeWidth={2.5} dot={{ r: 3 }} />
+                <Line type="monotone" dataKey="Receita" name="Receita ESA" stroke="#00a86b" strokeWidth={2.5} dot={{ r: 3 }} />
                 <Line type="monotone" dataKey="Repasse" name="Repasse UG" stroke="#94a3b8" strokeWidth={2} dot={{ r: 3 }} />
                 <Line type="monotone" dataKey="Spread" name="Spread" stroke="#10b981" strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
               </LineChart>
@@ -208,7 +208,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (v: any) => void }) {
         </Card>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-4">
+      <div className="grid md:grid-cols-3 gap-4">
         <Card className="p-5">
           <SectionTitle title="Ranking UGs" desc="Por geração no mês" />
           <div className="space-y-3">

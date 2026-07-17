@@ -90,15 +90,16 @@ Nota: o protótipo usa `@import "tailwindcss" source(none)` + `@source "../src"`
 | Sidebar width collapsed | `w-16` | `w-16` | ✅ |
 | Sidebar width expanded | `w-60` | `w-60` | ✅ |
 | Sidebar transition | `transition-[width] duration-200` | `transition-[width] duration-200` | ✅ |
-| Logo icon | `h-9 w-9 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700` | Idêntico | ✅ |
+| Logo icon | `bg-gradient-to-br from-[#00bd78] to-[#006644]` | `from-[#00bd78] to-[#006644]` | ✅ |
 | Logo text "ESA Energia" | `text-sm font-semibold text-slate-900` | Idêntico | ✅ |
 | Logo subtext | `text-[10px] text-emerald-700 font-semibold tracking-wider uppercase` | Idêntico | ✅ |
 | Nav item active | `bg-emerald-50 text-emerald-800 font-semibold` | Idêntico | ✅ |
 | Nav item inactive | `text-slate-600 hover:bg-slate-50 hover:text-slate-900` | Idêntico | ✅ |
 | Nav hint badges | `bg-emerald-600 text-white` (ativo) / `bg-emerald-100 text-emerald-700` | Idêntico | ✅ |
 | Collapse button | `absolute -right-3 top-20 h-6 w-6 rounded-full border border-slate-200` | Idêntico | ✅ |
-| Sidebar footer card | `rounded-xl bg-gradient-to-br from-emerald-600 to-emerald-800 p-3.5` | Idêntico | ✅ |
-| Header height | `h-14 md:h-16` | `h-14 md:h-16` | ✅ |
+| Sidebar footer card | `bg-gradient-to-br from-[#00875a] to-[#063a28]` | `from-[#00875a] to-[#063a28]` | ✅ |
+| Header height | 64px fixo | `h-16` | ✅ |
+| Header title color | `color:#062e20` | `text-[#062e20]` | ✅ |
 | Search box | `rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 w-64 xl:w-72` | Idêntico | ✅ |
 | Avatar ESA | `h-8 w-8 md:h-9 md:w-9 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-700` | Idêntico | ✅ |
 | Main content padding | `p-3 md:p-6 overflow-x-hidden` | Idêntico | ✅ |
@@ -122,14 +123,14 @@ Nota: o protótipo usa `@import "tailwindcss" source(none)` + `@source "../src"`
 | Section headers | `h-1 w-6 rounded-full bg-emerald-500` + `text-[11px] uppercase tracking-widest` | Idêntico | ✅ |
 | KPI grid "Operação" | `grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-2.5 md:gap-3` | Idêntico | ✅ |
 | KPI grid "Financeiro" | `grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-2.5 md:gap-3` | Idêntico | ✅ |
-| Chart área (2/3 + 1/3) | `grid lg:grid-cols-3 gap-4`, `lg:col-span-2` | Idêntico | ✅ |
+| Chart área (2 colunas iguais) | `grid md:grid-cols-2 gap-4` | `md:grid-cols-2` | ✅ |
 | Chart "Geração vs. Consumo" | BarChart/LineChart com toggle Por UG/Consolidado | Idêntico | ✅ |
 | Chart "Receita vs. Repasse" | LineChart com Receita + Repasse + Spread dashed | Idêntico | ✅ |
 | Ranking UGs | progress bar `bg-gradient-to-r from-emerald-500 to-emerald-600` | Idêntico | ✅ |
 | Top Beneficiárias | lista com Economia + faturaEsa + StatusPill | Idêntico | ✅ |
 | Card Alertas | 4 alertas máx, tone por severity (rose/amber/sky/slate) | Idêntico | ✅ |
 | Drill-down Sheet | `sm:max-w-lg overflow-y-auto`, todos os tipos de drill | Idêntico | ✅ |
-| Cores dos charts | `#059669` (emerald-600), `#a7f3d0` (emerald-200), `#94a3b8`, `#10b981` | Idênticas | ✅ |
+| Cores dos charts | `#00a86b` (Claude Design green), `#a9e4cb` (Claude Design light) | `#00a86b`, `#a9e4cb` | ✅ |
 
 **Diferença funcional (não visual):**
 - Referência: `energyCreditsProvider.getExecutiveSummary()` retorna `results: SettlementResult[]` com dados
@@ -202,21 +203,58 @@ Revisão visual pendente via `.dc.html`. Nota: a integração com `EnergyCredits
 
 ---
 
-### 4.7 Relatórios — 🔜 PENDENTE
+### 4.7 Relatórios — ✅ MIGRADO (Missão 22)
 
 **Arquivo:** `components/esa/views/Reports.tsx`  
-**Referência:** *(arquivo não disponível no material exportado)*
+**Referência:** `.dc.html` linhas 1310–1717 (screen label "Relatórios")
 
-Revisão visual pendente via `.dc.html`. Nota: tratamento de exceções do Core corrigido (Missão 18 — `UNIT_NOT_FOUND` retorna null em vez de crash).
+| Elemento | Claude Design | Implementado | Status |
+|---|---|---|---|
+| Estrutura da tela | 3 tabs inline (Proprietário, Interno, Financeiro) | 3 tabs inline com `ReportTab` state | ✅ |
+| Abordagem anterior | 4 cards em grid + Modal overlay | — (removido) | ✅ |
+| Tab buttons | `border-radius:8px; border/bg/color por estado` | `border-[#a9e4cb] bg-[#eaf8f1] text-[#00875a]` (ativo) | ✅ |
+| Container do documento | `border-radius:14px; border:1px solid #e2e8f0; box-shadow:0 2px 8px rgba(15,23,42,.05)` | `rounded-[14px] border border-slate-200 shadow-[0_2px_8px_rgba(15,23,42,.05)]` | ✅ |
+| Header do documento | `background:linear-gradient(135deg, #f8fafc, rgba(234,248,241,.5))` | `bg-gradient-to-br from-slate-50 to-emerald-50/50` | ✅ |
+| Filter bar por tab | UG+Ciclo (Proprietário), Mês (Interno), Mês+Status (Financeiro) | Idêntico | ✅ |
+| Botões de ação | PDF/email/WhatsApp (disabled) + "Entrega manual" (ativo) | Idêntico | ✅ |
+| max-width do container | `1040px` | `max-w-[1040px] mx-auto` | ✅ |
+| Relatório Proprietário | Barras de distribuição horizontal + tabela detalhada + PIX panel + Repasse panel | Idêntico | ✅ |
+| Relatório Interno | 6 cards operação + 8 cards financeiro + Status ciclos (2x2) + Alertas (2x2) + Pendências + seções expansíveis | Idêntico | ✅ |
+| Relatório Financeiro | 8 KPIs + 3 charts (BarChart, LineChart, barras horizontais) + 2 seções colapsáveis + Conciliação | Idêntico | ✅ |
+| BeneficiaryInvoicePreview | Exportado — acessível a partir de Financial.tsx via "Ver Fatura ESA" | ✅ exportado | ✅ |
+| Valores financeiros | Sem fórmulas JSX — `row.faturaEsa` de `computeAll()` + `getFinancialSummary()` | ✅ | ✅ |
+| Estado vazio | Mensagens de "Sem dados" em todas as seções quando repositório vazio | ✅ | ✅ |
+
+**Fatura ESA — Beneficiário (`.dc.html` linhas 501–703):**
+Não é uma tab de Relatórios. É acessada via botão "Ver Fatura ESA" em Financial.tsx (abre Modal com BeneficiaryInvoicePreview).
 
 ---
 
-### 4.8 Financeiro — 🔜 PENDENTE
+### 4.8 Financeiro — ✅ MIGRADO (Missão 22)
 
 **Arquivo:** `components/esa/views/Financial.tsx`  
-**Referência:** *(arquivo não disponível no material exportado)*
+**Referência:** `.dc.html` linhas 1167–1305 (screen label "Financeiro")
 
-Revisão visual pendente via `.dc.html`. Nota: dados históricos fictícios removidos (Missão 19 — `const trend` hardcoded substituído por `provider.getMonthlyTrend({})`).
+| Elemento | Claude Design | Implementado | Status |
+|---|---|---|---|
+| Seletor de mês | `select` no topo com `provider.listMonths()` | ✅ | ✅ |
+| Botão "Relatório do proprietário" | `border-[#a9e4cb] bg-[#eaf8f1]` no topo direito | ✅ com `onNavigate('relatorios')` | ✅ |
+| Fatura ESA value | ~~`u.monthlyConsumption * u.esaPrice`~~ | `invoiceValueByUbId.get(u.id) ?? 0` via `computeAll()` | ✅ |
+| Settlement status | ~~`r.ug.id === 'UG-001' ? 'pago' : 'aberto'`~~ | default `'aberto'` sem hardcode | ✅ |
+| Datas hardcoded | ~~`'15/08/2026'`, `'12/08/2026'`~~ | `computeDueDate(month)` dinâmico | ✅ |
+| Charts subtitle | ~~"Últimos 6 meses"~~ | "Histórico dos ciclos apurados — sem projeções" | ✅ |
+| Chart grid | `lg:grid-cols-3` (2:1) | `md:grid-cols-2` (igual) | ✅ |
+| Cores dos charts | `#059669` | `#00a86b` (Claude Design green) | ✅ |
+| "Ver Fatura ESA" | Ausente | Abre Modal com `BeneficiaryInvoicePreview` | ✅ |
+| "Ver beneficiária" | Ausente | Navega para `'beneficiarias'` | ✅ |
+| "Reabrir" repasses | Ausente | `provider.reopenInvoicePayment()` | ✅ |
+| "Ver dados PIX" | Ausente | Abre `PixModal` com recipient info + Copy | ✅ |
+| "Ver UG" | Ausente | Navega para `'unidades-geradoras'` | ✅ |
+| Badge recebedor≠proprietário | Ausente | `RECEBEDOR ≠ PROPRIETÁRIO` badge em RecipientCell | ✅ |
+| min-width faturas table | 1020px | `style={{ minWidth: 1020 }}` | ✅ |
+| min-width repasses table | 1120px | `style={{ minWidth: 1120 }}` | ✅ |
+| Estado vazio (faturas) | Mensagem centralizada | `"Nenhuma fatura para o mês selecionado."` | ✅ |
+| Estado vazio (repasses) | Mensagem centralizada | `"Nenhum repasse para o mês selecionado."` | ✅ |
 
 ---
 
@@ -251,10 +289,11 @@ As regras abaixo devem ser observadas em todas as etapas futuras:
 |---|---|---|
 | **Etapa 1** | Design system + Shell + Visão Geral | ✅ CONCLUÍDO |
 | **Etapa 2** | Unidades Geradoras + Unidades Beneficiárias | ✅ CONCLUÍDO |
-| Etapa 3 | Apuração Mensal (refinamentos visuais) | 🔜 Pendente |
-| Etapa 4 | Importação CSV + Relatórios | 🔜 Pendente |
-| Etapa 5 | Financeiro + Alertas | 🔜 Pendente |
-| Etapa 6 | Revisão final + Pixel Perfect com .dc.html | 🔜 Pendente |
+| **Etapa 3** | Relatórios + Financeiro + Shell/Dashboard refinements | ✅ CONCLUÍDO (Missão 22) |
+| Etapa 4 | Apuração Mensal (refinamentos visuais) | 🔜 Pendente |
+| Etapa 5 | Importação CSV | 🔜 Pendente |
+| Etapa 6 | Alertas | 🔜 Pendente |
+| Etapa 7 | Revisão final + Pixel Perfect com .dc.html | 🔜 Pendente |
 
 ---
 
