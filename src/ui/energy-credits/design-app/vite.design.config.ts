@@ -13,21 +13,24 @@ export default defineConfig(({ command }) => {
     resolve: {
       alias: { '@': path.resolve(__dirname, 'src') },
     },
-    define: {
-      'process.env.NODE_ENV': JSON.stringify('production'),
-    },
   };
 
   if (command === 'serve') {
     return {
       ...shared,
-      root: path.resolve(__dirname, 'preview'),
+      root: __dirname,
+      server: {
+        open: '/preview/',
+      },
     };
   }
 
   return {
     ...shared,
     root: __dirname,
+    define: {
+      'process.env.NODE_ENV': JSON.stringify('production'),
+    },
     build: {
       outDir: path.resolve(__dirname, '../../../../assets/energy-credits-design'),
       emptyOutDir: true,
