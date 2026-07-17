@@ -119,3 +119,72 @@ Build: `npx vite build` — 2.01s, sem erros
 - Importação CSV
 - Alertas (além dos ajustes de design system)
 - Tela "Fatura ESA — Beneficiário" como página autônoma (está acessível via "Ver Fatura ESA" em Financial)
+
+---
+
+# VISUAL-ACCEPTANCE — Missão 23
+
+**Missão:** Isolar estilos e corrigir escala do módulo de créditos  
+**Branch:** `core-v2`  
+**Commit alvo:** `fix: isola estilos e corrige escala do modulo de creditos`  
+**Data:** 2026-07-17  
+**Status:** PRONTO PARA VALIDAÇÃO MANUAL
+
+---
+
+## Problemas Corrigidos
+
+| Problema relatado | Causa raiz identificada | Correção aplicada |
+|---|---|---|
+| Legacy header acima do módulo | `.topbar` mantido visível no modo imersivo (58px) + React Shell header (64px) = 122px de header | `.topbar` oculto no modo imersivo; botão "← Dashboard" adicionado ao Shell header |
+| Módulo comprimido verticalmente | Shell usava `min-h-screen` em host com `overflow:hidden` e sem `overflow-y-auto` no main | Shell usa `h-full`; main tem `overflow-y-auto` |
+| Tipografia herdando DM Sans do legado | Sem namespace CSS — body legado definia `font-family: DM Sans` herdado pelo módulo | Namespace `#esa-energy-credits-react-root` define `font-family: ui-sans-serif` e `font-size: 14px` |
+| Botões/inputs com estilos legados | Tailwind preflight global + ausência de reset de namespace | Reset de `button/input/select/textarea` dentro do namespace |
+| Colisão com `.btn`, `.card`, `.badge`, `.tab` | Classes legadas com estilos globais | `all: unset` preventivo para essas classes dentro do namespace |
+
+---
+
+## Arquivos Alterados
+
+| Arquivo | Mudança |
+|---|---|
+| `index.html` | Modo imersivo: ocultar `.topbar`; `overflow:hidden` no host |
+| `src/ui/energy-credits/react-app/src/mountEnergyCreditsReactApp.tsx` | Passa `options?.onExit` ao Shell |
+| `src/ui/energy-credits/react-app/src/components/esa/Shell.tsx` | Prop `onExit`; `h-full`; `overflow-y-auto` em main; botão "← Dashboard" |
+| `src/ui/energy-credits/react-app/src/index.css` | CSS namespace reset completo |
+| `docs/.../INTEGRATION-CSS-AUDIT.md` | Novo — auditoria completa de CSS |
+
+---
+
+## Testes
+
+| Suite | Assertions | Status |
+|---|---|---|
+| `css-isolation.manual-test` | 48 | ✅ (novo) |
+| `provider-adapter.first-render` | 70 | ✅ |
+| `provider-adapter.monthly-settlement` | 39 | ✅ |
+| `provider-adapter.csv-import` | 85 | ✅ |
+| `provider-adapter.reports-empty-state` | 26 | ✅ |
+| `provider-adapter.real-empty-trend` | 122 | ✅ |
+| `provider-adapter.ug-ub-units` | 78 | ✅ |
+| `provider-adapter.reports-financial` | 98 | ✅ |
+| **Total** | **566** | **✅ 0 falhas** |
+
+TypeScript: `npx tsc --noEmit` — limpo  
+Build: `npm run build` — 1.55s, sem erros  
+`git diff --check` — apenas avisos de CRLF (Windows)
+
+---
+
+## Validação Manual Pendente
+
+As seguintes telas devem ser validadas visualmente no browser após integração:
+
+- [ ] Shell: topbar legado não aparece; botão "← Dashboard" aparece no header React
+- [ ] Shell: sidebar 240px (não colapsado), header 64px, conteúdo rola corretamente dentro do módulo
+- [ ] Dashboard: KPIs em tamanho correto, gráficos não achatados
+- [ ] Financial: tabela com min-width correto, gráfico de barras visível
+- [ ] Reports: 3 tabs funcionando, documento com max-width 1040px
+- [ ] Tipografia: `ui-sans-serif` (não DM Sans) dentro do módulo
+- [ ] Botões: padding e font-size corretos (não herdados do legado)
+- [ ] Sem zoom ou transform scale em nenhuma tela

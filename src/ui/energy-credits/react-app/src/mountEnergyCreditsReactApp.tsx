@@ -19,7 +19,7 @@ export interface MountOptions {
 
 let _root: Root | null = null;
 
-export function mountEnergyCreditsReactApp({ mountElement, provider, options: _options }: MountOptions): () => void {
+export function mountEnergyCreditsReactApp({ mountElement, provider, options }: MountOptions): () => void {
   if (_root) {
     _root.unmount();
     _root = null;
@@ -31,7 +31,7 @@ export function mountEnergyCreditsReactApp({ mountElement, provider, options: _o
   root.render(
     <StrictMode>
       <EsaProviderContext.Provider value={provider}>
-        <Shell />
+        <Shell onExit={options?.onExit} />
         <Toaster position="top-right" richColors />
       </EsaProviderContext.Provider>
     </StrictMode>,

@@ -127,3 +127,62 @@
     color: var(--color-foreground);
   }
 }
+
+/* ── ESA Credits CSS Namespace Reset ─────────────────────────────────────── */
+/* Isola o módulo React da herança de CSS do dashboard legado.               */
+/* Aplica font, tamanho base e box-sizing independentes da body global.      */
+#esa-energy-credits-react-root {
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: oklch(0.129 0.042 264.695);
+  -webkit-font-smoothing: antialiased;
+  box-sizing: border-box;
+  height: 100%;
+}
+
+/* Garante que elementos interativos herdam do namespace, não do body legado */
+#esa-energy-credits-react-root button,
+#esa-energy-credits-react-root input,
+#esa-energy-credits-react-root select,
+#esa-energy-credits-react-root textarea {
+  font: inherit;
+  color: inherit;
+  margin: 0;
+  padding: 0;
+  border: 0 solid;
+  border-radius: 0;
+  background-color: transparent;
+  box-sizing: border-box;
+}
+
+/* Garante box-sizing consistente em todo o subtree */
+#esa-energy-credits-react-root *,
+#esa-energy-credits-react-root *::before,
+#esa-energy-credits-react-root *::after {
+  box-sizing: border-box;
+}
+
+/* Desfaz quaisquer regras de .btn, .card, .badge, .tab herdadas do legado */
+#esa-energy-credits-react-root .btn {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+#esa-energy-credits-react-root .card {
+  all: unset;
+  box-sizing: border-box;
+  display: block;
+}
+
+#esa-energy-credits-react-root .badge,
+#esa-energy-credits-react-root .tab {
+  all: unset;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+}

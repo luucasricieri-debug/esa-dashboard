@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { onNavigate, type EsaView } from '@/lib/esa/nav';
 import {
   LayoutDashboard, Sun, Building2, Calculator, Upload,
-  FileText, Wallet, Bell, Zap, Search, Menu, ChevronsLeft, ChevronsRight,
+  FileText, Wallet, Bell, Zap, Search, Menu, ChevronsLeft, ChevronsRight, ArrowLeft,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -103,7 +103,7 @@ function SidebarBody({
   );
 }
 
-export function Shell() {
+export function Shell({ onExit }: { onExit?: () => void }) {
   const [view, setView] = useState<ViewKey>('dashboard');
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -134,7 +134,7 @@ export function Shell() {
   const t = titles[view];
 
   return (
-    <div className="flex min-h-screen bg-[#f6f8f6] text-slate-800">
+    <div className="flex h-full bg-[#f6f8f6] text-slate-800">
       <aside className={cn('hidden md:flex flex-col border-r border-slate-200 bg-white transition-[width] duration-200 relative', collapsed ? 'w-16' : 'w-60')}>
         <SidebarBody view={view} setView={setView} collapsed={collapsed} />
         <button
@@ -149,6 +149,16 @@ export function Shell() {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="h-16 border-b border-slate-200 bg-white flex items-center justify-between px-3 md:px-6 gap-3">
           <div className="flex items-center gap-2 min-w-0 flex-1">
+            {onExit && (
+              <button
+                onClick={onExit}
+                aria-label="Voltar ao Dashboard"
+                className="hidden md:flex items-center gap-1.5 h-8 px-3 rounded-lg border border-slate-200 text-slate-500 text-xs font-medium hover:bg-slate-50 hover:text-slate-700 shrink-0 transition-colors"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Dashboard
+              </button>
+            )}
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
               <SheetTrigger asChild>
                 <button aria-label="Abrir menu" className="md:hidden h-9 w-9 grid place-items-center rounded-lg border border-slate-200 text-slate-600 shrink-0">
@@ -174,7 +184,7 @@ export function Shell() {
             </div>
           </div>
         </header>
-        <main className="flex-1 p-3 md:p-6 overflow-x-hidden">{content[view]}</main>
+        <main className="flex-1 p-3 md:p-6 overflow-y-auto overflow-x-hidden">{content[view]}</main>
       </div>
     </div>
   );
