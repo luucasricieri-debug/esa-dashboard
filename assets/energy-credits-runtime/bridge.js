@@ -1351,11 +1351,45 @@
 				return unwrap(uiProvider.linkUtilityBillToBeneficiary(extractionId, ubId)) ?? ok();
 			},
 			async replaceBillData(_extractionId, _reason) {
-				return ok();
+				return {
+					ok: false,
+					persisted: false,
+					capability: "not_available",
+					message: "Substituição de registro não disponível no runtime atual."
+				};
 			},
 			async getOwnerReport(ugId, month) {
 				try {
-					return unwrap(uiProvider.getOwnerMonthlyReport(ugId, month));
+					const d = unwrap(uiProvider.getOwnerMonthlyReport(ugId, month));
+					if (!d) return null;
+					const payeeRaw = d.payee ?? d.recipient ?? null;
+					return {
+						ugId: d.generatingUnitId ?? d.ugId ?? ugId,
+						ugName: d.ugName ?? d.name ?? "",
+						month: d.referenceMonth ?? d.month ?? month,
+						appliedPrice: d.appliedPrice ?? d.purchasePrice ?? 0,
+						totalCompensated: d.totalCompensatedKwh ?? d.totalCompensated ?? 0,
+						ownerPayment: d.ownerReturn ?? d.ownerPayment ?? 0,
+						beneficiaryBreakdown: (d.beneficiaries ?? d.beneficiaryBreakdown ?? []).map((b) => ({
+							ubId: b.beneficiaryUnitId ?? b.ubId ?? "",
+							ubName: b.name ?? b.ubName ?? "",
+							compensated: b.compensatedKwh ?? b.compensated ?? 0,
+							share: b.allocationPct ?? b.share ?? 0,
+							repasse: b.ownerReturn ?? b.repasse ?? 0,
+							status: b.paymentStatus ?? b.status ?? "aberto"
+						})),
+						payee: payeeRaw ? {
+							name: payeeRaw.name ?? "",
+							document: payeeRaw.document ?? payeeRaw.cpf ?? payeeRaw.cnpj ?? "",
+							pixKey: payeeRaw.pixKey ?? payeeRaw.pix ?? "",
+							pixType: payeeRaw.pixType ?? payeeRaw.type ?? "cpf"
+						} : {
+							name: "",
+							document: "",
+							pixKey: "",
+							pixType: "cpf"
+						}
+					};
 				} catch (err) {
 					const msg = err?.message ?? "";
 					if (/\[buildOwnerMonthlyReport\]/.test(msg) && /não encontrada/.test(msg)) return null;
@@ -1379,28 +1413,64 @@
 				};
 			},
 			async confirmInvoicePayment(ubId, _month, payment) {
-				return unwrap(uiProvider.confirmInvoicePayment(ubId, payment)) ?? ok();
+				const raw = uiProvider.confirmInvoicePayment(ubId, payment);
+				if (raw?.ok === false) return {
+					ok: false,
+					persisted: false,
+					capability: "rejected",
+					message: raw.message ?? raw.error ?? "Confirmação rejeitada pelo servidor."
+				};
+				return { ok: true };
 			},
 			async reopenInvoicePayment(ubId, _month, _reason) {
-				return unwrap(uiProvider.reopenInvoicePayment(ubId, _reason)) ?? ok();
+				const raw = uiProvider.reopenInvoicePayment(ubId, _reason);
+				if (raw?.ok === false) return {
+					ok: false,
+					persisted: false,
+					capability: "rejected",
+					message: raw.message ?? raw.error ?? "Reabertura rejeitada pelo servidor."
+				};
+				return { ok: true };
 			},
 			async confirmOwnerPayment(ugId, _month, payment) {
-				return unwrap(uiProvider.confirmOwnerSettlementPayment(ugId, payment)) ?? ok();
+				const raw = uiProvider.confirmOwnerSettlementPayment(ugId, payment);
+				if (raw?.ok === false) return {
+					ok: false,
+					persisted: false,
+					capability: "rejected",
+					message: raw.message ?? raw.error ?? "Confirmação rejeitada pelo servidor."
+				};
+				return { ok: true };
 			},
 			async listAlerts(filter) {
 				return unwrap(uiProvider.getAlertsSummary({ referenceMonth: filter?.month }))?.alerts ?? [];
 			},
-			async getAlertDetail(_id) {
-				return null;
+			async getAlertDetail(id) {
+				return (unwrap(uiProvider.getAlertsSummary({}))?.alerts ?? []).find((a) => a.id === id) ?? null;
 			},
 			async resolveAlert(_id, _note) {
-				return ok();
+				return {
+					ok: false,
+					persisted: false,
+					capability: "not_available",
+					message: "Resolução de alerta indisponível: persistência ainda não habilitada."
+				};
 			},
 			async ignoreAlert(_id, _note) {
-				return ok();
+				return {
+					ok: false,
+					persisted: false,
+					capability: "not_available",
+					message: "Ignorar alerta indisponível: persistência ainda não habilitada."
+				};
 			},
 			async markAlertInAnalysis(_id, _note) {
-				return ok();
+				return {
+					ok: false,
+					persisted: false,
+					capability: "not_available",
+					message: "Alteração de status de alerta indisponível: persistência ainda não habilitada."
+				};
 			}
 		};
 	}
@@ -1456,25 +1526,38 @@
 	}
 	async function resolveRealProvider() {
 		if (!window.__ESA_UI_PROVIDER__) {
-			console.warn("[ESA-Bridge] ?runtime=real requested but window.__ESA_UI_PROVIDER__ not set — falling back to demo");
-			return demoRuntimeProvider;
+			console.warn("[ESA-Bridge] ?runtime=real requested but window.__ESA_UI_PROVIDER__ not set");
+			return null;
 		}
 		try {
 			const { createEsaRuntimeProvider } = await Promise.resolve().then(() => (init_esaRuntimeProvider(), esaRuntimeProvider_exports));
 			return createEsaRuntimeProvider(window.__ESA_UI_PROVIDER__);
 		} catch (err) {
-			console.error("[ESA-Bridge] Failed to initialize real provider — falling back to demo", err);
-			return demoRuntimeProvider;
+			console.error("[ESA-Bridge] Failed to initialize real provider", err);
+			return null;
 		}
 	}
 	async function initBridge() {
-		if (resolveMode() === "demo") window.ESA_ENERGY_CREDITS_RUNTIME = demoRuntimeProvider;
-		else window.ESA_ENERGY_CREDITS_RUNTIME = await resolveRealProvider();
-		window.dispatchEvent(new CustomEvent("esa:runtime:ready", { detail: { mode: window.ESA_ENERGY_CREDITS_RUNTIME.mode } }));
+		if (resolveMode() === "demo") {
+			window.ESA_ENERGY_CREDITS_RUNTIME = demoRuntimeProvider;
+			window.dispatchEvent(new CustomEvent("esa:runtime:ready", { detail: { mode: "demo" } }));
+			return;
+		}
+		const provider = await resolveRealProvider();
+		if (provider) {
+			window.ESA_ENERGY_CREDITS_RUNTIME = provider;
+			window.dispatchEvent(new CustomEvent("esa:runtime:ready", { detail: { mode: "real" } }));
+		} else window.dispatchEvent(new CustomEvent("esa:runtime:error", { detail: { reason: "provider_unavailable" } }));
 	}
 	if (resolveMode() === "demo") {
 		window.ESA_ENERGY_CREDITS_RUNTIME = demoRuntimeProvider;
 		window.dispatchEvent(new CustomEvent("esa:runtime:ready", { detail: { mode: "demo" } }));
-	} else initBridge().catch((err) => console.error("[ESA-Bridge] Fatal init error", err));
+	} else initBridge().catch((err) => {
+		console.error("[ESA-Bridge] Fatal init error", err);
+		window.dispatchEvent(new CustomEvent("esa:runtime:error", { detail: {
+			reason: "init_exception",
+			error: err?.message
+		} }));
+	});
 	//#endregion
 })();

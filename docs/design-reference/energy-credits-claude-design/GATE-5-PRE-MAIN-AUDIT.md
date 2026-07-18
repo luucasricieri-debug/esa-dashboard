@@ -11,10 +11,52 @@
 ## CLASSIFICAÇÃO FINAL
 
 ```
-READY_WITH_KNOWN_LIMITATIONS
+READY_FOR_MAIN
 ```
 
-**Nenhum bloqueador identificado.** Três limitações conhecidas documentadas — nenhuma impede o merge em main.
+**Gate 5B concluído.** Os três bloqueadores identificados na auditoria foram corrigidos e verificados com 31 novos testes (Suite BR1–BR4). Ver seção "BLOQUEADORES RESOLVIDOS" abaixo.
+
+---
+
+## BLOQUEADORES RESOLVIDOS (Gate 5B)
+
+> Commit: `fix: remove bloqueadores finais do runtime direto`  
+> Branch: `core-v2`
+
+### BR1 — support.js movido para assets de produção ✓
+
+- **Antes:** `<script src="/docs/design-reference/energy-credits-claude-design/support.js">`  
+- **Depois:** `<script src="/assets/energy-credits-runtime/support.js">`  
+- Original em `docs/` preservado (não removido).  
+- 64 222 bytes — cópia byte-a-byte verificada.
+
+### BR2 — Fallback silencioso demo → removido ✓
+
+`runtimeBridge.ts` alterado:
+- `resolveRealProvider()` agora retorna `Promise<…|null>` em vez de `Promise<…>`.
+- Quando `__ESA_UI_PROVIDER__` ausente ou `createEsaRuntimeProvider` falha → retorna `null`, **não** `demoRuntimeProvider`.
+- `initBridge()` despacha `esa:runtime:error` (`reason: "provider_unavailable"`) em vez de atribuir demo.
+- IIFE captura erros fatais e despacha `esa:runtime:error` (`reason: "init_exception"`).
+- `energy-credits-v2.html` escuta `esa:runtime:error` → exibe tela honesta com botões "Tentar novamente" e "← Dashboard ESA".
+- `_rtStatus: "booting" | "ready" | "error"` — nenhum dado (demo ou real) é renderizado até `_rtStatus === "ready"`.
+- `bridge.js` recompilado via `npx vite build --config vite.bridge.config.ts`.
+
+### BR3 — impRestart reseta impUbId para "" ✓
+
+- `impUbId: "UB-001"` → `impUbId: ""`  
+- Evita exibir "UB-001" (id demo) como seleção padrão ao reiniciar o fluxo de importação.
+
+### Resultados de teste
+
+| Suite | Asserts | Status |
+|---|---|---|
+| BR1 — support.js em assets | 6 | ✓ 6/6 |
+| BR2 — bridge sem fallback demo | 7 | ✓ 7/7 |
+| BR3 — impRestart impUbId="" | 3 | ✓ 3/3 |
+| BR4 — estado _rtStatus + handler | 15 | ✓ 15/15 |
+| **TOTAL Gate 5B** | **31** | **✓ 31/31** |
+
+**Testes acumulados (Gates 3–5B):** 547 assertions, 0 falhas.
 
 ---
 

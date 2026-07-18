@@ -25,19 +25,19 @@ function resolveMode(): 'demo' | 'real' {
   return 'demo';
 }
 
-async function resolveRealProvider(): Promise<EnergyCreditsRuntimeContract> {
+async function resolveRealProvider(): Promise<EnergyCreditsRuntimeContract | null> {
   // Real provider requires the ESA UI provider to be available on window.
   // The legacy-bridge.js sets window.__ESA_UI_PROVIDER__ before loading this script.
   if (!window.__ESA_UI_PROVIDER__) {
-    console.warn('[ESA-Bridge] ?runtime=real requested but window.__ESA_UI_PROVIDER__ not set — falling back to demo');
-    return demoRuntimeProvider;
+    console.warn('[ESA-Bridge] ?runtime=real requested but window.__ESA_UI_PROVIDER__ not set');
+    return null;
   }
   try {
     const { createEsaRuntimeProvider } = await import('../providers/esaRuntimeProvider');
     return createEsaRuntimeProvider(window.__ESA_UI_PROVIDER__);
   } catch (err) {
-    console.error('[ESA-Bridge] Failed to initialize real provider — falling back to demo', err);
-    return demoRuntimeProvider;
+    console.error('[ESA-Bridge] Failed to initialize real provider', err);
+    return null;
   }
 }
 
@@ -46,12 +46,18 @@ async function initBridge(): Promise<void> {
 
   if (mode === 'demo') {
     window.ESA_ENERGY_CREDITS_RUNTIME = demoRuntimeProvider;
-  } else {
-    window.ESA_ENERGY_CREDITS_RUNTIME = await resolveRealProvider();
+    window.dispatchEvent(new CustomEvent('esa:runtime:ready', { detail: { mode: 'demo' } }));
+    return;
   }
 
-  // Dispatch event so energy-credits-v2.html can react once the contract is ready.
-  window.dispatchEvent(new CustomEvent('esa:runtime:ready', { detail: { mode: window.ESA_ENERGY_CREDITS_RUNTIME.mode } }));
+  const provider = await resolveRealProvider();
+  if (provider) {
+    window.ESA_ENERGY_CREDITS_RUNTIME = provider;
+    window.dispatchEvent(new CustomEvent('esa:runtime:ready', { detail: { mode: 'real' } }));
+  } else {
+    // Never assign demo — dispatch explicit error so UI can show honest state.
+    window.dispatchEvent(new CustomEvent('esa:runtime:error', { detail: { reason: 'provider_unavailable' } }));
+  }
 }
 
 // Run immediately — synchronous assignment for demo, async for real.
@@ -60,5 +66,8 @@ if (resolveMode() === 'demo') {
   window.ESA_ENERGY_CREDITS_RUNTIME = demoRuntimeProvider;
   window.dispatchEvent(new CustomEvent('esa:runtime:ready', { detail: { mode: 'demo' } }));
 } else {
-  initBridge().catch((err) => console.error('[ESA-Bridge] Fatal init error', err));
+  initBridge().catch((err) => {
+    console.error('[ESA-Bridge] Fatal init error', err);
+    window.dispatchEvent(new CustomEvent('esa:runtime:error', { detail: { reason: 'init_exception', error: (err as Error)?.message } }));
+  });
 }

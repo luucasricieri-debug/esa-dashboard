@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="/docs/design-reference/energy-credits-claude-design/support.js"></script>
+<script src="/assets/energy-credits-runtime/support.js"></script>
 <script src="/assets/energy-credits-runtime/bridge.js"></script>
 </head>
 <body>
@@ -75,6 +75,31 @@
     </header>
 
     <main style="flex:1; padding:24px; overflow-x:hidden;">
+
+      <!-- ==================== GATE 5B: RUNTIME BOOTING ==================== -->
+      <sc-if value="{{ isRtBooting }}">
+        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:60vh; gap:16px;">
+          <div style="width:40px; height:40px; border-radius:50%; border:3px solid #e2e8f0; border-top-color:#00a86b; animation:esaPulse 1s linear infinite;"></div>
+          <p style="font-size:14px; color:#64748b; margin:0;">Inicializando runtime de créditos…</p>
+        </div>
+      </sc-if>
+
+      <!-- ==================== GATE 5B: RUNTIME ERROR ==================== -->
+      <sc-if value="{{ isRtError }}">
+        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:60vh; gap:20px; text-align:center;">
+          <div style="width:56px; height:56px; border-radius:50%; background:#fef2f2; display:grid; place-items:center;">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#e11d48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          </div>
+          <div>
+            <p style="font-size:16px; font-weight:600; color:#0f172a; margin:0 0 6px;">Runtime indisponível</p>
+            <p style="font-size:14px; color:#64748b; margin:0; max-width:360px;">{{ rtErrorMsg }}</p>
+          </div>
+          <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center;">
+            <button onClick="{{ rtRetry }}" style="height:40px; padding:0 20px; border-radius:8px; background:#00a86b; color:#ffffff; font-size:14px; font-weight:600; border:none; cursor:pointer;">Tentar novamente</button>
+            <button onClick="{{ rtBack }}" style="height:40px; padding:0 20px; border-radius:8px; background:#ffffff; color:#475569; font-size:14px; font-weight:500; border:1px solid #e2e8f0; cursor:pointer;">← Dashboard ESA</button>
+          </div>
+        </div>
+      </sc-if>
 
       <!-- ==================== VISÃO GERAL ==================== -->
       <sc-if value="{{ isDashboard }}" hint-placeholder-val="{{ true }}">
@@ -2733,6 +2758,9 @@ class Component extends DCLogic {
     _rtFinAll: null, _rtFinAllLoading: false,
     // GATE 3E — Importações e Alertas
     _rtAlData: null, _rtAlLoading: false,
+    // GATE 5B — runtime status gate
+    _rtStatus: (function(){ try { return new URLSearchParams(window.location.search).get('runtime') === 'real' ? 'booting' : 'ready'; } catch(e) { return 'ready'; } })(),
+    _rtError: null,
   };
 
   // ============================== DADOS (porta fiel do mockData/provider do Lovable) ==============================
@@ -4980,6 +5008,15 @@ class Component extends DCLogic {
 
     const toast = S.toast;
 
+    // GATE 5B — runtime status gate
+    const _reqReal = (function(){ try { return new URLSearchParams(window.location.search).get('runtime') === 'real'; } catch(e) { return false; } })();
+    const isRtBooting = _reqReal && S._rtStatus === "booting";
+    const isRtError = _reqReal && S._rtStatus === "error";
+    const isRtOverride = isRtBooting || isRtError;
+    const rtErrorMsg = S._rtError === "provider_unavailable" ? "O provedor de dados não está disponível." : S._rtError === "init_failed" ? "Falha ao inicializar o runtime de créditos." : "Erro desconhecido no runtime.";
+    const rtRetry = () => window.location.reload();
+    const rtBack = () => { window.history.length > 1 ? window.history.back() : window.location.assign('/'); };
+
     return {
       // shell
       sidebarWidth: collapsed ? 64 : 240, sidebarExpanded: !collapsed,
@@ -4988,12 +5025,13 @@ class Component extends DCLogic {
       toggleSidebar: () => this.setState({ collapsed: !collapsed }),
       navItems, viewTitle: t.title, viewSub: t.sub,
       searchIcon: this.I("search", 14, "#94a3b8"),
-      isDashboard: view === "dashboard", isApuracao: view === "apuracao",
-      isFatura: view === "fatura",
-      isOther: view !== "dashboard" && view !== "apuracao" && view !== "fatura" && view !== "csv" && view !== "ug" && view !== "ub" && view !== "financeiro" && view !== "relatorios" && view !== "alertas",
-      isAlertas: view === "alertas",
-      isUgList: view === "ug", isUbList: view === "ub",
-      isFinanceiro: view === "financeiro", isRelatorios: view === "relatorios",
+      isRtBooting, isRtError, rtErrorMsg, rtRetry, rtBack,
+      isDashboard: view === "dashboard" && !isRtOverride, isApuracao: view === "apuracao" && !isRtOverride,
+      isFatura: view === "fatura" && !isRtOverride,
+      isOther: !isRtOverride && view !== "dashboard" && view !== "apuracao" && view !== "fatura" && view !== "csv" && view !== "ug" && view !== "ub" && view !== "financeiro" && view !== "relatorios" && view !== "alertas",
+      isAlertas: view === "alertas" && !isRtOverride,
+      isUgList: view === "ug" && !isRtOverride, isUbList: view === "ub" && !isRtOverride,
+      isFinanceiro: view === "financeiro" && !isRtOverride, isRelatorios: view === "relatorios" && !isRtOverride,
       otherIcon: this.I((navDefs.find((n) => n.key === view) || {}).icon || "filetext", 20, "#00a86b"),
       showFaturaShortcut: view === "relatorios" || view === "financeiro",
       openFaturaExample: () => this.setState({ view: "fatura", compDetailsOpen: false }),
@@ -5088,9 +5126,9 @@ class Component extends DCLogic {
       ],
 
       // importar fatura da distribuidora
-      isImport: view === "csv",
+      isImport: view === "csv" && !isRtOverride,
       impSteps, impCanRestart: impPhase !== "idle",
-      impRestart: () => { clearTimeout(this._impT); this.setState({ impPhase: "idle", impData: null, impEdit: false, impCompareOpen: false, impReplaceOpen: false, impReason: "", impReasonMissing: false, impReplaced: false, impUbId: "UB-001" }); },
+      impRestart: () => { clearTimeout(this._impT); this.setState({ impPhase: "idle", impData: null, impEdit: false, impCompareOpen: false, impReplaceOpen: false, impReason: "", impReasonMissing: false, impReplaced: false, impUbId: "" }); },
       impIsIdle: impPhase === "idle", impIsExtracting: impPhase === "extracting",
       impIsReview: impPhase === "review", impIsUnmatched: impPhase === "unmatched",
       impIsDuplicate: impPhase === "duplicate", impIsSuccess: impPhase === "success",
@@ -5523,6 +5561,14 @@ class Component extends DCLogic {
     // GATE 3 — inicializa modo real se bridge já estiver pronta
     this._initRealMode();
     window.addEventListener("esa:runtime:ready", this._initRealMode.bind(this));
+    // GATE 5B — captura erro explícito de bridge (never-demo policy no runtime real)
+    window.addEventListener("esa:runtime:error", this._handleRuntimeError.bind(this));
+  }
+
+  _handleRuntimeError(evt) {
+    const reason = (evt && evt.detail && evt.detail.reason) || "unknown";
+    console.info('[ESA Gate5B] runtime_error', { reason });
+    this.setState({ _rtStatus: "error", _rtError: reason });
   }
 
   componentDidUpdate(prevProps, prevState) {
@@ -5582,17 +5628,30 @@ class Component extends DCLogic {
 
   _initRealMode() {
     const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
-    if (!rt || rt.mode !== "real" || this.state._rtMode === "real") return;
+    if (!rt) return;
+    // GATE 5B — if bridge gave a non-real provider when real was requested, show error
+    if (rt.mode !== "real") {
+      try {
+        const reqReal = new URLSearchParams(window.location.search).get('runtime') === 'real';
+        if (reqReal && this.state._rtStatus === "booting") {
+          console.info('[ESA Gate5B] runtime_error', { reason: "provider_unavailable" });
+          this.setState({ _rtStatus: "error", _rtError: "provider_unavailable" });
+        }
+      } catch(e) {}
+      return;
+    }
+    if (this.state._rtMode === "real") return;
     console.info('[ESA Gate4] module_opened', { mode: rt.mode });
     Promise.all([rt.listMonths(), rt.listGeneratingUnits()]).then((result) => {
       const months = result[0]; const ugs = result[1];
       const initMonth = (months[0] || {}).value || this.state.dashMonth;
       const firstUgId = (ugs[0] || {}).value || (ugs[0] || {}).id || this.state.apUgId;
-      this.setState({ _rtMode: "real", _rtMonths: months, _rtUgs: ugs, dashMonth: initMonth, finMonth: initMonth, repMonth: initMonth, apMonth: initMonth, alMonth: initMonth, repUgId: firstUgId });
+      this.setState({ _rtStatus: "ready", _rtMode: "real", _rtMonths: months, _rtUgs: ugs, dashMonth: initMonth, finMonth: initMonth, repMonth: initMonth, apMonth: initMonth, alMonth: initMonth, repUgId: firstUgId });
       this._loadRealDash(initMonth, "all");
     }).catch((err) => {
       console.error("[ESA] Real mode init error", err);
       console.info('[ESA Gate4] init_failure', { error: err && err.message });
+      this.setState({ _rtStatus: "error", _rtError: "init_failed" });
     });
   }
 
