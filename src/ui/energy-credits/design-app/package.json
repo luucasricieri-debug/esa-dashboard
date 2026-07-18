@@ -1,0 +1,11 @@
+{
+  "name": "@esa/energy-credits-design-app",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "preview-dev": "vite --config vite.design.config.ts",
+    "build": "tsc --noEmit && vite build --config vite.design.config.ts",
+    "typecheck": "tsc --noEmit"
+  }
+}

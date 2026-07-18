@@ -2,6 +2,9 @@
   "name": "esa-dashboard",
   "version": "1.0.0",
   "private": true,
+  "scripts": {
+    "build:energy-credits-ui": "cd src/ui/energy-credits/react-app && npx vite build --config vite.energy-credits.config.ts"
+  },
   "dependencies": {
     "firebase-admin": "^11.11.1"
   }

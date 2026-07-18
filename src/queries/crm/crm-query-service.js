@@ -13,7 +13,11 @@
  * Valida dependências no momento da execução da query, não no constructor.
  */
 
-import { CRMQueryResult } from './crm-query-result.js';
+import { CRMQueryResult }              from './crm-query-result.js';
+import { CRMPipelineAnalyzer }         from './crm-pipeline-analyzer.js';
+import { CRMRiskSignalAnalyzer }       from './crm-risk-signal-analyzer.js';
+import { CRMActionPriorityAnalyzer }   from './crm-action-priority-analyzer.js';
+import { CRMManagementBriefBuilder }   from './crm-management-brief-builder.js';
 
 export class CRMQueryService {
   /**
@@ -21,8 +25,12 @@ export class CRMQueryService {
    * @param {CRMMetrics}   metrics   - Instância de métricas CRM (injetada)
    */
   constructor(readModel, metrics) {
-    this._readModel = readModel;
-    this._metrics   = metrics;
+    this._readModel        = readModel;
+    this._metrics          = metrics;
+    this._pipelineAnalyzer        = null;
+    this._riskAnalyzer            = null;
+    this._actionPriorityAnalyzer  = null;
+    this._briefBuilder            = null;
   }
 
   // ── Queries de Read Model ─────────────────────────────────────────────────
@@ -165,7 +173,211 @@ export class CRMQueryService {
     );
   }
 
+  // ── Pipeline Health / Aging ───────────────────────────────────────────────
+
+  /**
+   * Retorna resumo de saúde do pipeline com distribuição de aging e valores em risco.
+   *
+   * @param {Object} filters
+   * @param {Object} [options={}]
+   * @returns {CRMQueryResult} data: PipelineHealth
+   */
+  getPipelineHealth(filters = {}, options = {}) {
+    this._requireReadModel('getDeals');
+    const health = this._getAnalyzer().getPipelineHealth(filters, options);
+    return new CRMQueryResult(health, {
+      query:   'crm.getPipelineHealth',
+      filters: Object.assign({}, filters),
+    });
+  }
+
+  /**
+   * Retorna lista gerencial de deals críticos (aging > 30 dias).
+   *
+   * @param {Object} filters
+   * @param {Object} [options={}]
+   * @returns {CRMQueryResult} data: DealItem[]
+   */
+  getCriticalDeals(filters = {}, options = {}) {
+    this._requireReadModel('getDeals');
+    const items = this._getAnalyzer().getCriticalDeals(filters, options);
+    return new CRMQueryResult(items, {
+      query:   'crm.getCriticalDeals',
+      filters: Object.assign({}, filters),
+      count:   items.length,
+    });
+  }
+
+  /**
+   * Retorna lista gerencial de deals sem próxima ação registrada.
+   *
+   * @param {Object} filters
+   * @param {Object} [options={}]
+   * @returns {CRMQueryResult} data: DealItem[]
+   */
+  getDealsWithoutNextAction(filters = {}, options = {}) {
+    this._requireReadModel('getDeals');
+    const items = this._getAnalyzer().getDealsWithoutNextAction(filters, options);
+    return new CRMQueryResult(items, {
+      query:   'crm.getDealsWithoutNextAction',
+      filters: Object.assign({}, filters),
+      count:   items.length,
+    });
+  }
+
+  // ── Risk Signals ──────────────────────────────────────────────────────────
+
+  /**
+   * Retorna lista priorizada de sinais de risco comercial.
+   *
+   * @param {Object} filters
+   * @param {Object} [options={}]
+   * @returns {CRMQueryResult} data: RiskSignal[]
+   */
+  getRiskSignals(filters = {}, options = {}) {
+    this._requireReadModel('getDeals');
+    const signals = this._getRiskAnalyzer().getRiskSignals(filters, options);
+    return new CRMQueryResult(signals, {
+      query:   'crm.getRiskSignals',
+      filters: Object.assign({}, filters),
+      count:   signals.length,
+    });
+  }
+
+  /**
+   * Retorna apenas sinais com severity === 'critical'.
+   *
+   * @param {Object} filters
+   * @param {Object} [options={}]
+   * @returns {CRMQueryResult} data: RiskSignal[]
+   */
+  getCriticalRiskSignals(filters = {}, options = {}) {
+    this._requireReadModel('getDeals');
+    const signals = this._getRiskAnalyzer().getCriticalRiskSignals(filters, options);
+    return new CRMQueryResult(signals, {
+      query:   'crm.getCriticalRiskSignals',
+      filters: Object.assign({}, filters),
+      count:   signals.length,
+    });
+  }
+
+  /**
+   * Retorna resumo gerencial com contagens, valor exposto e lista priorizada de sinais.
+   *
+   * @param {Object} filters
+   * @param {Object} [options={}]
+   * @returns {CRMQueryResult} data: RiskSignalSummary
+   */
+  getRiskSignalSummary(filters = {}, options = {}) {
+    this._requireReadModel('getDeals');
+    const summary = this._getRiskAnalyzer().getRiskSignalSummary(filters, options);
+    return new CRMQueryResult(summary, {
+      query:   'crm.getRiskSignalSummary',
+      filters: Object.assign({}, filters),
+    });
+  }
+
+  // ── Action Priorities ─────────────────────────────────────────────────────
+
+  /**
+   * Retorna lista priorizada de ações comerciais por deal.
+   *
+   * @param {Object} filters
+   * @param {Object} [options={}]
+   * @returns {CRMQueryResult} data: ActionPriority[]
+   */
+  getActionPriorities(filters = {}, options = {}) {
+    this._requireReadModel('getDeals');
+    const items = this._getActionPriorityAnalyzer().getActionPriorities(filters, options);
+    return new CRMQueryResult(items, {
+      query:   'crm.getActionPriorities',
+      filters: Object.assign({}, filters),
+      count:   items.length,
+    });
+  }
+
+  /**
+   * Retorna apenas prioridades com nível 'urgent'.
+   *
+   * @param {Object} filters
+   * @param {Object} [options={}]
+   * @returns {CRMQueryResult} data: ActionPriority[]
+   */
+  getUrgentActionPriorities(filters = {}, options = {}) {
+    this._requireReadModel('getDeals');
+    const items = this._getActionPriorityAnalyzer().getUrgentActionPriorities(filters, options);
+    return new CRMQueryResult(items, {
+      query:   'crm.getUrgentActionPriorities',
+      filters: Object.assign({}, filters),
+      count:   items.length,
+    });
+  }
+
+  /**
+   * Retorna resumo gerencial de prioridades de ação com contagens e fila.
+   *
+   * @param {Object} filters
+   * @param {Object} [options={}]
+   * @returns {CRMQueryResult} data: ActionPrioritySummary
+   */
+  getActionPrioritySummary(filters = {}, options = {}) {
+    this._requireReadModel('getDeals');
+    const summary = this._getActionPriorityAnalyzer().getActionPrioritySummary(filters, options);
+    return new CRMQueryResult(summary, {
+      query:   'crm.getActionPrioritySummary',
+      filters: Object.assign({}, filters),
+    });
+  }
+
+  // ── Management Brief ─────────────────────────────────────────────────────
+
+  /**
+   * Constrói o briefing gerencial consolidado.
+   * Orquestra Executive Summary, Pipeline Health, Risk Signals e Action Priority.
+   * Seções com falha ficam null — o brief sempre retorna estrutura completa.
+   *
+   * @param {Object} [filters={}]
+   * @param {Object} [options={}]
+   * @returns {CRMQueryResult} data: ManagementBrief
+   */
+  getManagementBrief(filters = {}, options = {}) {
+    this._requireReadModel('getDeals');
+    const brief = this._getBriefBuilder().buildBrief(filters, options);
+    return new CRMQueryResult(brief, {
+      query:   'crm.getManagementBrief',
+      filters: Object.assign({}, filters),
+    });
+  }
+
   // ── Validação privada ─────────────────────────────────────────────────────
+
+  _getAnalyzer() {
+    if (!this._pipelineAnalyzer) {
+      this._pipelineAnalyzer = new CRMPipelineAnalyzer(this._readModel);
+    }
+    return this._pipelineAnalyzer;
+  }
+
+  _getRiskAnalyzer() {
+    if (!this._riskAnalyzer) {
+      this._riskAnalyzer = new CRMRiskSignalAnalyzer(this._readModel);
+    }
+    return this._riskAnalyzer;
+  }
+
+  _getActionPriorityAnalyzer() {
+    if (!this._actionPriorityAnalyzer) {
+      this._actionPriorityAnalyzer = new CRMActionPriorityAnalyzer(this._readModel);
+    }
+    return this._actionPriorityAnalyzer;
+  }
+
+  _getBriefBuilder() {
+    if (!this._briefBuilder) {
+      this._briefBuilder = new CRMManagementBriefBuilder(this);
+    }
+    return this._briefBuilder;
+  }
 
   _requireReadModel(method) {
     if (!this._readModel || typeof this._readModel[method] !== 'function') {

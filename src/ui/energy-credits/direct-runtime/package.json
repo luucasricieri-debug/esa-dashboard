@@ -1,0 +1,11 @@
+{
+  "name": "@esa/energy-credits-direct-runtime",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "vite build --config vite.bridge.config.ts",
+    "test:contract": "npx tsx tests/contract.manual-test.ts"
+  }
+}

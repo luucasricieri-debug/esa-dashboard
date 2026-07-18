@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ESA Energy Credits — Preview</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body, #app { height: 100%; }
+      body { font-family: system-ui, sans-serif; background: #f8fafc; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { mountEnergyCreditsReactApp } from '../src/entry/energy-credits-entry.tsx';
+      import { previewProvider } from './preview-provider.ts';
+
+      const unmount = mountEnergyCreditsReactApp({
+        mountElement: document.getElementById('app'),
+        provider: previewProvider,
+        options: { defaultView: 'dashboard' },
+      });
+
+      if (import.meta.hot) {
+        import.meta.hot.dispose(() => unmount());
+      }
+    </script>
+  </body>
+</html>

@@ -13,8 +13,19 @@
  * O singleton usa os mesmos crmReadModel e crmMetrics do Read Model CRM.
  */
 
-export { CRMQueryService } from './crm-query-service.js';
-export { CRMQueryResult }  from './crm-query-result.js';
+export { CRMQueryService }      from './crm-query-service.js';
+export { CRMQueryResult }       from './crm-query-result.js';
+export { CRMPipelineAnalyzer,
+         AGING_THRESHOLDS }                                           from './crm-pipeline-analyzer.js';
+export { CRMRiskSignalAnalyzer,
+         SIGNAL_TYPES, SEVERITY_LEVELS,
+         HIGH_VALUE_THRESHOLD, RISK_THRESHOLDS }                      from './crm-risk-signal-analyzer.js';
+export { CRMActionPriorityAnalyzer,
+         PRIORITY_LEVELS, SCORE_WEIGHTS,
+         VALUE_THRESHOLDS, PRIORITY_SCORE_THRESHOLDS }                from './crm-action-priority-analyzer.js';
+export { CRMManagementBriefBuilder,
+         HIGH_EXPOSURE_THRESHOLD, SECTION_STATUS,
+         HIGHLIGHT_CODES, HIGHLIGHT_SEVERITY }                        from './crm-management-brief-builder.js';
 
 import { CRMQueryService }          from './crm-query-service.js';
 import { crmReadModel, crmMetrics } from '../../read-models/crm/index.js';

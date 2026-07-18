@@ -1,0 +1,50 @@
+/**
+ * ESA OS — Importers / Energy Utility Bills
+ * Constantes estáveis de status, fonte, confiança e matching.
+ */
+
+export const UTILITY_BILL_IMPORT_STATUS = Object.freeze({
+  EXTRACTED: 'extracted',
+  MATCHED:   'matched',
+  UNMATCHED: 'unmatched',
+  DUPLICATE: 'duplicate',
+  REVIEW:    'review',
+  CONFIRMED: 'confirmed',
+  REPLACED:  'replaced',
+  DISCARDED: 'discarded',
+  ERROR:     'error',
+});
+
+export const UTILITY_BILL_DATA_SOURCE = Object.freeze({
+  UTILITY_BILL_IMPORT: 'utility-bill-import',
+  CSV:                 'csv',
+  MANUAL:              'manual',
+});
+
+export const UTILITY_BILL_CONFIDENCE = Object.freeze({
+  HIGH:         'high',
+  REVIEW:       'review',
+  UNIDENTIFIED: 'unidentified',
+});
+
+export const UTILITY_BILL_MATCH_TYPE = Object.freeze({
+  UC_EXACT:       'uc-exact',
+  DOCUMENT_EXACT: 'document-exact',
+  MANUAL:         'manual',
+  NONE:           'none',
+});
+
+export const UTILITY_BILL_ERROR_CODE = Object.freeze({
+  INVALID_UTILITY_BILL_EXTRACTION:          'INVALID_UTILITY_BILL_EXTRACTION',
+  UTILITY_BILL_IDENTIFIER_REQUIRED:         'UTILITY_BILL_IDENTIFIER_REQUIRED',
+  AMBIGUOUS_BENEFICIARY_MATCH:              'AMBIGUOUS_BENEFICIARY_MATCH',
+  UTILITY_BILL_IMPORT_NOT_FOUND:            'UTILITY_BILL_IMPORT_NOT_FOUND',
+  UTILITY_BILL_BENEFICIARY_REQUIRED:        'UTILITY_BILL_BENEFICIARY_REQUIRED',
+  UTILITY_BILL_MONTHLY_RECORD_DUPLICATE:    'UTILITY_BILL_MONTHLY_RECORD_DUPLICATE',
+  UTILITY_BILL_REPLACEMENT_REASON_REQUIRED: 'UTILITY_BILL_REPLACEMENT_REASON_REQUIRED',
+  UTILITY_BILL_REPOSITORY_REQUIRED:         'UTILITY_BILL_REPOSITORY_REQUIRED',
+  UTILITY_BILL_BILLING_INPUT_INCOMPLETE:    'UTILITY_BILL_BILLING_INPUT_INCOMPLETE',
+  UTILITY_BILL_NOT_MATCHED:                 'UTILITY_BILL_NOT_MATCHED',
+  UTILITY_BILL_GENERATING_UNIT_REQUIRED:    'UTILITY_BILL_GENERATING_UNIT_REQUIRED',
+  UTILITY_BILL_DUPLICATE_WITHOUT_DECISION:  'UTILITY_BILL_DUPLICATE_WITHOUT_DECISION',
+});
