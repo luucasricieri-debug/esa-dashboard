@@ -4549,7 +4549,7 @@ class Component extends DCLogic {
     const repMObj = this.MONTHS_AV.find((m) => m.value === repMonth) || this.MONTHS_AV[0];
     let repF, repUg, repComp, repRepasse, repPayee, repSt, repCycle, repStPill;
     let repDistribuido, repSaldoUcs, repConsumo, repDest, repUbIds, repAlerts;
-    let repR = null, repPlan = null;
+    let repR = null, repPlan = null, repPrice = 0;
     if (S._rtMode === "real") {
       const ra = S._rtRepAll;
       repF = 1;
@@ -4561,6 +4561,7 @@ class Component extends DCLogic {
       repStPill = this.statusPill("aberto");
       repComp = or ? (or.totalCompensated || 0) : 0;
       repRepasse = or ? (or.ownerPayment || 0) : 0;
+      repPrice = or ? (or.appliedPrice || 0) : 0;
       const raPlan = ra ? ra.allocationPlan : null;
       if (raPlan && raPlan.rows) {
         repDistribuido = raPlan.rows.reduce((s, r) => s + (r.planned !== undefined ? r.planned : 0), 0);
@@ -4593,6 +4594,7 @@ class Component extends DCLogic {
       repPlan = this.computeAllocationPlan(repUg, {});
       repComp = repR.totalCompensated * repF;
       repRepasse = repComp * this.appliedPrice(repUg.id, repMonth);
+      repPrice = this.appliedPrice(repUg.id, repMonth);
       repPayee = this.PAYEES[repUg.id];
       repSt = this.finStatus("rep", repUg.id, repMonth);
       repCycle = this.cycleBadgeFor(repSt.status === "pago" ? "fechado" : repMObj.status);
