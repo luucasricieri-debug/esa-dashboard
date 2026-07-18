@@ -3205,6 +3205,17 @@ class Component extends DCLogic {
         onClick: () => this.setState({ view: n.key, drill: null, ugDetailId: null, ubDetailId: null, ugWizOpen: false, ubWizOpen: false, ubMonthSel: null, payModal: null, reopenModal: null, finDetail: null, alDetailId: null, alAction: null }),
       };
     });
+    // Gate 4 — back to ESA Dashboard (full-page navigation)
+    navItems.push({
+      label: "Dashboard ESA", hint: "",
+      showLabel: !collapsed, showHint: false,
+      bg: "transparent", hoverBg: "#f8fafc",
+      color: "#94a3b8", weight: "400",
+      pad: collapsed ? "10px 8px" : "8px 12px", justify: collapsed ? "center" : "flex-start",
+      hintBg: "transparent", hintColor: "#94a3b8",
+      iconEl: this.I("chevronLeft", 16, "#94a3b8"),
+      onClick: () => { console.info('[ESA Gate4] back_to_dashboard'); window.history.length > 1 ? window.history.back() : window.location.assign('/'); },
+    });
 
     // ---------- DASHBOARD ----------
     const dashMonth = S.dashMonth;
@@ -5572,13 +5583,17 @@ class Component extends DCLogic {
   _initRealMode() {
     const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
     if (!rt || rt.mode !== "real" || this.state._rtMode === "real") return;
+    console.info('[ESA Gate4] module_opened', { mode: rt.mode });
     Promise.all([rt.listMonths(), rt.listGeneratingUnits()]).then((result) => {
       const months = result[0]; const ugs = result[1];
       const initMonth = (months[0] || {}).value || this.state.dashMonth;
       const firstUgId = (ugs[0] || {}).value || (ugs[0] || {}).id || this.state.apUgId;
       this.setState({ _rtMode: "real", _rtMonths: months, _rtUgs: ugs, dashMonth: initMonth, finMonth: initMonth, repMonth: initMonth, apMonth: initMonth, alMonth: initMonth, repUgId: firstUgId });
       this._loadRealDash(initMonth, "all");
-    }).catch((err) => { console.error("[ESA] Real mode init error", err); });
+    }).catch((err) => {
+      console.error("[ESA] Real mode init error", err);
+      console.info('[ESA Gate4] init_failure', { error: err && err.message });
+    });
   }
 
   _loadRealDash(month, ugFilter) {

@@ -111,13 +111,20 @@ const _origGoPage = window.goPage;
 
 window.goPage = function (page) {
   if (page === 'creditos') {
-    // Atualizar estado de navegação legado manualmente
+    const isLegacy = new URLSearchParams(window.location.search).get('energyCreditsLegacy') === '1';
+    if (!isLegacy) {
+      // Gate 4: runtime direto é a entrada oficial
+      console.info('[ESA Bridge] Gestão de Créditos → runtime direto (Gate 4)');
+      window.location.assign('/energy-credits-v2.html?runtime=real');
+      return;
+    }
+    // energyCreditsLegacy=1: modo legado (rollback)
+    console.info('[ESA Bridge] Gestão de Créditos → modo legado (rollback energyCreditsLegacy=1)');
     document.querySelectorAll('.sb-item').forEach(el => el.classList.remove('active'));
     const navEl = document.getElementById('nav-creditos');
     if (navEl) navEl.classList.add('active');
     const titleEl = document.getElementById('page-title');
     if (titleEl) titleEl.textContent = 'Gestão de Créditos';
-    // Mostrar host React
     activate();
   } else {
     deactivate();
