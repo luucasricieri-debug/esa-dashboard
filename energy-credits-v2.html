@@ -2731,6 +2731,8 @@ class Component extends DCLogic {
     // GATE 3D — Relatórios e Financeiro
     _rtRepAll: null, _rtRepAllLoading: false,
     _rtFinAll: null, _rtFinAllLoading: false,
+    // GATE 3E — Importações e Alertas
+    _rtAlData: null, _rtAlLoading: false,
   };
 
   // ============================== DADOS (porta fiel do mockData/provider do Lovable) ==============================
@@ -3188,7 +3190,7 @@ class Component extends DCLogic {
       { key: "csv", label: "Importação CSV", icon: "upload" },
       { key: "relatorios", label: "Relatórios", icon: "filetext" },
       { key: "financeiro", label: "Financeiro", icon: "wallet" },
-      { key: "alertas", label: "Alertas", icon: "bell", hint: String(this.ALERTS.filter((a) => ["ativo", "em_analise"].includes(this.alertState(a.id).status)).length) },
+      { key: "alertas", label: "Alertas", icon: "bell", hint: String(S._rtMode === "real" ? (S._rtAlData || []).filter((a) => ["ativo", "em_analise"].includes(a.status)).length : this.ALERTS.filter((a) => ["ativo", "em_analise"].includes(this.alertState(a.id).status)).length) },
     ];
     const navItems = navDefs.map((n) => {
       const active = view === n.key;
@@ -3573,8 +3575,15 @@ class Component extends DCLogic {
 
     // ---------- IMPORTAR FATURA DA DISTRIBUIDORA ----------
     const impPhase = S.impPhase;
-    const impUb = this.UBS.find((u) => u.id === S.impUbId) || this.UBS[0];
-    const impUg = this.UGS.find((g) => g.id === impUb.ugId) || this.UGS[0];
+    let impUb, impUg;
+    if (S._rtMode === "real") {
+      const _rtUbsSrc = S._rtUbs || [];
+      impUb = _rtUbsSrc.find((u) => u.id === S.impUbId) || _rtUbsSrc[0] || { id: "", name: "—", ugId: "", uc: "—", distributor: "—" };
+      impUg = (S._rtUgs || []).find((g) => g.id === impUb.ugId) || { id: "", name: "—" };
+    } else {
+      impUb = this.UBS.find((u) => u.id === S.impUbId) || this.UBS[0];
+      impUg = this.UGS.find((g) => g.id === impUb.ugId) || this.UGS[0];
+    }
     const impStepIdx = { idle: 0, extracting: 1, unmatched: 2, duplicate: 3, review: 3, success: 5 }[impPhase] || 0;
     const impStepDefs = ["Enviar fatura", "Extrair dados", "Identificar UC / Beneficiária", "Revisar dados", "Confirmar registro mensal", "Ir para Apuração"];
     const impSteps = impStepDefs.map((label, i) => {
@@ -3589,7 +3598,7 @@ class Component extends DCLogic {
       };
     });
     const impFileName = S.impScenario === "unmatched" ? "conta-copel-jul-2026-nova-uc.pdf" : S.impScenario === "duplicate" ? "conta-copel-jul-2026-reemitida.pdf" : "conta-copel-jul-2026.pdf";
-    const impData = S.impData || this.impExtract(S.impScenario);
+    const impData = S._rtMode === "real" ? (S.impData || null) : (S.impData || this.impExtract(S.impScenario));
     const scDefs = [
       { key: "matched", title: "UC vinculada a UB existente", desc: "A UC da fatura corresponde a uma beneficiária cadastrada" },
       { key: "unmatched", title: "UC não identificada", desc: "A UC da fatura não está vinculada a nenhuma beneficiária" },
@@ -3611,14 +3620,15 @@ class Component extends DCLogic {
       { key: "minKwh", label: "Mínimo faturável", suffix: "kWh" },
       { key: "total", label: "Valor total da conta", suffix: "R$" },
     ];
+    const _impDataSafe = impData || {};
     const impFields = fieldDefs.map((f) => ({
       label: f.label, suffix: f.suffix,
-      value: f.text ? String(impData[f.key]) : num(impData[f.key], f.suffix === "kWh" ? 0 : 2),
+      value: f.text ? String(_impDataSafe[f.key] || "") : num(_impDataSafe[f.key] || 0, f.suffix === "kWh" ? 0 : 2),
       readOnly: !S.impEdit,
       border: S.impEdit ? "#a9e4cb" : "#e2e8f0", bg: S.impEdit ? "rgba(234,248,241,.35)" : "rgba(248,250,252,.6)",
       onChange: (e) => {
         const v = f.text ? e.target.value : Number(String(e.target.value).replace(/\./g, "").replace(",", "."));
-        this.setState((s) => ({ impData: { ...(s.impData || this.impExtract(s.impScenario)), [f.key]: f.text ? v : (isNaN(v) ? impData[f.key] : v) } }));
+        this.setState((s) => ({ impData: { ...(s.impData || (s._rtMode !== "real" ? this.impExtract(s.impScenario) : {})), [f.key]: f.text ? v : (isNaN(v) ? _impDataSafe[f.key] : v) } }));
       },
     }));
     const existing = this.impExisting();
@@ -3629,7 +3639,7 @@ class Component extends DCLogic {
       { key: "minKwh", label: "Mínimo faturável (kWh)", kwhFmt: true }, { key: "total", label: "Valor total" },
     ];
     const impCompareRows = cmpDefs.map((c) => {
-      const cur = existing[c.key], inc = impData[c.key];
+      const cur = existing[c.key], inc = _impDataSafe[c.key];
       const changed = Math.abs(inc - cur) > 0.005;
       const fmt = (v) => (c.kwhFmt ? num(v, 0) : brl(v));
       const d = inc - cur;
@@ -3640,19 +3650,38 @@ class Component extends DCLogic {
         deltaBadge: changed ? "(" + (d > 0 ? "+" : "") + (c.kwhFmt ? num(d, 0) : num(d, 2)) + ")" : "",
       };
     });
-    const impStart = () => {
-      this.setState({ impPhase: "extracting", impData: null, impEdit: false, impReplaced: false, impUbId: "UB-001" });
-      clearTimeout(this._impT);
-      this._impT = setTimeout(() => {
-        const sc = this.state.impScenario;
-        this.setState({ impPhase: sc === "matched" ? "review" : sc, impData: this.impExtract(sc) });
-      }, 1000);
-    };
-    const impHistory = this.IMP_HISTORY.map((h) => {
-      const stMap = { CONFIRMADO: { bg: "#d3f1e3", color: "#006644" }, VINCULADO: { bg: "#eaf8f1", color: "#00875a" }, PENDENTE: { bg: "#fef3c7", color: "#92400e" }, DUPLICADO: { bg: "#ffe4e6", color: "#be123c" }, DESCARTADO: { bg: "#f1f5f9", color: "#64748b" } };
-      const st = stMap[h.status] || stMap.DESCARTADO;
-      return { ...h, statusBg: st.bg, statusColor: st.color, onOpen: () => this.showToast("Registro de importação", h.file + " · " + h.status.toLowerCase()) };
-    });
+    const impStart = S._rtMode === "real"
+      ? () => {
+          this.setState({ impPhase: "extracting", impData: null, impEdit: false, impReplaced: false });
+          const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
+          (rt ? rt.extractUtilityBill(S.impScenario || "matched") : Promise.resolve(null)).then((result) => {
+            if (!result) {
+              this.setState({ impPhase: "idle" });
+              this.showToast("OCR não conectado", "Extração automática indisponível no runtime atual. Nenhum dado foi extraído.");
+            } else {
+              const ph = (result.isDuplicate || result.scenario === "duplicate") ? "duplicate" : (result.ucMatched === false || result.scenario === "unmatched") ? "unmatched" : "review";
+              this.setState({ impPhase: ph, impData: result });
+            }
+          }).catch(() => {
+            this.setState({ impPhase: "idle" });
+            this.showToast("Erro na extração", "Não foi possível processar o arquivo.");
+          });
+        }
+      : () => {
+          this.setState({ impPhase: "extracting", impData: null, impEdit: false, impReplaced: false, impUbId: "UB-001" });
+          clearTimeout(this._impT);
+          this._impT = setTimeout(() => {
+            const sc = this.state.impScenario;
+            this.setState({ impPhase: sc === "matched" ? "review" : sc, impData: this.impExtract(sc) });
+          }, 1000);
+        };
+    const _impStMap = { CONFIRMADO: { bg: "#d3f1e3", color: "#006644" }, VINCULADO: { bg: "#eaf8f1", color: "#00875a" }, PENDENTE: { bg: "#fef3c7", color: "#92400e" }, DUPLICADO: { bg: "#ffe4e6", color: "#be123c" }, DESCARTADO: { bg: "#f1f5f9", color: "#64748b" } };
+    const impHistory = S._rtMode === "real"
+      ? []  // Gate 3E — Core does not expose import history; honest empty
+      : this.IMP_HISTORY.map((h) => {
+          const st = _impStMap[h.status] || _impStMap.DESCARTADO;
+          return { ...h, statusBg: st.bg, statusColor: st.color, onOpen: () => this.showToast("Registro de importação", h.file + " · " + h.status.toLowerCase()) };
+        });
 
     const modeBtn = (active, icon) => ({
       border: active ? "#00a86b" : "#e2e8f0", bg: active ? "rgba(234,248,241,.6)" : "#ffffff",
@@ -4548,7 +4577,56 @@ class Component extends DCLogic {
 
     // ---------- ALERTAS ----------
     const alSevCounts = { critico: 0, risco: 0, atencao: 0, info: 0 };
-    this.ALERTS.forEach((a) => { if (a.month === S.alMonth && ["ativo", "em_analise"].includes(this.alertState(a.id).status)) alSevCounts[a.severity]++; });
+    const alQ = S.alSearch.toLowerCase();
+    let alertRows;
+    if (S._rtMode === "real") {
+      const _rtAlSrc = S._rtAlData || [];
+      _rtAlSrc.forEach((a) => { if (["ativo", "em_analise"].includes(a.status)) alSevCounts[a.severity]++; });
+      alertRows = _rtAlSrc.filter((a) => {
+        if (S.alSev !== "all" && a.severity !== S.alSev) return false;
+        if (S.alStatusF !== "all" && a.status !== S.alStatusF) return false;
+        const relUg = (a.unit && a.unit.startsWith("UG")) ? a.unit : ((S._rtUbs || []).find((u) => u.id === a.unit) || {}).ugId;
+        if (S.alUgF !== "all" && relUg !== S.alUgF) return false;
+        if (S.alUbF !== "all" && a.unit !== S.alUbF) return false;
+        const title = a.title || this.ALERT_TITLES[a.code] || a.code;
+        if (alQ && !(title + " " + a.unit + " " + a.code + " " + a.message).toLowerCase().includes(alQ)) return false;
+        return true;
+      }).map((a) => {
+        const sm = this.AL_STATUS_META[a.status] || { text: a.status, bg: "#f1f5f9", color: "#64748b" };
+        const sevT = sevTone[a.severity] || { bg: "#f1f5f9", color: "#64748b", border: "#e2e8f0" };
+        return {
+          id: a.id, sevText: (this.AL_SEV_META[a.severity] || { label: a.severity }).label, sevBg: sevT.bg, sevColor: sevT.color, sevBorder: sevT.border,
+          title: a.title || this.ALERT_TITLES[a.code] || a.code, unit: a.unit, mesTxt: ((S._rtMonths || this.MONTHS_AV).find((m) => m.value === a.month) || {}).label || a.month,
+          message: a.message, action: a.action, code: a.code,
+          stText: sm.text, stBg: sm.bg, stColor: sm.color,
+          openDetail: () => this.setState({ alDetailId: a.id, alAction: null, alNote: "", alNoteMissing: false }),
+        };
+      });
+    } else {
+      this.ALERTS.forEach((a) => { if (a.month === S.alMonth && ["ativo", "em_analise"].includes(this.alertState(a.id).status)) alSevCounts[a.severity]++; });
+      alertRows = this.ALERTS.filter((a) => {
+        const st = this.alertState(a.id);
+        if (a.month !== S.alMonth) return false;
+        if (S.alSev !== "all" && a.severity !== S.alSev) return false;
+        if (S.alStatusF !== "all" && st.status !== S.alStatusF) return false;
+        const relUg = a.unit.startsWith("UG") ? a.unit : (this.UBS.find((u) => u.id === a.unit) || {}).ugId;
+        if (S.alUgF !== "all" && relUg !== S.alUgF) return false;
+        if (S.alUbF !== "all" && a.unit !== S.alUbF) return false;
+        const title = this.ALERT_TITLES[a.code] || a.code;
+        if (alQ && !(title + " " + a.unit + " " + a.code + " " + a.message).toLowerCase().includes(alQ)) return false;
+        return true;
+      }).map((a) => {
+        const st = this.alertState(a.id);
+        const sm = this.AL_STATUS_META[st.status];
+        return {
+          id: a.id, sevText: this.AL_SEV_META[a.severity].label, sevBg: sevTone[a.severity].bg, sevColor: sevTone[a.severity].color, sevBorder: sevTone[a.severity].border,
+          title: this.ALERT_TITLES[a.code] || a.code, unit: a.unit, mesTxt: (this.MONTHS_AV.find((m) => m.value === a.month) || {}).label || a.month,
+          message: a.message, action: a.action, code: a.code,
+          stText: sm.text, stBg: sm.bg, stColor: sm.color,
+          openDetail: () => this.setState({ alDetailId: a.id, alAction: null, alNote: "", alNoteMissing: false }),
+        };
+      });
+    }
     const alSevCards = [["critico", "Crítico"], ["risco", "Risco"], ["atencao", "Atenção"], ["info", "Informação"]].map(([k, label]) => {
       const active = S.alSev === k;
       return {
@@ -4558,30 +4636,13 @@ class Component extends DCLogic {
         onClick: () => this.setState({ alSev: S.alSev === k ? "all" : k }),
       };
     });
-    const alQ = S.alSearch.toLowerCase();
-    const alertRows = this.ALERTS.filter((a) => {
-      const st = this.alertState(a.id);
-      if (a.month !== S.alMonth) return false;
-      if (S.alSev !== "all" && a.severity !== S.alSev) return false;
-      if (S.alStatusF !== "all" && st.status !== S.alStatusF) return false;
-      const relUg = a.unit.startsWith("UG") ? a.unit : (this.UBS.find((u) => u.id === a.unit) || {}).ugId;
-      if (S.alUgF !== "all" && relUg !== S.alUgF) return false;
-      if (S.alUbF !== "all" && a.unit !== S.alUbF) return false;
-      const title = this.ALERT_TITLES[a.code] || a.code;
-      if (alQ && !(title + " " + a.unit + " " + a.code + " " + a.message).toLowerCase().includes(alQ)) return false;
-      return true;
-    }).map((a) => {
-      const st = this.alertState(a.id);
-      const sm = this.AL_STATUS_META[st.status];
-      return {
-        id: a.id, sevText: this.AL_SEV_META[a.severity].label, sevBg: sevTone[a.severity].bg, sevColor: sevTone[a.severity].color, sevBorder: sevTone[a.severity].border,
-        title: this.ALERT_TITLES[a.code] || a.code, unit: a.unit, mesTxt: (this.MONTHS_AV.find((m) => m.value === a.month) || {}).label || a.month,
-        message: a.message, action: a.action, code: a.code,
-        stText: sm.text, stBg: sm.bg, stColor: sm.color,
-        openDetail: () => this.setState({ alDetailId: a.id, alAction: null, alNote: "", alNoteMissing: false }),
-      };
-    });
-    const alFilterOpts = {
+    const alFilterOpts = S._rtMode === "real" ? {
+      months: (S._rtMonths || this.MONTHS_AV).map((m) => ({ value: m.value, label: m.label })),
+      ugs: [{ value: "all", label: "Todas as UGs" }].concat((S._rtUgs || []).map((g) => ({ value: g.id || g.value, label: g.name || g.label }))),
+      ubs: [{ value: "all", label: "Todas as UBs" }].concat((S._rtUbs || []).map((b) => ({ value: b.id, label: b.name }))),
+      sevs: [{ value: "all", label: "Todas as severidades" }, { value: "critico", label: "Crítico" }, { value: "risco", label: "Risco" }, { value: "atencao", label: "Atenção" }, { value: "info", label: "Informação" }],
+      statuses: [{ value: "all", label: "Todos os status" }, { value: "ativo", label: "Ativo" }, { value: "em_analise", label: "Em análise" }, { value: "resolvido", label: "Resolvido" }, { value: "ignorado", label: "Ignorado com justificativa" }],
+    } : {
       months: this.MONTHS_AV.map((m) => ({ value: m.value, label: m.label })),
       ugs: [{ value: "all", label: "Todas as UGs" }].concat(this.UGS.map((g) => ({ value: g.id, label: g.name }))),
       ubs: [{ value: "all", label: "Todas as UBs" }].concat(this.UBS.map((b) => ({ value: b.id, label: b.name }))),
@@ -4590,52 +4651,114 @@ class Component extends DCLogic {
     };
 
     // drawer de alerta
-    const alA = this.ALERTS.find((a) => a.id === S.alDetailId);
+    const alA = S._rtMode === "real"
+      ? (S._rtAlData || []).find((a) => a.id === S.alDetailId)
+      : this.ALERTS.find((a) => a.id === S.alDetailId);
     let alVals = { aldOpen: false, aldTitle: "", aldRows: [], aldHist: [], aldSev: {}, aldSt: {}, aldImpact: "", aldAction: "", aldActions: [], aldNoteOpen: false, aldNoteLabel: "", aldConfirmLabel: "", aldIsUb: false, aldIsUgRelated: false };
     if (alA) {
-      const st = this.alertState(alA.id);
-      const sm = this.AL_STATUS_META[st.status];
-      const met = this.ALERT_METRICS[alA.id] || {};
-      const isUb = alA.unit.startsWith("UB");
-      const relUb = isUb ? this.UBS.find((u) => u.id === alA.unit) : null;
-      const relUgId = isUb ? (relUb || {}).ugId : alA.unit;
-      alVals = {
-        aldOpen: true,
-        aldTitle: this.ALERT_TITLES[alA.code] || alA.code,
-        aldSev: { text: this.AL_SEV_META[alA.severity].label, bg: sevTone[alA.severity].bg, color: sevTone[alA.severity].color },
-        aldSt: { text: sm.text, bg: sm.bg, color: sm.color },
-        aldRows: [
-          { label: "Código técnico", value: alA.code },
-          { label: "Entidade afetada", value: alA.unit },
-          { label: "Mês de referência", value: (this.MONTHS_AV.find((m) => m.value === alA.month) || {}).label || alA.month },
-          { label: "Valor detectado", value: met.detected || "—" },
-          { label: "Limite esperado", value: met.threshold || "—" },
-          { label: "UG relacionada", value: relUgId || "—" },
-          { label: "UB relacionada", value: isUb ? alA.unit : "—" },
-          { label: "Ciclo relacionado", value: shortM(alA.month) },
-        ],
-        aldImpact: this.ALERT_IMPACT[alA.id] || alA.message,
-        aldAction: alA.action,
-        aldHist: st.history.map((h) => ({ at: h.at, label: h.label })),
-        aldIsUb: isUb, aldIsUgRelated: !!relUgId,
-        aldNoteOpen: S.alAction !== null,
-        aldNoteLabel: S.alAction === "resolver" ? "Nota de resolução *" : "Justificativa obrigatória *",
-        aldConfirmLabel: S.alAction === "resolver" ? "Confirmar resolução" : "Confirmar e ignorar",
-        aldGoApuracao: () => this.setState({ view: "apuracao", apUgId: relUgId || "UG-001", alDetailId: null }),
-        aldOpenUb: () => this.setState({ ubDetailId: alA.unit, ubDetailTab: "visao", ubMonthSel: null, alDetailId: null }),
-        aldOpenUg: () => this.setState({ ugDetailId: relUgId, ugDetailTab: "resumo", alDetailId: null }),
-        aldMarkAnalise: () => { this.setAlertStatus(alA.id, "em_analise", "Marcado em análise"); this.showToast("Alerta em análise", (this.ALERT_TITLES[alA.code] || alA.code) + " — " + alA.unit); },
-        aldStartResolve: () => this.setState({ alAction: "resolver", alNote: "", alNoteMissing: false }),
-        aldStartIgnore: () => this.setState({ alAction: "ignorar", alNote: "", alNoteMissing: false }),
-        aldCancelNote: () => this.setState({ alAction: null, alNote: "", alNoteMissing: false }),
-        aldConfirmNote: () => {
-          if (!S.alNote.trim()) { this.setState({ alNoteMissing: true }); return; }
-          if (S.alAction === "resolver") { this.setAlertStatus(alA.id, "resolvido", "Resolvido", S.alNote); this.showToast("Alerta resolvido", "Registrado por " + this.FIN_BY + " em 16/07/2026."); }
-          else { this.setAlertStatus(alA.id, "ignorado", "Ignorado com justificativa", S.alNote); this.showToast("Alerta ignorado", "Justificativa registrada para auditoria."); }
-        },
-        aldCanAnalise: st.status === "ativo",
-        aldCanResolve: st.status === "ativo" || st.status === "em_analise",
-      };
+      if (S._rtMode === "real") {
+        const sm = this.AL_STATUS_META[alA.status] || { text: alA.status, bg: "#f1f5f9", color: "#64748b" };
+        const sevT = sevTone[alA.severity] || { bg: "#f1f5f9", color: "#64748b" };
+        const isUb = alA.unit && alA.unit.startsWith("UB");
+        const relUgId = isUb ? ((S._rtUbs || []).find((u) => u.id === alA.unit) || {}).ugId : alA.unit;
+        alVals = {
+          aldOpen: true,
+          aldTitle: alA.title || this.ALERT_TITLES[alA.code] || alA.code,
+          aldSev: { text: (this.AL_SEV_META[alA.severity] || { label: alA.severity }).label, bg: sevT.bg, color: sevT.color },
+          aldSt: { text: sm.text, bg: sm.bg, color: sm.color },
+          aldRows: [
+            { label: "Código técnico", value: alA.code },
+            { label: "Entidade afetada", value: alA.unit },
+            { label: "Mês de referência", value: ((S._rtMonths || this.MONTHS_AV).find((m) => m.value === alA.month) || {}).label || alA.month },
+            { label: "Valor detectado", value: alA.detectedValue || "—" },
+            { label: "Limite esperado", value: alA.threshold || "—" },
+            { label: "UG relacionada", value: relUgId || "—" },
+            { label: "UB relacionada", value: isUb ? alA.unit : "—" },
+            { label: "Ciclo relacionado", value: shortM(alA.month) },
+          ],
+          aldImpact: alA.impact || alA.message,
+          aldAction: alA.action,
+          aldHist: (alA.history || []).map((h) => ({ at: h.at || h.date || "", label: h.label || h.description || "" })),
+          aldIsUb: !!isUb, aldIsUgRelated: !!relUgId,
+          aldNoteOpen: S.alAction !== null,
+          aldNoteLabel: S.alAction === "resolver" ? "Nota de resolução *" : "Justificativa obrigatória *",
+          aldConfirmLabel: S.alAction === "resolver" ? "Confirmar resolução" : "Confirmar e ignorar",
+          aldGoApuracao: () => this.setState({ view: "apuracao", apUgId: relUgId || "", alDetailId: null }),
+          aldOpenUb: () => this.setState({ ubDetailId: alA.unit, ubDetailTab: "visao", ubMonthSel: null, alDetailId: null }),
+          aldOpenUg: () => this.setState({ ugDetailId: relUgId, ugDetailTab: "resumo", alDetailId: null }),
+          aldMarkAnalise: () => {
+            const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
+            if (rt) rt.markAlertInAnalysis(alA.id, "").then((r) => {
+              this.showToast("Status de alerta", r.message || "Alteração de status indisponível: persistência ainda não habilitada.");
+            });
+          },
+          aldStartResolve: () => this.setState({ alAction: "resolver", alNote: "", alNoteMissing: false }),
+          aldStartIgnore: () => this.setState({ alAction: "ignorar", alNote: "", alNoteMissing: false }),
+          aldCancelNote: () => this.setState({ alAction: null, alNote: "", alNoteMissing: false }),
+          aldConfirmNote: () => {
+            if (!S.alNote.trim()) { this.setState({ alNoteMissing: true }); return; }
+            const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
+            if (!rt) return;
+            if (S.alAction === "resolver") {
+              rt.resolveAlert(alA.id, S.alNote).then((r) => {
+                this.showToast("Resolução de alerta", r.message || "Resolução de alerta indisponível: persistência ainda não habilitada.");
+                this.setState({ alAction: null, alNote: "", alNoteMissing: false });
+              });
+            } else {
+              rt.ignoreAlert(alA.id, S.alNote).then((r) => {
+                this.showToast("Ignorar alerta", r.message || "Ignorar alerta indisponível: persistência ainda não habilitada.");
+                this.setState({ alAction: null, alNote: "", alNoteMissing: false });
+              });
+            }
+          },
+          aldCanAnalise: alA.status === "ativo",
+          aldCanResolve: alA.status === "ativo" || alA.status === "em_analise",
+        };
+      } else {
+        const st = this.alertState(alA.id);
+        const sm = this.AL_STATUS_META[st.status];
+        const met = this.ALERT_METRICS[alA.id] || {};
+        const isUb = alA.unit.startsWith("UB");
+        const relUb = isUb ? this.UBS.find((u) => u.id === alA.unit) : null;
+        const relUgId = isUb ? (relUb || {}).ugId : alA.unit;
+        alVals = {
+          aldOpen: true,
+          aldTitle: this.ALERT_TITLES[alA.code] || alA.code,
+          aldSev: { text: this.AL_SEV_META[alA.severity].label, bg: sevTone[alA.severity].bg, color: sevTone[alA.severity].color },
+          aldSt: { text: sm.text, bg: sm.bg, color: sm.color },
+          aldRows: [
+            { label: "Código técnico", value: alA.code },
+            { label: "Entidade afetada", value: alA.unit },
+            { label: "Mês de referência", value: (this.MONTHS_AV.find((m) => m.value === alA.month) || {}).label || alA.month },
+            { label: "Valor detectado", value: met.detected || "—" },
+            { label: "Limite esperado", value: met.threshold || "—" },
+            { label: "UG relacionada", value: relUgId || "—" },
+            { label: "UB relacionada", value: isUb ? alA.unit : "—" },
+            { label: "Ciclo relacionado", value: shortM(alA.month) },
+          ],
+          aldImpact: this.ALERT_IMPACT[alA.id] || alA.message,
+          aldAction: alA.action,
+          aldHist: st.history.map((h) => ({ at: h.at, label: h.label })),
+          aldIsUb: isUb, aldIsUgRelated: !!relUgId,
+          aldNoteOpen: S.alAction !== null,
+          aldNoteLabel: S.alAction === "resolver" ? "Nota de resolução *" : "Justificativa obrigatória *",
+          aldConfirmLabel: S.alAction === "resolver" ? "Confirmar resolução" : "Confirmar e ignorar",
+          aldGoApuracao: () => this.setState({ view: "apuracao", apUgId: relUgId || "UG-001", alDetailId: null }),
+          aldOpenUb: () => this.setState({ ubDetailId: alA.unit, ubDetailTab: "visao", ubMonthSel: null, alDetailId: null }),
+          aldOpenUg: () => this.setState({ ugDetailId: relUgId, ugDetailTab: "resumo", alDetailId: null }),
+          aldMarkAnalise: () => { this.setAlertStatus(alA.id, "em_analise", "Marcado em análise"); this.showToast("Alerta em análise", (this.ALERT_TITLES[alA.code] || alA.code) + " — " + alA.unit); },
+          aldStartResolve: () => this.setState({ alAction: "resolver", alNote: "", alNoteMissing: false }),
+          aldStartIgnore: () => this.setState({ alAction: "ignorar", alNote: "", alNoteMissing: false }),
+          aldCancelNote: () => this.setState({ alAction: null, alNote: "", alNoteMissing: false }),
+          aldConfirmNote: () => {
+            if (!S.alNote.trim()) { this.setState({ alNoteMissing: true }); return; }
+            if (S.alAction === "resolver") { this.setAlertStatus(alA.id, "resolvido", "Resolvido", S.alNote); this.showToast("Alerta resolvido", "Registrado por " + this.FIN_BY + " em 16/07/2026."); }
+            else { this.setAlertStatus(alA.id, "ignorado", "Ignorado com justificativa", S.alNote); this.showToast("Alerta ignorado", "Justificativa registrada para auditoria."); }
+          },
+          aldCanAnalise: st.status === "ativo",
+          aldCanResolve: st.status === "ativo" || st.status === "em_analise",
+        };
+      }
     }
 
     // ---------- RELATÓRIOS (interno / financeiro) ----------
@@ -4978,18 +5101,39 @@ class Component extends DCLogic {
       pencilIconSm: this.I("pencil", 13, "currentColor"),
       refreshIconSm: this.I("refresh", 13, "currentColor"),
       chevronRightWhite: this.I("chevronRight", 14, "#ffffff"),
-      impMatch: { name: impUb.name, ubId: impUb.id, uc: impUb.uc, distributor: impUb.distributor, ugName: impUg.name },
+      impMatch: { name: impUb.name || "—", ubId: impUb.id || "—", uc: impUb.uc || "—", distributor: impUb.distributor || "—", ugName: (impUg && impUg.name) || "—" },
       impConfidence: S.impScenario === "duplicate" ? { text: "REVISAR", bg: "#fef3c7", color: "#92400e", border: "#fde68a" } : { text: "ALTA CONFIANÇA", bg: "#d3f1e3", color: "#006644", border: "#a9e4cb" },
       impFields,
       impEditHint: S.impEdit ? { text: "Edição habilitada — os campos podem ser corrigidos", color: "#00875a" } : { text: "Campos bloqueados — use “Corrigir dados” para editar", color: "#94a3b8" },
       impEditLabel: S.impEdit ? "Bloquear edição" : "Corrigir dados",
       impToggleEdit: () => this.setState((s) => ({ impEdit: !s.impEdit })),
       impDiscard: () => { this.setState({ impPhase: "idle", impData: null, impEdit: false }); this.showToast("Importação descartada", "Nenhum dado foi salvo."); },
-      impConfirm: () => this.setState({ impPhase: "success" }),
+      impConfirm: S._rtMode === "real"
+        ? () => {
+            const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
+            if (!rt || !S.impData) { this.setState({ impPhase: "success" }); return; }
+            rt.confirmBillExtraction(S.impData).then((r) => {
+              if (r && r.ok === false) { this.showToast("Confirmação indisponível", r.message || "Confirmação não disponível no runtime atual."); }
+              else { this.setState({ impPhase: "success" }); }
+            }).catch(() => this.setState({ impPhase: "success" }));
+          }
+        : () => this.setState({ impPhase: "success" }),
       impLinkUb: S.impLinkUb,
-      impUbOptions: this.UBS.map((u) => ({ value: u.id, label: u.name + " · UC " + u.uc })),
+      impUbOptions: S._rtMode === "real"
+        ? (S._rtUbs || []).map((u) => ({ value: u.id, label: u.name + " · UC " + (u.uc || "—") }))
+        : this.UBS.map((u) => ({ value: u.id, label: u.name + " · UC " + u.uc })),
       onImpLinkUbChange: (e) => this.setState({ impLinkUb: e.target.value }),
-      impLinkConfirm: () => { this.setState({ impPhase: "review", impUbId: S.impLinkUb }); this.showToast("Beneficiária vinculada", "A UC 999888777 foi associada como fonte de dados mensal."); },
+      impLinkConfirm: S._rtMode === "real"
+        ? () => {
+            const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
+            if (!rt) { this.setState({ impPhase: "review", impUbId: S.impLinkUb }); return; }
+            const extractionId = (S.impData && S.impData.extractionId) || "";
+            rt.linkBillToBeneficiary(extractionId, S.impLinkUb).then((r) => {
+              if (r && r.ok === false) { this.showToast("Vínculo indisponível", r.message || "Não foi possível vincular a fatura."); }
+              else { this.setState({ impPhase: "review", impUbId: S.impLinkUb }); this.showToast("Beneficiária vinculada", "UC vinculada à beneficiária selecionada."); }
+            }).catch(() => this.setState({ impPhase: "review", impUbId: S.impLinkUb }));
+          }
+        : () => { this.setState({ impPhase: "review", impUbId: S.impLinkUb }); this.showToast("Beneficiária vinculada", "A UC 999888777 foi associada como fonte de dados mensal."); },
       impCreateNew: () => { this.setState({ view: "ub" }); this.showToast("Cadastro de beneficiária", "Nome, documento, UC e distribuidora foram pré-preenchidos. Complete os campos operacionais."); },
       impOpenCompare: () => this.setState({ impCompareOpen: true }),
       impCloseCompare: () => this.setState({ impCompareOpen: false }),
@@ -5004,11 +5148,21 @@ class Component extends DCLogic {
       impReplaceBtnCursor: S.impReason.trim() ? "pointer" : "not-allowed",
       impConfirmReplace: () => {
         if (!S.impReason.trim()) { this.setState({ impReasonMissing: true }); return; }
-        this.setState({ impReplaceOpen: false, impPhase: "success", impReplaced: true });
-        this.showToast("Dados substituídos", "Motivo registrado na trilha de auditoria.");
+        if (S._rtMode === "real") {
+          const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
+          const extractionId = (S.impData && S.impData.extractionId) || "";
+          this.setState({ impReplaceOpen: false });
+          (rt ? rt.replaceBillData(extractionId, S.impReason) : Promise.resolve({ ok: false, message: "Substituição de registro não disponível no runtime atual." })).then((r) => {
+            if (r && r.ok === false) { this.showToast("Substituição indisponível", r.message || "Substituição de registro não disponível no runtime atual."); }
+            else { this.setState({ impPhase: "success", impReplaced: true }); this.showToast("Dados substituídos", "Motivo registrado na trilha de auditoria."); }
+          });
+        } else {
+          this.setState({ impReplaceOpen: false, impPhase: "success", impReplaced: true });
+          this.showToast("Dados substituídos", "Motivo registrado na trilha de auditoria.");
+        }
       },
       impSuccessNote: S.impReplaced ? "O registro mensal existente foi substituído pelos dados da nova fatura." : "O registro mensal foi confirmado como fonte de dados para a apuração. Nenhuma fatura ESA foi gerada.",
-      impSuccessConsumo: num(impData.consumptionKwh, 0) + " kWh",
+      impSuccessConsumo: num(_impDataSafe.consumptionKwh || 0, 0) + " kWh",
       impGoApuracao: () => this.setState({ view: "apuracao", apMonth: "2026-07", apUgId: impUg.id }),
       impSeeHistory: () => this.setState({ drill: { kind: "ub", id: impUb.id } }),
       impHistory,
@@ -5405,6 +5559,14 @@ class Component extends DCLogic {
         this._loadRealFin(this.state.finMonth);
       }
     }
+    // Gate 3E — load alerts on alertas view entry or month change
+    if (this.state._rtMode === "real" && this.state.view === "alertas") {
+      const viewEntered = prevState.view !== "alertas";
+      const mesMudou = this.state.alMonth !== prevState.alMonth;
+      if ((viewEntered || mesMudou) && !this.state._rtAlLoading) {
+        this._loadRealAlerts(this.state.alMonth);
+      }
+    }
   }
 
   _initRealMode() {
@@ -5414,7 +5576,7 @@ class Component extends DCLogic {
       const months = result[0]; const ugs = result[1];
       const initMonth = (months[0] || {}).value || this.state.dashMonth;
       const firstUgId = (ugs[0] || {}).value || (ugs[0] || {}).id || this.state.apUgId;
-      this.setState({ _rtMode: "real", _rtMonths: months, _rtUgs: ugs, dashMonth: initMonth, finMonth: initMonth, repMonth: initMonth, apMonth: initMonth, repUgId: firstUgId });
+      this.setState({ _rtMode: "real", _rtMonths: months, _rtUgs: ugs, dashMonth: initMonth, finMonth: initMonth, repMonth: initMonth, apMonth: initMonth, alMonth: initMonth, repUgId: firstUgId });
       this._loadRealDash(initMonth, "all");
     }).catch((err) => { console.error("[ESA] Real mode init error", err); });
   }
@@ -5571,6 +5733,22 @@ class Component extends DCLogic {
       if (seq !== this._finSeq) return;
       console.error("[ESA] Financeiro load error", err);
       this.setState({ _rtFinAllLoading: false });
+    });
+  }
+
+  _loadRealAlerts(month) {
+    const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
+    if (!rt || rt.mode !== "real") return;
+    this._alSeq = (this._alSeq || 0) + 1;
+    const seq = this._alSeq;
+    this.setState({ _rtAlLoading: true, _rtAlData: null });
+    rt.listAlerts({ month }).then((alerts) => {
+      if (seq !== this._alSeq) return;
+      this.setState({ _rtAlData: alerts || [], _rtAlLoading: false });
+    }).catch((err) => {
+      if (seq !== this._alSeq) return;
+      console.error("[ESA] Alerts load error", err);
+      this.setState({ _rtAlLoading: false });
     });
   }
 

@@ -347,8 +347,8 @@ export function createEsaRuntimeProvider(uiProvider: UIProvider): EnergyCreditsR
       return (unwrap(uiProvider.linkUtilityBillToBeneficiary(extractionId, ubId)) as MutationResult | null) ?? ok();
     },
     async replaceBillData(_extractionId: string, _reason: string) {
-      // NOT_IMPLEMENTED: Gate 3 — Core does not expose bill replacement
-      return ok();
+      // Gate 3E — Core does not expose bill replacement persistence
+      return { ok: false, persisted: false, capability: 'not_available' as const, message: 'Substituição de registro não disponível no runtime atual.' };
     },
 
     // ---- Reports ----
@@ -427,21 +427,23 @@ export function createEsaRuntimeProvider(uiProvider: UIProvider): EnergyCreditsR
       const d = unwrap(uiProvider.getAlertsSummary({ referenceMonth: filter?.month })) as any;
       return (d?.alerts ?? []) as AlertRecord[];
     },
-    async getAlertDetail(_id: string): Promise<AlertRecord | null> {
-      // NOT_IMPLEMENTED: Gate 3 — Core does not expose single alert lookup
-      return null;
+    async getAlertDetail(id: string): Promise<AlertRecord | null> {
+      // Gate 3E — Core has no single-alert endpoint; derive from listAlerts
+      const d = unwrap(uiProvider.getAlertsSummary({})) as any;
+      const all: AlertRecord[] = (d?.alerts ?? []) as AlertRecord[];
+      return all.find((a) => a.id === id) ?? null;
     },
-    async resolveAlert(_id, _note) {
-      // NOT_IMPLEMENTED: Gate 3
-      return ok();
+    async resolveAlert(_id: string, _note: string): Promise<MutationResult> {
+      // Gate 3E — Core does not expose alert resolution persistence
+      return { ok: false, persisted: false, capability: 'not_available', message: 'Resolução de alerta indisponível: persistência ainda não habilitada.' };
     },
-    async ignoreAlert(_id, _note) {
-      // NOT_IMPLEMENTED: Gate 3
-      return ok();
+    async ignoreAlert(_id: string, _note: string): Promise<MutationResult> {
+      // Gate 3E — Core does not expose alert ignore persistence
+      return { ok: false, persisted: false, capability: 'not_available', message: 'Ignorar alerta indisponível: persistência ainda não habilitada.' };
     },
-    async markAlertInAnalysis(_id, _note) {
-      // NOT_IMPLEMENTED: Gate 3
-      return ok();
+    async markAlertInAnalysis(_id: string, _note: string): Promise<MutationResult> {
+      // Gate 3E — Core does not expose alert status persistence
+      return { ok: false, persisted: false, capability: 'not_available', message: 'Alteração de status de alerta indisponível: persistência ainda não habilitada.' };
     },
   };
 }
