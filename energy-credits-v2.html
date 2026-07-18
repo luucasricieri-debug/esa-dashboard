@@ -4549,6 +4549,7 @@ class Component extends DCLogic {
     const repMObj = this.MONTHS_AV.find((m) => m.value === repMonth) || this.MONTHS_AV[0];
     let repF, repUg, repComp, repRepasse, repPayee, repSt, repCycle, repStPill;
     let repDistribuido, repSaldoUcs, repConsumo, repDest, repUbIds, repAlerts;
+    let repR = null, repPlan = null;
     if (S._rtMode === "real") {
       const ra = S._rtRepAll;
       repF = 1;
@@ -4583,11 +4584,13 @@ class Component extends DCLogic {
       }
       repUbIds = ra ? (ra.ubs || []).map((u) => u.id) : [];
       repAlerts = ra ? (ra.alerts || []).filter((a) => a.unit === repUg.id || repUbIds.includes(a.unit)).slice(0, 3).map((a) => ({ message: a.message, unit: a.unit, code: "ref. " + (a.code || ""), ...sevTone[a.severity || "info"] })) : [];
+      repR = { generation: (repUg && repUg.monthlyGeneration) || 0 };
+      repPlan = raPlan || { rows: [] };
     } else {
       repF = this.MONTH_FACTOR[repMonth] !== undefined ? this.MONTH_FACTOR[repMonth] : 1;
       repUg = this.UGS.find((u) => u.id === S.repUgId) || this.UGS[0];
-      const repR = this.computeSettlement(repUg);
-      const repPlan = this.computeAllocationPlan(repUg, {});
+      repR = this.computeSettlement(repUg);
+      repPlan = this.computeAllocationPlan(repUg, {});
       repComp = repR.totalCompensated * repF;
       repRepasse = repComp * this.appliedPrice(repUg.id, repMonth);
       repPayee = this.PAYEES[repUg.id];
