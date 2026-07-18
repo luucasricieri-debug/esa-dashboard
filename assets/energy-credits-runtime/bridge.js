@@ -1062,6 +1062,13 @@
 		if (!r || !r.ok || r.data == null) return null;
 		return r.data;
 	}
+	function safeCall(fn) {
+		try {
+			return unwrap(fn());
+		} catch {
+			return null;
+		}
+	}
 	function ok() {
 		return { ok: true };
 	}
@@ -1088,7 +1095,7 @@
 			async getDashboardData(filter) {
 				const { month, ugId } = filter;
 				const cycleStatus = AVAILABLE_MONTHS.find((m) => m.value === month)?.status ?? "aberto";
-				const s = unwrap(uiProvider.getExecutiveSummary({
+				const s = safeCall(() => uiProvider.getExecutiveSummary({
 					referenceMonth: month,
 					ugId
 				}));
@@ -1104,13 +1111,13 @@
 				const current = toMetrics(s);
 				const mi = AVAILABLE_MONTHS.findIndex((m) => m.value === month);
 				const prevM = AVAILABLE_MONTHS[mi + 1];
-				const sPrev = prevM ? unwrap(uiProvider.getExecutiveSummary({
+				const sPrev = prevM ? safeCall(() => uiProvider.getExecutiveSummary({
 					referenceMonth: prevM.value,
 					ugId
 				})) : null;
 				const previous = sPrev ? toMetrics(sPrev) : null;
 				const trendData = AVAILABLE_MONTHS.slice().reverse().map((m) => {
-					const d = unwrap(uiProvider.getFinancialSummary({
+					const d = safeCall(() => uiProvider.getFinancialSummary({
 						referenceMonth: m.value,
 						ugId
 					}));
@@ -1139,7 +1146,7 @@
 			},
 			async getMonthlyTrend(filter) {
 				return AVAILABLE_MONTHS.slice().reverse().map((m) => {
-					const d = unwrap(uiProvider.getFinancialSummary({
+					const d = safeCall(() => uiProvider.getFinancialSummary({
 						referenceMonth: m.value,
 						ugId: filter.ugId
 					}));
@@ -1155,7 +1162,7 @@
 				});
 			},
 			async listGeneratingUnits(filter) {
-				const d = unwrap(uiProvider.searchGeneratingUnits({ search: filter?.search ?? "" }));
+				const d = safeCall(() => uiProvider.searchGeneratingUnits({ search: filter?.search ?? "" }));
 				return Array.isArray(d) ? d : d?.items ?? [];
 			},
 			async getGeneratingUnit(id) {
@@ -1184,7 +1191,7 @@
 				return ok();
 			},
 			async listBeneficiaryUnits(filter) {
-				const d = unwrap(uiProvider.searchBeneficiaryUnits({
+				const d = safeCall(() => uiProvider.searchBeneficiaryUnits({
 					search: filter?.search ?? "",
 					ugId: filter?.ugId
 				}));
@@ -1200,17 +1207,17 @@
 				return unwrap(uiProvider.updateBeneficiaryUnit(id, input)) ?? ok();
 			},
 			async getBeneficiaryConsumptionAverage(id) {
-				const d = unwrap(uiProvider.getBeneficiaryConsumptionAverage(id, {}));
+				const d = safeCall(() => uiProvider.getBeneficiaryConsumptionAverage(id, {}));
 				if (!d) return null;
 				return {
 					annualAverage: d.annualAverage ?? 0,
-					monthlyAverage: (d.annualAverage ?? 0) / 12,
+					monthlyAverage: d.monthlyAverage ?? (d.annualAverage ?? 0) / 12,
 					hasSufficientHistory: d.hasSufficientHistory ?? false,
 					months: d.months ?? []
 				};
 			},
 			async getBeneficiaryMonthlyHistory(id) {
-				return unwrap(uiProvider.getBeneficiaryHistory(id, {}))?.months ?? [];
+				return safeCall(() => uiProvider.getBeneficiaryHistory(id, {}))?.months ?? [];
 			},
 			async getBeneficiarySavingsHistory(id, upToMonth = "2026-07") {
 				return unwrap(uiProvider.getBeneficiaryHistory(id, { upToMonth }))?.months ?? [];
@@ -1228,10 +1235,8 @@
 			async getBeneficiaryInvoice(ubId, month) {
 				try {
 					return unwrap(uiProvider.getBeneficiaryMonthlyReport(ubId, month));
-				} catch (err) {
-					const msg = err?.message ?? "";
-					if (/\[buildBeneficiaryMonthlyReport\]/.test(msg) && /não encontrada/.test(msg)) return null;
-					throw err;
+				} catch {
+					return null;
 				}
 			},
 			async getImportHistory() {

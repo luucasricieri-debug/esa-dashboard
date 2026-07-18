@@ -2724,6 +2724,8 @@ class Component extends DCLogic {
     toast: null,
     // GATE 3 — real provider state
     _rtMode: "demo", _rtLoading: false, _rtDash: null, _rtMonths: null, _rtUgs: null, _rtAlerts: null,
+    // GATE 3B — lazy-loaded UG/UB detail and UB list
+    _rtUbs: null, _rtUbsLoading: false, _rtUgDetail: null, _rtUgDetailLoading: false, _rtUbDetail: null, _rtUbDetailLoading: false,
   };
 
   // ============================== DADOS (porta fiel do mockData/provider do Lovable) ==============================
@@ -3037,6 +3039,16 @@ class Component extends DCLogic {
   UB_HIST_IMPORTED = { "2026-07": "08/07/2026", "2026-06": "05/06/2026", "2026-05": "06/05/2026", "2026-04": "05/04/2026", "2026-03": "10/03/2026" };
   UG_WIZ_DEFAULT() { return { code: "UG-004", status: "ativa", name: "", owner: "", ownerDoc: "", uc: "", distributor: "Copel", startDate: "", price: "0,35", validity: "01/08/2026", notes: "", recName: "", recDoc: "", pixType: "cpf", pixKey: "" }; }
   openUgWiz(ug) {
+    const S = this.state;
+    if (S._rtMode === "real") {
+      const cachedPayee = (S._rtUgDetail && S._rtUgDetail.ug && ug && S._rtUgDetail.ug.id === ug.id) ? S._rtUgDetail.payee : null;
+      const p = cachedPayee || { name: "", document: "", pixKey: "", pixType: "cpf" };
+      const f = ug
+        ? { code: ug.id, status: ug.status || "ativa", name: ug.name, owner: ug.owner, ownerDoc: ug.document || "", uc: ug.uc, distributor: ug.distributor, startDate: "", price: (ug.purchasePrice || 0).toFixed(2).replace(".", ","), validity: "", notes: "", recName: p.name, recDoc: p.document, pixType: p.pixType || "cpf", pixKey: p.pixKey || "" }
+        : this.UG_WIZ_DEFAULT();
+      this.setState({ ugWizOpen: true, ugWizStep: 0, ugWizSame: "sim", ugWizEditingId: ug ? ug.id : null, ugWizF: f });
+      return;
+    }
     const p = ug ? this.PAYEES[ug.id] : null;
     const f = ug
       ? { code: ug.id, status: ug.status, name: ug.name, owner: ug.owner, ownerDoc: ug.document, uc: ug.uc, distributor: ug.distributor, startDate: "01/03/2025", price: ug.purchasePrice.toFixed(2).replace(".", ","), validity: "01/01/2026", notes: "", recName: p.name, recDoc: p.document, pixType: p.pixType, pixKey: p.pixKey }
@@ -3045,6 +3057,16 @@ class Component extends DCLogic {
   }
   UB_WIZ_DEFAULT() { return { code: "UB-008", status: "ativa", name: "", doc: "", uc: "", distributor: "Copel", entryDate: "", ugId: "UG-001", margin: "5", esaPrice: "0,55", validity: "01/08/2026", dueDay: "10", contract: "ativo", notes: "", manualAvg: "", refMonth: "2026-07", prevBalance: "0", balanceNotes: "" }; }
   openUbWiz(ub) {
+    const S = this.state;
+    if (S._rtMode === "real") {
+      const f = ub
+        ? { code: ub.id, status: ub.status || "ativa", name: ub.name, doc: ub.document || "", uc: ub.uc, distributor: ub.distributor, entryDate: "", ugId: ub.ugId, margin: String(Math.round((ub.preventiveMargin || 0.05) * 100)), esaPrice: (ub.esaPrice || 0).toFixed(2).replace(".", ","), validity: "", dueDay: "10", contract: "ativo", notes: "", manualAvg: "", refMonth: S.dashMonth || "2026-07", prevBalance: String(ub.previousCreditBalance || 0), balanceNotes: "" }
+        : this.UB_WIZ_DEFAULT();
+      // hasSufficientHistory: do Core via getBeneficiaryConsumptionAverage; nova UB sempre false
+      const hasSufficientHistory = !!(ub && S._rtUbDetail && S._rtUbDetail.ub && S._rtUbDetail.ub.id === ub.id && S._rtUbDetail.avg && S._rtUbDetail.avg.hasSufficientHistory);
+      this.setState({ ubWizOpen: true, ubWizStep: 0, ubWizAvgMode: hasSufficientHistory ? "historico" : "manual", ubHasHistory: hasSufficientHistory, ubWizEditingId: ub ? ub.id : null, ubWizF: f });
+      return;
+    }
     const f = ub
       ? { code: ub.id, status: "ativa", name: ub.name, doc: this.UB_DOCS[ub.id] || "", uc: ub.uc, distributor: ub.distributor, entryDate: "01/" + (this.CUSTOMER_SINCE[ub.id] || "2025-08").split("-")[1] + "/" + (this.CUSTOMER_SINCE[ub.id] || "2025-08").split("-")[0], ugId: ub.ugId, margin: String(Math.round(ub.preventiveMargin * 100)), esaPrice: ub.esaPrice.toFixed(2).replace(".", ","), validity: "01/01/2026", dueDay: "10", contract: "ativo", notes: "", manualAvg: String(Math.round(ub.annualAverage / 12)), refMonth: "2026-07", prevBalance: String(ub.previousCreditBalance), balanceNotes: "" }
       : this.UB_WIZ_DEFAULT();
@@ -3577,24 +3599,46 @@ class Component extends DCLogic {
 
     // ---------- UNIDADES GERADORAS (lista) ----------
     const ugQ = (S.ugSearch || "").toLowerCase();
-    const ugFiltered = this.UGS.filter((u) => !ugQ || (u.name + " " + u.owner + " " + u.id + " " + u.uc).toLowerCase().includes(ugQ));
-    const ugListRows = ugFiltered.map((ug) => {
-      const r = this.computeSettlement(ug);
-      const pill = this.statusPill(ug.status);
-      return {
-        name: ug.name, code: ug.id, owner: ug.owner, doc: ug.document, uc: ug.uc, distributor: ug.distributor,
-        balanceTxt: kwh(r.currentBalance), genTxt: kwh(ug.monthlyGeneration),
-        priceTxt: "R$ " + num(ug.purchasePrice, 2) + "/kWh", benCount: String(r.rows.length),
-        pillText: pill.text.toUpperCase(), pillBg: pill.bg, pillColor: pill.color,
-        openDetail: () => this.setState({ ugDetailId: ug.id, ugDetailTab: "resumo" }),
-        openMenu: (e) => {
-          e.stopPropagation();
-          const rc = e.currentTarget.getBoundingClientRect();
-          this.setState((s) => ({ ugMenu: s.ugMenu && s.ugMenu.id === ug.id ? null : { id: ug.id, x: rc.right, y: rc.bottom } }));
-        },
-      };
-    });
-    const ugAvgPrice = ugFiltered.length ? ugFiltered.reduce((s, u) => s + u.purchasePrice, 0) / ugFiltered.length : 0;
+    let ugFiltered, ugListRows, ugAvgPrice;
+    if (S._rtMode === "real") {
+      const _rtUgSrc = S._rtUgs || [];
+      ugFiltered = _rtUgSrc.filter((u) => !ugQ || (u.name + " " + u.owner + " " + (u.id || "") + " " + u.uc).toLowerCase().includes(ugQ));
+      ugListRows = ugFiltered.map((ug) => {
+        const pill = this.statusPill(ug.status || "ativa");
+        return {
+          name: ug.name, code: ug.id, owner: ug.owner, doc: ug.document || "", uc: ug.uc, distributor: ug.distributor,
+          balanceTxt: kwh(ug.previousBalance || 0), genTxt: kwh(ug.monthlyGeneration || 0),
+          priceTxt: "R$ " + num(ug.purchasePrice || 0, 2) + "/kWh", benCount: "—",
+          pillText: pill.text.toUpperCase(), pillBg: pill.bg, pillColor: pill.color,
+          openDetail: () => this.setState({ ugDetailId: ug.id, ugDetailTab: "resumo" }),
+          openMenu: (e) => {
+            e.stopPropagation();
+            const rc = e.currentTarget.getBoundingClientRect();
+            this.setState((s) => ({ ugMenu: s.ugMenu && s.ugMenu.id === ug.id ? null : { id: ug.id, x: rc.right, y: rc.bottom } }));
+          },
+        };
+      });
+      ugAvgPrice = ugFiltered.length ? ugFiltered.reduce((s, u) => s + (u.purchasePrice || 0), 0) / ugFiltered.length : 0;
+    } else {
+      ugFiltered = this.UGS.filter((u) => !ugQ || (u.name + " " + u.owner + " " + u.id + " " + u.uc).toLowerCase().includes(ugQ));
+      ugListRows = ugFiltered.map((ug) => {
+        const r = this.computeSettlement(ug);
+        const pill = this.statusPill(ug.status);
+        return {
+          name: ug.name, code: ug.id, owner: ug.owner, doc: ug.document, uc: ug.uc, distributor: ug.distributor,
+          balanceTxt: kwh(r.currentBalance), genTxt: kwh(ug.monthlyGeneration),
+          priceTxt: "R$ " + num(ug.purchasePrice, 2) + "/kWh", benCount: String(r.rows.length),
+          pillText: pill.text.toUpperCase(), pillBg: pill.bg, pillColor: pill.color,
+          openDetail: () => this.setState({ ugDetailId: ug.id, ugDetailTab: "resumo" }),
+          openMenu: (e) => {
+            e.stopPropagation();
+            const rc = e.currentTarget.getBoundingClientRect();
+            this.setState((s) => ({ ugMenu: s.ugMenu && s.ugMenu.id === ug.id ? null : { id: ug.id, x: rc.right, y: rc.bottom } }));
+          },
+        };
+      });
+      ugAvgPrice = ugFiltered.length ? ugFiltered.reduce((s, u) => s + u.purchasePrice, 0) / ugFiltered.length : 0;
+    }
 
     // ---------- CADASTRO UG (wizard) ----------
     const GF = S.ugWizF || {};
@@ -3655,100 +3699,184 @@ class Component extends DCLogic {
     const ugWizSteps = this.mkWizSteps(["Identificação", "Condição de compra", "Recebedor / PIX", "Revisar"], S.ugWizStep);
 
     // ---------- DETALHE UG ----------
-    const ugdU = this.UGS.find((u) => u.id === S.ugDetailId);
     let ugdVals = { ugdOpen: false, ugdName: "", ugdMeta: "", ugdPill: { text: "", bg: "#f1f5f9", color: "#334155" }, ugdTabs: [], ugdTabResumo: false, ugdTabBens: false, ugdTabCond: false, ugdTabPix: false, ugdTabHist: false, ugdCards: [], ugdAlerts: [], ugdHasAlerts: false, ugdBens: [], ugdCondRows: [], ugdPixRows: [], ugdPixEqual: true, ugdPixDiff: false, ugdHist: [] };
-    if (ugdU) {
-      const r = this.computeSettlement(ugdU);
-      const plan2 = this.computeAllocationPlan(ugdU, {});
-      const payee2 = this.PAYEES[ugdU.id];
-      const dpill = this.statusPill(ugdU.status);
-      const tab = S.ugDetailTab;
-      const ubIds = r.rows.map((x) => x.ub.id);
-      const priceJul = S.cyclePriceOverride[ugdU.id + "-2026-07"] !== undefined ? S.cyclePriceOverride[ugdU.id + "-2026-07"] : ugdU.purchasePrice;
-      ugdVals = {
-        ugdOpen: true, ugdName: ugdU.name, ugdPill: dpill,
-        ugdMeta: ugdU.id + " · " + ugdU.owner + " · UC " + ugdU.uc + " · " + ugdU.distributor,
-        ugdTabs: [["resumo", "Resumo"], ["beneficiarias", "Beneficiárias"], ["condicao", "Condição comercial"], ["pix", "Recebedor / PIX"], ["historico", "Histórico"]].map(([k, label]) => ({
-          label, color: tab === k ? "#00875a" : "#64748b", weight: tab === k ? "600" : "400",
-          borderBottom: tab === k ? "2px solid #00a86b" : "2px solid transparent",
-          onClick: () => this.setState({ ugDetailTab: k }),
-        })),
-        ugdTabResumo: tab === "resumo", ugdTabBens: tab === "beneficiarias", ugdTabCond: tab === "condicao", ugdTabPix: tab === "pix", ugdTabHist: tab === "historico",
-        ugdCards: [
-          { label: "Geração do mês", value: kwh(r.generation), color: "#00a86b" },
-          { label: "Saldo atual", value: kwh(r.currentBalance), color: "#062e20" },
-          { label: "Beneficiárias vinculadas", value: String(r.rows.length), color: "#062e20" },
-          { label: "Preço padrão de compra", value: "R$ " + num(ugdU.purchasePrice, 2) + "/kWh", color: "#062e20" },
-          { label: "Repasse do mês", value: brl(r.ownerPayment), color: "#e11d48" },
-          { label: "Créditos compensados", value: kwh(r.totalCompensated), color: "#00875a" },
-        ],
-        ugdAlerts: this.ALERTS.filter((a) => a.unit === ugdU.id || ubIds.includes(a.unit)).slice(0, 3).map((a) => ({ message: a.message, unit: a.unit, ...sevTone[a.severity] })),
-        ugdBens: plan2.rows.map((row) => {
-          const cb = covBadge(row.coverageMonths);
-          return {
-            name: row.ub.name, uc: row.ub.uc, consTxt: kwh(row.consumption), compTxt: kwh(row.compensated),
-            saldoTxt: kwh(row.finalBalance), covText: cb.covText, covBg: cb.covBg, covColor: cb.covColor, covBorder: cb.covBorder,
-            pctTxt: (row.allocationPct * 100).toFixed(2).replace(".", ",") + "%",
-            open: () => this.setState({ ugDetailId: null, ubDetailId: row.ub.id, ubDetailTab: "visao", ubMonthSel: null }),
+    if (S.ugDetailId) {
+      if (S._rtMode === "real") {
+        const _rtUgD = S._rtUgDetail;
+        const ugRT = (_rtUgD && _rtUgD.ug && _rtUgD.ug.id === S.ugDetailId) ? _rtUgD.ug : null;
+        const payeeRT = (_rtUgD && _rtUgD.payee) ? _rtUgD.payee : { name: "", document: "", pixKey: "", pixType: "cpf" };
+        const bensRT = (_rtUgD && _rtUgD.bens) ? _rtUgD.bens : [];
+        const dashRT = (_rtUgD && _rtUgD.dash) ? _rtUgD.dash : null;
+        const genKwh = dashRT ? dashRT.current.generation : 0;
+        const balKwh = dashRT ? dashRT.current.balance : 0;
+        const compKwh = dashRT ? dashRT.current.compensated : 0;
+        const repasseR = dashRT ? dashRT.current.ownerPayment : 0;
+        const dpill = this.statusPill(ugRT ? ugRT.status : "ativa");
+        const tab = S.ugDetailTab;
+        ugdVals = {
+          ugdOpen: true, ugdName: ugRT ? ugRT.name : "—", ugdPill: dpill,
+          ugdMeta: ugRT ? ugRT.id + " · " + ugRT.owner + " · UC " + ugRT.uc + " · " + ugRT.distributor : "—",
+          ugdTabs: [["resumo", "Resumo"], ["beneficiarias", "Beneficiárias"], ["condicao", "Condição comercial"], ["pix", "Recebedor / PIX"], ["historico", "Histórico"]].map(([k, label]) => ({
+            label, color: tab === k ? "#00875a" : "#64748b", weight: tab === k ? "600" : "400",
+            borderBottom: tab === k ? "2px solid #00a86b" : "2px solid transparent",
+            onClick: () => this.setState({ ugDetailTab: k }),
+          })),
+          ugdTabResumo: tab === "resumo", ugdTabBens: tab === "beneficiarias", ugdTabCond: tab === "condicao", ugdTabPix: tab === "pix", ugdTabHist: tab === "historico",
+          ugdCards: [
+            { label: "Geração do mês", value: kwh(genKwh), color: "#00a86b" },
+            { label: "Saldo atual", value: kwh(balKwh), color: "#062e20" },
+            { label: "Beneficiárias vinculadas", value: String(bensRT.length), color: "#062e20" },
+            { label: "Preço padrão de compra", value: ugRT ? "R$ " + num(ugRT.purchasePrice || 0, 2) + "/kWh" : "—", color: "#062e20" },
+            { label: "Repasse do mês", value: brl(repasseR), color: "#e11d48" },
+            { label: "Créditos compensados", value: kwh(compKwh), color: "#00875a" },
+          ],
+          ugdAlerts: (S._rtAlerts || []).filter((a) => a.unit === S.ugDetailId).slice(0, 3).map((a) => ({ message: a.message, unit: a.unit, ...sevTone[a.severity] })),
+          ugdBens: bensRT.map((ben) => {
+            const cb = covBadge(0);
+            return {
+              name: ben.name, uc: ben.uc, consTxt: kwh(ben.monthlyConsumption || 0), compTxt: "—",
+              saldoTxt: "—", covText: "—", covBg: cb.covBg, covColor: cb.covColor, covBorder: cb.covBorder,
+              pctTxt: ben.allocationPct !== undefined ? (ben.allocationPct * 100).toFixed(2).replace(".", ",") + "%" : "—",
+              open: () => this.setState({ ugDetailId: null, ubDetailId: ben.id, ubDetailTab: "visao", ubMonthSel: null }),
+            };
+          }),
+          ugdCondRows: [
+            { label: "Preço padrão de compra por kWh", value: ugRT ? "R$ " + num(ugRT.purchasePrice || 0, 2) : "—" },
+            { label: "Vigência", value: "—" },
+            { label: "Observações", value: "—" },
+            { label: "Preço aplicado no ciclo atual", value: ugRT ? "R$ " + num(ugRT.purchasePrice || 0, 2) + "/kWh" : "—" },
+          ],
+          ugdPixRows: [
+            { label: "Proprietário", value: ugRT ? ugRT.owner : "—" },
+            { label: "Recebedor do pagamento", value: payeeRT.name || "—" },
+            { label: "Documento do recebedor", value: payeeRT.document || "—" },
+            { label: "Tipo da chave PIX", value: payeeRT.pixType ? (this.PIX_LABEL[payeeRT.pixType] || payeeRT.pixType) : "—" },
+            { label: "Chave PIX", value: payeeRT.pixKey || "—" },
+          ],
+          ugdPixEqual: ugRT ? payeeRT.name === ugRT.owner : true, ugdPixDiff: ugRT ? payeeRT.name !== ugRT.owner : false,
+          ugdHist: [],
+        };
+        ugdVals.ugdHasAlerts = ugdVals.ugdAlerts.length > 0;
+      } else {
+        const ugdU = this.UGS.find((u) => u.id === S.ugDetailId);
+        if (ugdU) {
+          const r = this.computeSettlement(ugdU);
+          const plan2 = this.computeAllocationPlan(ugdU, {});
+          const payee2 = this.PAYEES[ugdU.id];
+          const dpill = this.statusPill(ugdU.status);
+          const tab = S.ugDetailTab;
+          const ubIds = r.rows.map((x) => x.ub.id);
+          const priceJul = S.cyclePriceOverride[ugdU.id + "-2026-07"] !== undefined ? S.cyclePriceOverride[ugdU.id + "-2026-07"] : ugdU.purchasePrice;
+          ugdVals = {
+            ugdOpen: true, ugdName: ugdU.name, ugdPill: dpill,
+            ugdMeta: ugdU.id + " · " + ugdU.owner + " · UC " + ugdU.uc + " · " + ugdU.distributor,
+            ugdTabs: [["resumo", "Resumo"], ["beneficiarias", "Beneficiárias"], ["condicao", "Condição comercial"], ["pix", "Recebedor / PIX"], ["historico", "Histórico"]].map(([k, label]) => ({
+              label, color: tab === k ? "#00875a" : "#64748b", weight: tab === k ? "600" : "400",
+              borderBottom: tab === k ? "2px solid #00a86b" : "2px solid transparent",
+              onClick: () => this.setState({ ugDetailTab: k }),
+            })),
+            ugdTabResumo: tab === "resumo", ugdTabBens: tab === "beneficiarias", ugdTabCond: tab === "condicao", ugdTabPix: tab === "pix", ugdTabHist: tab === "historico",
+            ugdCards: [
+              { label: "Geração do mês", value: kwh(r.generation), color: "#00a86b" },
+              { label: "Saldo atual", value: kwh(r.currentBalance), color: "#062e20" },
+              { label: "Beneficiárias vinculadas", value: String(r.rows.length), color: "#062e20" },
+              { label: "Preço padrão de compra", value: "R$ " + num(ugdU.purchasePrice, 2) + "/kWh", color: "#062e20" },
+              { label: "Repasse do mês", value: brl(r.ownerPayment), color: "#e11d48" },
+              { label: "Créditos compensados", value: kwh(r.totalCompensated), color: "#00875a" },
+            ],
+            ugdAlerts: this.ALERTS.filter((a) => a.unit === ugdU.id || ubIds.includes(a.unit)).slice(0, 3).map((a) => ({ message: a.message, unit: a.unit, ...sevTone[a.severity] })),
+            ugdBens: plan2.rows.map((row) => {
+              const cb = covBadge(row.coverageMonths);
+              return {
+                name: row.ub.name, uc: row.ub.uc, consTxt: kwh(row.consumption), compTxt: kwh(row.compensated),
+                saldoTxt: kwh(row.finalBalance), covText: cb.covText, covBg: cb.covBg, covColor: cb.covColor, covBorder: cb.covBorder,
+                pctTxt: (row.allocationPct * 100).toFixed(2).replace(".", ",") + "%",
+                open: () => this.setState({ ugDetailId: null, ubDetailId: row.ub.id, ubDetailTab: "visao", ubMonthSel: null }),
+              };
+            }),
+            ugdCondRows: [
+              { label: "Preço padrão de compra por kWh", value: "R$ " + num(ugdU.purchasePrice, 2) },
+              { label: "Vigência", value: "01/01/2026" },
+              { label: "Observações", value: "—" },
+              { label: "Preço aplicado no ciclo Julho/2026", value: "R$ " + num(priceJul, 2) + "/kWh" },
+            ],
+            ugdPixRows: [
+              { label: "Proprietário", value: ugdU.owner },
+              { label: "Recebedor do pagamento", value: payee2.name },
+              { label: "Documento do recebedor", value: payee2.document },
+              { label: "Tipo da chave PIX", value: this.PIX_LABEL[payee2.pixType] },
+              { label: "Chave PIX", value: payee2.pixKey },
+            ],
+            ugdPixEqual: payee2.name === ugdU.owner, ugdPixDiff: payee2.name !== ugdU.owner,
+            ugdHist: this.MONTHS_AV.map((m) => {
+              const f2 = this.MONTH_FACTOR[m.value] !== undefined ? this.MONTH_FACTOR[m.value] : 1;
+              const cb2 = this.cycleBadgeFor(m.status);
+              return {
+                mes: m.label, genTxt: kwh(ugdU.monthlyGeneration * f2), compTxt: kwh(r.totalCompensated * f2),
+                saldoTxt: kwh(r.currentBalance * f2), priceTxt: "R$ " + num(m.value === "2026-07" ? priceJul : ugdU.purchasePrice, 2),
+                repasseTxt: brl(r.totalCompensated * f2 * (m.value === "2026-07" ? priceJul : ugdU.purchasePrice)),
+                stText: cb2.text, stBg: cb2.bg, stColor: cb2.color, stBorder: cb2.border,
+              };
+            }),
           };
-        }),
-        ugdCondRows: [
-          { label: "Preço padrão de compra por kWh", value: "R$ " + num(ugdU.purchasePrice, 2) },
-          { label: "Vigência", value: "01/01/2026" },
-          { label: "Observações", value: "—" },
-          { label: "Preço aplicado no ciclo Julho/2026", value: "R$ " + num(priceJul, 2) + "/kWh" },
-        ],
-        ugdPixRows: [
-          { label: "Proprietário", value: ugdU.owner },
-          { label: "Recebedor do pagamento", value: payee2.name },
-          { label: "Documento do recebedor", value: payee2.document },
-          { label: "Tipo da chave PIX", value: this.PIX_LABEL[payee2.pixType] },
-          { label: "Chave PIX", value: payee2.pixKey },
-        ],
-        ugdPixEqual: payee2.name === ugdU.owner, ugdPixDiff: payee2.name !== ugdU.owner,
-        ugdHist: this.MONTHS_AV.map((m) => {
-          const f2 = this.MONTH_FACTOR[m.value] !== undefined ? this.MONTH_FACTOR[m.value] : 1;
-          const cb2 = this.cycleBadgeFor(m.status);
-          return {
-            mes: m.label, genTxt: kwh(ugdU.monthlyGeneration * f2), compTxt: kwh(r.totalCompensated * f2),
-            saldoTxt: kwh(r.currentBalance * f2), priceTxt: "R$ " + num(m.value === "2026-07" ? priceJul : ugdU.purchasePrice, 2),
-            repasseTxt: brl(r.totalCompensated * f2 * (m.value === "2026-07" ? priceJul : ugdU.purchasePrice)),
-            stText: cb2.text, stBg: cb2.bg, stColor: cb2.color, stBorder: cb2.border,
-          };
-        }),
-      };
-      ugdVals.ugdHasAlerts = ugdVals.ugdAlerts.length > 0;
+          ugdVals.ugdHasAlerts = ugdVals.ugdAlerts.length > 0;
+        }
+      }
     }
 
     // ---------- UNIDADES BENEFICIÁRIAS (lista) ----------
     const ubQ = (S.ubSearch || "").toLowerCase();
-    const ubFiltered = this.UBS.filter((u) => !ubQ || (u.name + " " + u.id + " " + u.uc + " " + (this.UB_DOCS[u.id] || "")).toLowerCase().includes(ubQ));
-    const ubListRows = ubFiltered.map((ub) => {
-      const inv2 = this.buildInvoice(ub.id, "2026-07");
-      const ug2 = this.UGS.find((g) => g.id === ub.ugId);
-      const cov2 = ub.monthlyConsumption > 0 ? inv2.finalBalance / ub.monthlyConsumption : 0;
-      const cb3 = covBadge(cov2);
-      const pill3 = this.statusPill(ub.paymentStatus);
-      return {
-        name: ub.name, code: ub.id, doc: this.UB_DOCS[ub.id] || "", ugName: ug2 ? ug2.name : "—",
-        uc: ub.uc, distributor: ub.distributor,
-        consTxt: kwh(inv2.consumption), compTxt: kwh(inv2.compensated), saldoTxt: kwh(inv2.finalBalance),
-        covTxt: cov2.toFixed(2).replace(".", ",") + " mês", covColor: cb3.covColor,
-        faturaTxt: brl(inv2.faturaEsa), ecoTxt: brl(inv2.monthlySavings),
-        pillText: pill3.text.toUpperCase(), pillBg: pill3.bg, pillColor: pill3.color,
-        openDetail: () => this.setState({ ubDetailId: ub.id, ubDetailTab: "visao", ubMonthSel: null }),
-        openEdit: () => this.openUbWiz(ub),
-        openHist: () => this.setState({ ubDetailId: ub.id, ubDetailTab: "historico", ubMonthSel: null }),
-        openFatura: () => this.setState({ view: "fatura", invUbId: ub.id, compDetailsOpen: false, ubDetailId: null }),
-      };
-    });
+    let ubListRows;
+    if (S._rtMode === "real") {
+      const _rtUbSrc = S._rtUbs || [];
+      const _ubFilteredRT = _rtUbSrc.filter((u) => !ubQ || (u.name + " " + (u.id || "") + " " + u.uc + " " + (u.document || "")).toLowerCase().includes(ubQ));
+      ubListRows = _ubFilteredRT.map((ub) => {
+        const ug2 = (S._rtUgs || []).find((g) => g.id === ub.ugId);
+        const cb3 = covBadge(0);
+        const pill3 = this.statusPill(ub.paymentStatus || ub.status || "aberto");
+        return {
+          name: ub.name, code: ub.id, doc: ub.document || "", ugName: ug2 ? ug2.name : "—",
+          uc: ub.uc, distributor: ub.distributor,
+          consTxt: kwh(ub.monthlyConsumption || 0), compTxt: "—", saldoTxt: "—",
+          covTxt: "—", covColor: cb3.covColor,
+          faturaTxt: "—", ecoTxt: "—",
+          pillText: pill3.text.toUpperCase(), pillBg: pill3.bg, pillColor: pill3.color,
+          openDetail: () => this.setState({ ubDetailId: ub.id, ubDetailTab: "visao", ubMonthSel: null }),
+          openEdit: () => this.openUbWiz(ub),
+          openHist: () => this.setState({ ubDetailId: ub.id, ubDetailTab: "historico", ubMonthSel: null }),
+          openFatura: () => this.setState({ view: "fatura", invUbId: ub.id, compDetailsOpen: false, ubDetailId: null }),
+        };
+      });
+    } else {
+      const ubFiltered = this.UBS.filter((u) => !ubQ || (u.name + " " + u.id + " " + u.uc + " " + (this.UB_DOCS[u.id] || "")).toLowerCase().includes(ubQ));
+      ubListRows = ubFiltered.map((ub) => {
+        const inv2 = this.buildInvoice(ub.id, "2026-07");
+        const ug2 = this.UGS.find((g) => g.id === ub.ugId);
+        const cov2 = ub.monthlyConsumption > 0 ? inv2.finalBalance / ub.monthlyConsumption : 0;
+        const cb3 = covBadge(cov2);
+        const pill3 = this.statusPill(ub.paymentStatus);
+        return {
+          name: ub.name, code: ub.id, doc: this.UB_DOCS[ub.id] || "", ugName: ug2 ? ug2.name : "—",
+          uc: ub.uc, distributor: ub.distributor,
+          consTxt: kwh(inv2.consumption), compTxt: kwh(inv2.compensated), saldoTxt: kwh(inv2.finalBalance),
+          covTxt: cov2.toFixed(2).replace(".", ",") + " mês", covColor: cb3.covColor,
+          faturaTxt: brl(inv2.faturaEsa), ecoTxt: brl(inv2.monthlySavings),
+          pillText: pill3.text.toUpperCase(), pillBg: pill3.bg, pillColor: pill3.color,
+          openDetail: () => this.setState({ ubDetailId: ub.id, ubDetailTab: "visao", ubMonthSel: null }),
+          openEdit: () => this.openUbWiz(ub),
+          openHist: () => this.setState({ ubDetailId: ub.id, ubDetailTab: "historico", ubMonthSel: null }),
+          openFatura: () => this.setState({ view: "fatura", invUbId: ub.id, compDetailsOpen: false, ubDetailId: null }),
+        };
+      });
+    }
 
     // ---------- CADASTRO UB (wizard) ----------
     const BF = S.ubWizF || {};
     const setBF = (k) => (e) => this.setState((s) => ({ ubWizF: { ...s.ubWizF, [k]: e.target.value } }));
     const bf = mkFld(setBF, BF);
-    const ubWizUg = this.UGS.find((g) => g.id === (BF.ugId || "UG-001")) || this.UGS[0];
-    const ubWizUgSt = this.computeSettlement(ubWizUg);
+    const _ubWizUgList = S._rtMode === "real" ? (S._rtUgs || []) : this.UGS;
+    const ubWizUg = _ubWizUgList.find((g) => g.id === BF.ugId) || _ubWizUgList[0] || { name: "—", owner: "—", id: "", purchasePrice: 0 };
+    const ubWizUgSt = S._rtMode === "real" ? { available: 0, rows: [] } : this.computeSettlement(ubWizUg);
     const avgHist = S.ubWizAvgMode === "historico";
     let ubWizFields = [];
     if (S.ubWizStep === 0) ubWizFields = [
@@ -3758,7 +3886,7 @@ class Component extends DCLogic {
       bf("Distribuidora", "distributor"), bf("Data de entrada na ESA", "entryDate", { ph: "dd/mm/aaaa" }),
     ];
     else if (S.ubWizStep === 1) ubWizFields = [
-      bf("Unidade Geradora vinculada", "ugId", { options: this.UGS.map((g) => ({ value: g.id, label: g.name })), full: true }),
+      bf("Unidade Geradora vinculada", "ugId", { options: _ubWizUgList.map((g) => ({ value: g.id, label: g.name })), full: true }),
       bf("Margem preventiva padrão (%)", "margin", { ph: "5", hint: "A margem preventiva aumenta o crédito alvo acima da média mensal de consumo para reduzir risco de insuficiência de créditos." }),
     ];
     else if (S.ubWizStep === 2) ubWizFields = [
@@ -3771,7 +3899,7 @@ class Component extends DCLogic {
       ubWizFields = [];
       if (!avgHist) ubWizFields.push(bf("Média mensal inicial de consumo — kWh", "manualAvg", { ph: "Ex.: 3.200" }));
       ubWizFields.push(
-        bf("Mês de referência inicial", "refMonth", { options: this.MONTHS_AV.map((m) => ({ value: m.value, label: m.label })) }),
+        bf("Mês de referência inicial", "refMonth", { options: (S._rtMode === "real" ? (S._rtMonths || this.MONTHS_AV) : this.MONTHS_AV).map((m) => ({ value: m.value, label: m.label })) }),
         bf("Saldo anterior de créditos na UC — kWh", "prevBalance", { ph: "0" }),
         bf("Observações", "balanceNotes", { area: true, full: true, ph: "Origem do saldo, ajustes anteriores..." }),
       );
@@ -3812,97 +3940,190 @@ class Component extends DCLogic {
     const ubWizSteps = this.mkWizSteps(["Identificação", "Vinculação energética", "Condições comerciais", "Saldo inicial", "Revisar"], S.ubWizStep);
 
     // ---------- DETALHE UB ----------
-    const ubdU = this.UBS.find((u) => u.id === S.ubDetailId);
     let ubdVals = { ubdOpen: false, ubdName: "", ubdMeta: "", ubdPill: { text: "", bg: "#f1f5f9", color: "#334155" }, ubdTabs: [], ubdTabVisao: false, ubdTabHist: false, ubdCards: [], ubdPlanRows: [], ubdMovRows: [], ubdCondRows: [], ubdHist: [], ubdMonthOpen: false, ubdMonthTitle: "", ubdMonthRows: [], ubdMonthSource: "", ubdAvgNote: "", ubdEdit: () => {}, ubdVerFatura: () => {}, ubdCloseMonth: () => {} };
-    if (ubdU) {
-      const invd = this.buildInvoice(ubdU.id, "2026-07");
-      const ugOfUb = this.UGS.find((g) => g.id === ubdU.ugId);
-      const dplan = this.computeAllocationPlan(ugOfUb, {});
-      const prow = dplan.rows.find((x) => x.ub.id === ubdU.id);
-      const bpill = this.statusPill(ubdU.paymentStatus);
-      const btab = S.ubDetailTab;
-      const covUb = ubdU.monthlyConsumption > 0 ? invd.finalBalance / ubdU.monthlyConsumption : 0;
-      const accum2 = this.ACCUM_SAVINGS[ubdU.id] || 0;
-      ubdVals = {
-        ubdOpen: true, ubdName: ubdU.name, ubdPill: bpill,
-        ubdMeta: ubdU.id + " · " + (this.UB_DOCS[ubdU.id] || "") + " · UC " + ubdU.uc + " · " + ubdU.distributor + " · " + (ugOfUb ? ugOfUb.name : "—"),
-        ubdTabs: [["visao", "Visão Geral"], ["historico", "Histórico Mensal"]].map(([k, label]) => ({
-          label, color: btab === k ? "#00875a" : "#64748b", weight: btab === k ? "600" : "400",
-          borderBottom: btab === k ? "2px solid #00a86b" : "2px solid transparent",
-          onClick: () => this.setState({ ubDetailTab: k, ubMonthSel: null }),
-        })),
-        ubdTabVisao: btab === "visao", ubdTabHist: btab === "historico",
-        ubdCards: [
-          { label: "Consumo atual", value: kwh(invd.consumption), color: "#062e20" },
-          { label: "Compensado", value: kwh(invd.compensated), color: "#00875a" },
-          { label: "Saldo de créditos na UC", value: kwh(invd.finalBalance), color: "#062e20" },
-          { label: "Cobertura em meses", value: covUb.toFixed(2).replace(".", ",") + " mês", color: "#062e20" },
-          { label: "Média mensal", value: kwh(prow.monthlyAverage), color: "#062e20" },
-          { label: "Margem preventiva", value: Math.round(prow.preventiveMargin * 100) + "%", color: "#062e20" },
-          { label: "Crédito alvo", value: kwh(prow.targetCredit), color: "#062e20" },
-          { label: "Economia no mês", value: brl(invd.monthlySavings), color: "#00a86b" },
-          { label: "Economia acumulada", value: brl(accum2), color: "#00875a" },
-        ],
-        ubdPlanRows: [
-          { label: "Média mensal", value: kwh(prow.monthlyAverage), strong: false },
-          { label: "Margem preventiva", value: Math.round(prow.preventiveMargin * 100) + "%", strong: false },
-          { label: "Crédito alvo", value: kwh(prow.targetCredit), strong: false },
-          { label: "Saldo atual", value: kwh(prow.currentBalance), strong: false },
-          { label: "Crédito recomendado adicional", value: kwh(prow.recommendedAdd), strong: false },
-          { label: "Percentual de rateio", value: (prow.allocationPct * 100).toFixed(2).replace(".", ",") + "%", strong: true },
-        ],
-        ubdMovRows: [
-          { label: "Saldo anterior", value: kwh(invd.previousBalance), strong: false },
-          { label: "Créditos recebidos", value: "+ " + kwh(invd.receivedCredits), strong: false },
-          { label: "Créditos compensados", value: "− " + kwh(invd.compensated), strong: false },
-          { label: "Saldo final", value: kwh(invd.finalBalance), strong: true },
-          { label: "Cobertura", value: covUb.toFixed(2).replace(".", ",") + " mês", strong: false },
-        ],
-        ubdCondRows: [
-          { label: "Preço ESA por kWh", value: "R$ " + num(ubdU.esaPrice, 2), strong: false },
-          { label: "Vigência", value: "01/01/2026", strong: false },
-          { label: "Status do contrato", value: "Ativo", strong: false },
-          { label: "Dia padrão de vencimento", value: "10", strong: false },
-        ],
-        ubdHist: this.MONTHS_AV.map((m) => {
-          const f3 = this.MONTH_FACTOR[m.value] !== undefined ? this.MONTH_FACTOR[m.value] : 1;
-          const origin = this.UB_HIST_ORIGIN[m.value] || "MANUAL";
-          const oTone = origin === "FATURA IMPORTADA" ? { bg: "#d3f1e3", color: "#006644" } : origin === "CSV" ? { bg: "#eaf8f1", color: "#00875a" } : { bg: "#f1f5f9", color: "#475569" };
-          const cb4 = this.cycleBadgeFor(m.status);
-          const sel = S.ubMonthSel === m.value;
-          return {
-            mes: m.label, consTxt: kwh(ubdU.monthlyConsumption * f3),
-            origin, originBg: oTone.bg, originColor: oTone.color,
-            stText: m.status === "fechado" ? "CONFIRMADO" : "EM APURAÇÃO", stBg: m.status === "fechado" ? "#d3f1e3" : cb4.bg, stColor: m.status === "fechado" ? "#006644" : cb4.color,
-            saldoTxt: kwh(invd.finalBalance * f3), covTxt: (covUb * f3).toFixed(2).replace(".", ",") + " mês",
-            ecoTxt: brl(invd.monthlySavings * f3),
-            rowBg: sel ? "rgba(234,248,241,.5)" : "transparent",
-            detailLabel: sel ? "Fechar" : "Detalhar",
-            onSelect: () => this.setState((s) => ({ ubMonthSel: s.ubMonthSel === m.value ? null : m.value })),
+    if (S.ubDetailId) {
+      if (S._rtMode === "real") {
+        const _rtUbD = S._rtUbDetail;
+        const ubRT = (_rtUbD && _rtUbD.ub && _rtUbD.ub.id === S.ubDetailId) ? _rtUbD.ub : null;
+        const invRT = (_rtUbD && _rtUbD.invoice) ? _rtUbD.invoice : { consumption: 0, compensated: 0, previousBalance: 0, receivedCredits: 0, finalBalance: 0, faturaEsa: 0, taxes: 0, cip: 0, otherCharges: 0, totalWithEsa: 0, totalWithoutEsa: 0, monthlySavings: 0, discountPct: 0, paymentStatus: "aberto" };
+        const avgRT = (_rtUbD && _rtUbD.avg) ? _rtUbD.avg : { monthlyAverage: 0, hasSufficientHistory: false, months: [] };
+        const histRT = (_rtUbD && _rtUbD.history) ? _rtUbD.history : [];
+        const ugOfUbRT = (S._rtUgs || []).find((g) => g.id === (ubRT ? ubRT.ugId : ""));
+        const bpill = this.statusPill(invRT.paymentStatus || (ubRT ? ubRT.status : "aberto") || "aberto");
+        const btab = S.ubDetailTab;
+        const consRT = ubRT ? (ubRT.monthlyConsumption || 0) : 0;
+        const covUbRT = consRT > 0 ? invRT.finalBalance / consRT : 0;
+        const monthlyAvg = avgRT.monthlyAverage || 0;
+        const preventiveMarginRT = ubRT ? (ubRT.preventiveMargin || 0) : 0;
+        const targetCreditRT = monthlyAvg > 0 ? Math.round(monthlyAvg * (1 + preventiveMarginRT)) : 0;
+        ubdVals = {
+          ubdOpen: true, ubdName: ubRT ? ubRT.name : "—", ubdPill: bpill,
+          ubdMeta: ubRT ? ubRT.id + " · " + (ubRT.document || "") + " · UC " + ubRT.uc + " · " + ubRT.distributor + " · " + (ugOfUbRT ? ugOfUbRT.name : "—") : "—",
+          ubdTabs: [["visao", "Visão Geral"], ["historico", "Histórico Mensal"]].map(([k, label]) => ({
+            label, color: btab === k ? "#00875a" : "#64748b", weight: btab === k ? "600" : "400",
+            borderBottom: btab === k ? "2px solid #00a86b" : "2px solid transparent",
+            onClick: () => this.setState({ ubDetailTab: k, ubMonthSel: null }),
+          })),
+          ubdTabVisao: btab === "visao", ubdTabHist: btab === "historico",
+          ubdCards: [
+            { label: "Consumo atual", value: kwh(invRT.consumption || consRT), color: "#062e20" },
+            { label: "Compensado", value: kwh(invRT.compensated || 0), color: "#00875a" },
+            { label: "Saldo de créditos na UC", value: kwh(invRT.finalBalance || 0), color: "#062e20" },
+            { label: "Cobertura em meses", value: covUbRT.toFixed(2).replace(".", ",") + " mês", color: "#062e20" },
+            { label: "Média mensal", value: kwh(monthlyAvg), color: "#062e20" },
+            { label: "Margem preventiva", value: Math.round(preventiveMarginRT * 100) + "%", color: "#062e20" },
+            { label: "Crédito alvo", value: kwh(targetCreditRT), color: "#062e20" },
+            { label: "Economia no mês", value: brl(invRT.monthlySavings || 0), color: "#00a86b" },
+            { label: "Economia acumulada", value: brl(ubRT ? (ubRT.accumulatedSavings || 0) : 0), color: "#00875a" },
+          ],
+          ubdPlanRows: [
+            { label: "Média mensal", value: kwh(monthlyAvg), strong: false },
+            { label: "Margem preventiva", value: Math.round(preventiveMarginRT * 100) + "%", strong: false },
+            { label: "Crédito alvo", value: kwh(targetCreditRT), strong: false },
+            { label: "Saldo atual", value: kwh(invRT.finalBalance || 0), strong: false },
+            { label: "Crédito recomendado adicional", value: "—", strong: false },
+            { label: "Percentual de rateio", value: ubRT && ubRT.allocationPct !== undefined ? (ubRT.allocationPct * 100).toFixed(2).replace(".", ",") + "%" : "—", strong: true },
+          ],
+          ubdMovRows: [
+            { label: "Saldo anterior", value: kwh(invRT.previousBalance || 0), strong: false },
+            { label: "Créditos recebidos", value: "+ " + kwh(invRT.receivedCredits || 0), strong: false },
+            { label: "Créditos compensados", value: "− " + kwh(invRT.compensated || 0), strong: false },
+            { label: "Saldo final", value: kwh(invRT.finalBalance || 0), strong: true },
+            { label: "Cobertura", value: covUbRT.toFixed(2).replace(".", ",") + " mês", strong: false },
+          ],
+          ubdCondRows: [
+            { label: "Preço ESA por kWh", value: ubRT ? "R$ " + num(ubRT.esaPrice || 0, 2) : "—", strong: false },
+            { label: "Vigência", value: "—", strong: false },
+            { label: "Status do contrato", value: ubRT && ubRT.status === "ativa" ? "Ativo" : "—", strong: false },
+            { label: "Dia padrão de vencimento", value: "—", strong: false },
+          ],
+          ubdHist: histRT.map((h) => {
+            const oTone = h.origin === "FATURA IMPORTADA" ? { bg: "#d3f1e3", color: "#006644" } : h.origin === "CSV" ? { bg: "#eaf8f1", color: "#00875a" } : { bg: "#f1f5f9", color: "#475569" };
+            const sel = S.ubMonthSel === h.month;
+            return {
+              mes: h.month, consTxt: kwh(h.consumptionKwh || 0),
+              origin: h.origin || "MANUAL", originBg: oTone.bg, originColor: oTone.color,
+              stText: "CONFIRMADO", stBg: "#d3f1e3", stColor: "#006644",
+              saldoTxt: "—", covTxt: "—", ecoTxt: "—",
+              rowBg: sel ? "rgba(234,248,241,.5)" : "transparent",
+              detailLabel: sel ? "Fechar" : "Detalhar",
+              onSelect: () => this.setState((s) => ({ ubMonthSel: s.ubMonthSel === h.month ? null : h.month })),
+            };
+          }),
+          ubdEdit: () => this.openUbWiz(ubRT),
+          ubdVerFatura: () => this.setState({ view: "fatura", invUbId: ubRT ? ubRT.id : null, compDetailsOpen: false, ubDetailId: null }),
+          ubdCloseMonth: () => this.setState({ ubMonthSel: null }),
+          ubdAvgNote: avgRT.hasSufficientHistory ? "Média calculada com histórico confirmado" : "Histórico insuficiente para cálculo automático",
+          ubdMonthOpen: false, ubdMonthTitle: "", ubdMonthRows: [], ubdMonthSource: "",
+        };
+        if (S.ubMonthSel) {
+          const histRow = histRT.find((h) => h.month === S.ubMonthSel);
+          if (histRow) {
+            ubdVals.ubdMonthOpen = true;
+            ubdVals.ubdMonthTitle = "Registro mensal — " + histRow.month;
+            ubdVals.ubdMonthRows = [
+              { label: "Mês de referência", value: histRow.month },
+              { label: "Consumo", value: kwh(histRow.consumptionKwh || 0) },
+              { label: "Origem dos dados", value: histRow.origin || "MANUAL" },
+              { label: "Arquivo", value: histRow.file || "—" },
+              { label: "Importado em", value: histRow.importedAt || "—" },
+            ];
+            ubdVals.ubdMonthSource = "Origem: " + (histRow.origin || "MANUAL") + (histRow.file && histRow.file !== "—" ? " · Arquivo: " + histRow.file : "") + (histRow.importedAt ? " · Importado em " + histRow.importedAt : "");
+          }
+        }
+      } else {
+        const ubdU = this.UBS.find((u) => u.id === S.ubDetailId);
+        if (ubdU) {
+          const invd = this.buildInvoice(ubdU.id, "2026-07");
+          const ugOfUb = this.UGS.find((g) => g.id === ubdU.ugId);
+          const dplan = this.computeAllocationPlan(ugOfUb, {});
+          const prow = dplan.rows.find((x) => x.ub.id === ubdU.id);
+          const bpill = this.statusPill(ubdU.paymentStatus);
+          const btab = S.ubDetailTab;
+          const covUb = ubdU.monthlyConsumption > 0 ? invd.finalBalance / ubdU.monthlyConsumption : 0;
+          const accum2 = this.ACCUM_SAVINGS[ubdU.id] || 0;
+          ubdVals = {
+            ubdOpen: true, ubdName: ubdU.name, ubdPill: bpill,
+            ubdMeta: ubdU.id + " · " + (this.UB_DOCS[ubdU.id] || "") + " · UC " + ubdU.uc + " · " + ubdU.distributor + " · " + (ugOfUb ? ugOfUb.name : "—"),
+            ubdTabs: [["visao", "Visão Geral"], ["historico", "Histórico Mensal"]].map(([k, label]) => ({
+              label, color: btab === k ? "#00875a" : "#64748b", weight: btab === k ? "600" : "400",
+              borderBottom: btab === k ? "2px solid #00a86b" : "2px solid transparent",
+              onClick: () => this.setState({ ubDetailTab: k, ubMonthSel: null }),
+            })),
+            ubdTabVisao: btab === "visao", ubdTabHist: btab === "historico",
+            ubdCards: [
+              { label: "Consumo atual", value: kwh(invd.consumption), color: "#062e20" },
+              { label: "Compensado", value: kwh(invd.compensated), color: "#00875a" },
+              { label: "Saldo de créditos na UC", value: kwh(invd.finalBalance), color: "#062e20" },
+              { label: "Cobertura em meses", value: covUb.toFixed(2).replace(".", ",") + " mês", color: "#062e20" },
+              { label: "Média mensal", value: kwh(prow.monthlyAverage), color: "#062e20" },
+              { label: "Margem preventiva", value: Math.round(prow.preventiveMargin * 100) + "%", color: "#062e20" },
+              { label: "Crédito alvo", value: kwh(prow.targetCredit), color: "#062e20" },
+              { label: "Economia no mês", value: brl(invd.monthlySavings), color: "#00a86b" },
+              { label: "Economia acumulada", value: brl(accum2), color: "#00875a" },
+            ],
+            ubdPlanRows: [
+              { label: "Média mensal", value: kwh(prow.monthlyAverage), strong: false },
+              { label: "Margem preventiva", value: Math.round(prow.preventiveMargin * 100) + "%", strong: false },
+              { label: "Crédito alvo", value: kwh(prow.targetCredit), strong: false },
+              { label: "Saldo atual", value: kwh(prow.currentBalance), strong: false },
+              { label: "Crédito recomendado adicional", value: kwh(prow.recommendedAdd), strong: false },
+              { label: "Percentual de rateio", value: (prow.allocationPct * 100).toFixed(2).replace(".", ",") + "%", strong: true },
+            ],
+            ubdMovRows: [
+              { label: "Saldo anterior", value: kwh(invd.previousBalance), strong: false },
+              { label: "Créditos recebidos", value: "+ " + kwh(invd.receivedCredits), strong: false },
+              { label: "Créditos compensados", value: "− " + kwh(invd.compensated), strong: false },
+              { label: "Saldo final", value: kwh(invd.finalBalance), strong: true },
+              { label: "Cobertura", value: covUb.toFixed(2).replace(".", ",") + " mês", strong: false },
+            ],
+            ubdCondRows: [
+              { label: "Preço ESA por kWh", value: "R$ " + num(ubdU.esaPrice, 2), strong: false },
+              { label: "Vigência", value: "01/01/2026", strong: false },
+              { label: "Status do contrato", value: "Ativo", strong: false },
+              { label: "Dia padrão de vencimento", value: "10", strong: false },
+            ],
+            ubdHist: this.MONTHS_AV.map((m) => {
+              const f3 = this.MONTH_FACTOR[m.value] !== undefined ? this.MONTH_FACTOR[m.value] : 1;
+              const origin = this.UB_HIST_ORIGIN[m.value] || "MANUAL";
+              const oTone = origin === "FATURA IMPORTADA" ? { bg: "#d3f1e3", color: "#006644" } : origin === "CSV" ? { bg: "#eaf8f1", color: "#00875a" } : { bg: "#f1f5f9", color: "#475569" };
+              const cb4 = this.cycleBadgeFor(m.status);
+              const sel = S.ubMonthSel === m.value;
+              return {
+                mes: m.label, consTxt: kwh(ubdU.monthlyConsumption * f3),
+                origin, originBg: oTone.bg, originColor: oTone.color,
+                stText: m.status === "fechado" ? "CONFIRMADO" : "EM APURAÇÃO", stBg: m.status === "fechado" ? "#d3f1e3" : cb4.bg, stColor: m.status === "fechado" ? "#006644" : cb4.color,
+                saldoTxt: kwh(invd.finalBalance * f3), covTxt: (covUb * f3).toFixed(2).replace(".", ",") + " mês",
+                ecoTxt: brl(invd.monthlySavings * f3),
+                rowBg: sel ? "rgba(234,248,241,.5)" : "transparent",
+                detailLabel: sel ? "Fechar" : "Detalhar",
+                onSelect: () => this.setState((s) => ({ ubMonthSel: s.ubMonthSel === m.value ? null : m.value })),
+              };
+            }),
+            ubdEdit: () => this.openUbWiz(ubdU),
+            ubdVerFatura: () => this.setState({ view: "fatura", invUbId: ubdU.id, compDetailsOpen: false, ubDetailId: null }),
+            ubdCloseMonth: () => this.setState({ ubMonthSel: null }),
+            ubdAvgNote: "Média calculada com 5 meses confirmados",
+            ubdMonthOpen: false, ubdMonthTitle: "", ubdMonthRows: [], ubdMonthSource: "",
           };
-        }),
-        ubdEdit: () => this.openUbWiz(ubdU),
-        ubdVerFatura: () => this.setState({ view: "fatura", invUbId: ubdU.id, compDetailsOpen: false, ubDetailId: null }),
-        ubdCloseMonth: () => this.setState({ ubMonthSel: null }),
-        ubdAvgNote: "Média calculada com 5 meses confirmados",
-        ubdMonthOpen: false, ubdMonthTitle: "", ubdMonthRows: [], ubdMonthSource: "",
-      };
-      if (S.ubMonthSel) {
-        const mm = this.MONTHS_AV.find((m) => m.value === S.ubMonthSel);
-        if (mm) {
-          const f4 = this.MONTH_FACTOR[mm.value] !== undefined ? this.MONTH_FACTOR[mm.value] : 1;
-          const origin = this.UB_HIST_ORIGIN[mm.value] || "MANUAL";
-          const total4 = (ubdU.monthlyConsumption * ubdU.distributorTariff + ubdU.taxes + ubdU.cip) * f4;
-          ubdVals.ubdMonthOpen = true;
-          ubdVals.ubdMonthTitle = "Registro mensal — " + mm.label;
-          ubdVals.ubdMonthRows = [
-            { label: "Mês de referência", value: mm.label }, { label: "Consumo", value: kwh(ubdU.monthlyConsumption * f4) },
-            { label: "TE", value: brl(320.4 * f4) }, { label: "TUSD", value: brl(512.75 * f4) },
-            { label: "Fio B", value: brl(88.9 * f4) }, { label: "Bandeira", value: brl(12.5 * f4) },
-            { label: "CIP", value: brl(ubdU.cip) }, { label: "Impostos", value: brl(ubdU.taxes * f4) },
-            { label: "Mínimo faturável", value: "30 kWh" }, { label: "Total da conta da distribuidora", value: brl(total4) },
-          ];
-          ubdVals.ubdMonthSource = "Origem: " + origin + (this.UB_HIST_FILE[mm.value] !== "—" ? " · Arquivo: " + this.UB_HIST_FILE[mm.value] : "") + " · Importado em " + this.UB_HIST_IMPORTED[mm.value];
+          if (S.ubMonthSel) {
+            const mm = this.MONTHS_AV.find((m) => m.value === S.ubMonthSel);
+            if (mm) {
+              const f4 = this.MONTH_FACTOR[mm.value] !== undefined ? this.MONTH_FACTOR[mm.value] : 1;
+              const origin = this.UB_HIST_ORIGIN[mm.value] || "MANUAL";
+              const total4 = (ubdU.monthlyConsumption * ubdU.distributorTariff + ubdU.taxes + ubdU.cip) * f4;
+              ubdVals.ubdMonthOpen = true;
+              ubdVals.ubdMonthTitle = "Registro mensal — " + mm.label;
+              ubdVals.ubdMonthRows = [
+                { label: "Mês de referência", value: mm.label }, { label: "Consumo", value: kwh(ubdU.monthlyConsumption * f4) },
+                { label: "TE", value: brl(320.4 * f4) }, { label: "TUSD", value: brl(512.75 * f4) },
+                { label: "Fio B", value: brl(88.9 * f4) }, { label: "Bandeira", value: brl(12.5 * f4) },
+                { label: "CIP", value: brl(ubdU.cip) }, { label: "Impostos", value: brl(ubdU.taxes * f4) },
+                { label: "Mínimo faturável", value: "30 kWh" }, { label: "Total da conta da distribuidora", value: brl(total4) },
+              ];
+              ubdVals.ubdMonthSource = "Origem: " + origin + (this.UB_HIST_FILE[mm.value] !== "—" ? " · Arquivo: " + this.UB_HIST_FILE[mm.value] : "") + " · Importado em " + this.UB_HIST_IMPORTED[mm.value];
+            }
+          }
         }
       }
     }
@@ -4506,7 +4727,8 @@ class Component extends DCLogic {
       ugMenuTop: S.ugMenu ? (S.ugMenu.y + 4) + "px" : "0px",
       ugMenuClose: () => this.setState({ ugMenu: null }),
       ugMenuItems: S.ugMenu ? (() => {
-        const mug = this.UGS.find((u) => u.id === S.ugMenu.id);
+        const _ugMenuSrc = S._rtMode === "real" ? (S._rtUgs || []) : this.UGS;
+        const mug = _ugMenuSrc.find((u) => u.id === S.ugMenu.id);
         if (!mug) return [];
         return [
           { label: "Editar", onClick: () => { this.setState({ ugMenu: null }); this.openUgWiz(mug); } },
@@ -4531,8 +4753,30 @@ class Component extends DCLogic {
       ugWizNextLabel: S.ugWizStep === 3 ? "Cadastrar Unidade Geradora" : "Avançar",
       ugWizBack: () => this.setState((s) => ({ ugWizStep: Math.max(0, s.ugWizStep - 1) })),
       ugWizNext: () => {
-        if (S.ugWizStep < 3) this.setState((s) => ({ ugWizStep: s.ugWizStep + 1 }));
-        else { this.setState({ ugWizOpen: false }); this.showToast("Modo de prévia", "Cadastro revisado — nenhum dado foi persistido."); }
+        if (S.ugWizStep < 3) {
+          this.setState((s) => ({ ugWizStep: s.ugWizStep + 1 }));
+        } else if (S._rtMode === "real") {
+          const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
+          if (!rt) return;
+          const GF2 = S.ugWizF || {};
+          const ugSame2 = S.ugWizSame !== "nao";
+          const input = {
+            name: GF2.name, owner: GF2.owner, ownerDocument: GF2.ownerDoc, utilityCode: GF2.uc, distributor: GF2.distributor,
+            purchasePrice: parseFloat(String(GF2.price || "0").replace(",", ".")) || 0, status: GF2.status || "ativa",
+            payee: { name: ugSame2 ? GF2.owner : GF2.recName, document: ugSame2 ? GF2.ownerDoc : GF2.recDoc, pixType: GF2.pixType, pixKey: GF2.pixKey },
+          };
+          (S.ugWizEditingId ? rt.updateGeneratingUnit(S.ugWizEditingId, input) : rt.createGeneratingUnit(input)).then(() => {
+            return rt.listGeneratingUnits();
+          }).then((ugs) => {
+            this.setState({ ugWizOpen: false, _rtUgs: ugs });
+            this.showToast(S.ugWizEditingId ? "UG atualizada" : "UG cadastrada", (S.ugWizEditingId ? "Alterações salvas" : "Unidade Geradora criada") + " com sucesso.");
+          }).catch((err) => {
+            this.showToast("Erro ao salvar UG", (err && err.message) || "Verifique os dados e tente novamente.");
+          });
+        } else {
+          this.setState({ ugWizOpen: false });
+          this.showToast("Modo de prévia", "Cadastro revisado — nenhum dado foi persistido.");
+        }
       },
       ugWizClose: () => this.setState({ ugWizOpen: false }),
 
@@ -4572,8 +4816,32 @@ class Component extends DCLogic {
       ubWizNextLabel: S.ubWizStep === 4 ? "Cadastrar Unidade Beneficiária" : "Avançar",
       ubWizBack: () => this.setState((s) => ({ ubWizStep: Math.max(0, s.ubWizStep - 1) })),
       ubWizNext: () => {
-        if (S.ubWizStep < 4) this.setState((s) => ({ ubWizStep: s.ubWizStep + 1 }));
-        else { this.setState({ ubWizOpen: false }); this.showToast("Modo de prévia", "Cadastro revisado — nenhum dado foi persistido."); }
+        if (S.ubWizStep < 4) {
+          this.setState((s) => ({ ubWizStep: s.ubWizStep + 1 }));
+        } else if (S._rtMode === "real") {
+          const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
+          if (!rt) return;
+          const BF2 = S.ubWizF || {};
+          const input = {
+            name: BF2.name, ownerDocument: BF2.doc, utilityCode: BF2.uc, distributor: BF2.distributor,
+            ugId: BF2.ugId, preventiveMargin: (parseFloat(BF2.margin) || 5) / 100,
+            esaPrice: parseFloat(String(BF2.esaPrice || "0").replace(",", ".")) || 0,
+            status: BF2.status || "ativa",
+            initialBalance: parseFloat(BF2.prevBalance) || 0,
+            manualMonthlyAverage: S.ubWizAvgMode === "manual" ? (parseFloat(BF2.manualAvg) || 0) : undefined,
+          };
+          (S.ubWizEditingId ? rt.updateBeneficiaryUnit(S.ubWizEditingId, input) : rt.createBeneficiaryUnit(input)).then(() => {
+            return rt.listBeneficiaryUnits();
+          }).then((ubs) => {
+            this.setState({ ubWizOpen: false, _rtUbs: ubs });
+            this.showToast(S.ubWizEditingId ? "UB atualizada" : "UB cadastrada", (S.ubWizEditingId ? "Alterações salvas" : "Unidade Beneficiária criada") + " com sucesso.");
+          }).catch((err) => {
+            this.showToast("Erro ao salvar UB", (err && err.message) || "Verifique os dados e tente novamente.");
+          });
+        } else {
+          this.setState({ ubWizOpen: false });
+          this.showToast("Modo de prévia", "Cadastro revisado — nenhum dado foi persistido.");
+        }
       },
       ubWizClose: () => this.setState({ ubWizOpen: false }),
 
@@ -4732,6 +5000,18 @@ class Component extends DCLogic {
     if ((monthChanged || ugChanged) && !this.state._rtLoading) {
       this._loadRealDash(this.state.dashMonth, this.state.ugFilter);
     }
+    // Gate 3B — lazy-load UB list on first visit to units screen
+    if (this.state.view === "unidades" && prevState.view !== "unidades" && !this.state._rtUbs && !this.state._rtUbsLoading) {
+      this._loadRealUbs();
+    }
+    // Gate 3B — load UG detail on drawer open
+    if (this.state.ugDetailId && this.state.ugDetailId !== prevState.ugDetailId && !this.state._rtUgDetailLoading) {
+      this._loadRealUgDetail(this.state.ugDetailId);
+    }
+    // Gate 3B — load UB detail on drawer open
+    if (this.state.ubDetailId && this.state.ubDetailId !== prevState.ubDetailId && !this.state._rtUbDetailLoading) {
+      this._loadRealUbDetail(this.state.ubDetailId);
+    }
   }
 
   _initRealMode() {
@@ -4755,6 +5035,54 @@ class Component extends DCLogic {
     }).catch((err) => {
       console.error("[ESA] Dashboard data load error", err);
       this.setState({ _rtLoading: false });
+    });
+  }
+
+  _loadRealUbs() {
+    const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
+    if (!rt || rt.mode !== "real") return;
+    this.setState({ _rtUbsLoading: true });
+    rt.listBeneficiaryUnits().then((ubs) => {
+      this.setState({ _rtUbs: ubs || [], _rtUbsLoading: false });
+    }).catch((err) => {
+      console.error("[ESA] UB list load error", err);
+      this.setState({ _rtUbsLoading: false });
+    });
+  }
+
+  _loadRealUgDetail(ugId) {
+    const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
+    if (!rt || rt.mode !== "real") return;
+    this.setState({ _rtUgDetailLoading: true, _rtUgDetail: null });
+    const month = this.state.dashMonth || "2026-07";
+    Promise.all([
+      rt.getGeneratingUnit(ugId),
+      rt.getGeneratingUnitPayee(ugId),
+      rt.listBeneficiaryUnits({ ugId }),
+      rt.getDashboardData({ month, ugId }),
+    ]).then((res) => {
+      this.setState({ _rtUgDetail: { ug: res[0], payee: res[1], bens: res[2] || [], dash: res[3] }, _rtUgDetailLoading: false });
+    }).catch((err) => {
+      console.error("[ESA] UG detail load error", err);
+      this.setState({ _rtUgDetailLoading: false });
+    });
+  }
+
+  _loadRealUbDetail(ubId) {
+    const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
+    if (!rt || rt.mode !== "real") return;
+    this.setState({ _rtUbDetailLoading: true, _rtUbDetail: null });
+    const month = this.state.dashMonth || "2026-07";
+    Promise.all([
+      rt.getBeneficiaryUnit(ubId),
+      rt.getBeneficiaryInvoice(ubId, month),
+      rt.getBeneficiaryConsumptionAverage(ubId),
+      rt.getBeneficiaryMonthlyHistory(ubId),
+    ]).then((res) => {
+      this.setState({ _rtUbDetail: { ub: res[0], invoice: res[1], avg: res[2], history: res[3] || [] }, _rtUbDetailLoading: false });
+    }).catch((err) => {
+      console.error("[ESA] UB detail load error", err);
+      this.setState({ _rtUbDetailLoading: false });
     });
   }
 

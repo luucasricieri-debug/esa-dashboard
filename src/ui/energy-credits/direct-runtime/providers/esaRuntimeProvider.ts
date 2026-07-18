@@ -147,7 +147,7 @@ export function createEsaRuntimeProvider(uiProvider: UIProvider): EnergyCreditsR
     async getMonthlyTrend(filter): Promise<TrendRow[]> {
       return AVAILABLE_MONTHS.slice().reverse().map((m) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const d = unwrap(uiProvider.getFinancialSummary({ referenceMonth: m.value, ugId: filter.ugId })) as any;
+        const d = safeCall(() => uiProvider.getFinancialSummary({ referenceMonth: m.value, ugId: filter.ugId })) as any;
         return {
           month: m.value, label: m.label.split(' ')[0].slice(0, 3),
           Receita: d?.totalEsaRevenue  ?? 0, Repasse: d?.totalOwnerReturn ?? 0,
@@ -158,7 +158,7 @@ export function createEsaRuntimeProvider(uiProvider: UIProvider): EnergyCreditsR
 
     // ---- Generating Units ----
     async listGeneratingUnits(filter?): Promise<GeneratingUnit[]> {
-      const d = unwrap(uiProvider.searchGeneratingUnits({ search: filter?.search ?? '' }));
+      const d = safeCall(() => uiProvider.searchGeneratingUnits({ search: filter?.search ?? '' }));
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const arr: any[] = Array.isArray(d) ? d : (d as any)?.items ?? [];
       return arr as GeneratingUnit[];
@@ -191,7 +191,7 @@ export function createEsaRuntimeProvider(uiProvider: UIProvider): EnergyCreditsR
 
     // ---- Beneficiary Units ----
     async listBeneficiaryUnits(filter?): Promise<BeneficiaryUnit[]> {
-      const d = unwrap(uiProvider.searchBeneficiaryUnits({ search: filter?.search ?? '', ugId: filter?.ugId }));
+      const d = safeCall(() => uiProvider.searchBeneficiaryUnits({ search: filter?.search ?? '', ugId: filter?.ugId }));
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const arr: any[] = Array.isArray(d) ? d : (d as any)?.items ?? [];
       return arr as BeneficiaryUnit[];
@@ -208,18 +208,18 @@ export function createEsaRuntimeProvider(uiProvider: UIProvider): EnergyCreditsR
     },
     async getBeneficiaryConsumptionAverage(id: string): Promise<ConsumptionAverage | null> {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const d = unwrap(uiProvider.getBeneficiaryConsumptionAverage(id, {})) as any;
+      const d = safeCall(() => uiProvider.getBeneficiaryConsumptionAverage(id, {})) as any;
       if (!d) return null;
       return {
         annualAverage: d.annualAverage ?? 0,
-        monthlyAverage: (d.annualAverage ?? 0) / 12,
+        monthlyAverage: d.monthlyAverage ?? (d.annualAverage ?? 0) / 12,
         hasSufficientHistory: d.hasSufficientHistory ?? false,
         months: (d.months ?? []) as MonthlyHistoryRow[],
       };
     },
     async getBeneficiaryMonthlyHistory(id: string): Promise<MonthlyHistoryRow[]> {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const d = unwrap(uiProvider.getBeneficiaryHistory(id, {})) as any;
+      const d = safeCall(() => uiProvider.getBeneficiaryHistory(id, {})) as any;
       return (d?.months ?? []) as MonthlyHistoryRow[];
     },
     async getBeneficiarySavingsHistory(id: string, upToMonth = '2026-07'): Promise<SavingsHistoryRow[]> {
@@ -251,10 +251,8 @@ export function createEsaRuntimeProvider(uiProvider: UIProvider): EnergyCreditsR
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const d = unwrap(uiProvider.getBeneficiaryMonthlyReport(ubId, month)) as any;
         return d as BeneficiaryInvoice | null;
-      } catch (err: unknown) {
-        const msg = (err as Error)?.message ?? '';
-        if (/\[buildBeneficiaryMonthlyReport\]/.test(msg) && /não encontrada/.test(msg)) return null;
-        throw err;
+      } catch {
+        return null; // UNIT_NOT_FOUND or any other provider error → safe null
       }
     },
 
