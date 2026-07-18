@@ -2722,6 +2722,8 @@ class Component extends DCLogic {
     alDetailId: null, alAction: null, alNote: "", alNoteMissing: false, alertOv: {},
     riOpen: { ugperf: true }, rfStatus: "all",
     toast: null,
+    // GATE 3 — real provider state
+    _rtMode: "demo", _rtLoading: false, _rtDash: null, _rtMonths: null, _rtUgs: null, _rtAlerts: null,
   };
 
   // ============================== DADOS (porta fiel do mockData/provider do Lovable) ==============================
@@ -3178,19 +3180,53 @@ class Component extends DCLogic {
     // ---------- DASHBOARD ----------
     const dashMonth = S.dashMonth;
     const ugId = S.ugFilter === "all" ? undefined : S.ugFilter;
-    const results = this.scaledResults(dashMonth, ugId);
-    const curr = this.aggregate(results);
-    const mi = this.MONTHS_AV.findIndex((m) => m.value === dashMonth);
-    const prevM = this.MONTHS_AV[mi + 1];
-    const prev = prevM ? this.aggregate(this.scaledResults(prevM.value, ugId)) : curr;
-    const monthLabel = this.MONTHS_AV[mi] ? this.MONTHS_AV[mi].label : dashMonth;
-    const prevLabel = prevM ? prevM.label : "—";
-    const cycleStatus = this.MONTHS_AV[mi] ? this.MONTHS_AV[mi].status : "aberto";
+    // GATE 3 — data source resolver (demo vs real)
+    const _emptyM = { generation: 0, compensated: 0, balance: 0, revenue: 0, ownerPayment: 0, spread: 0, savings: 0 };
+    const _rtData = S._rtMode === "real" ? S._rtDash : null;
+    let results, curr, prev, monthLabel, prevLabel, cycleStatus, currCrit, prevCrit, ubList, alerts, trend;
+    if (_rtData) {
+      // REAL MODE — usa dados do ESA_ENERGY_CREDITS_RUNTIME
+      results = _rtData.results || [];
+      curr = _rtData.current || _emptyM;
+      prev = _rtData.previous !== null && _rtData.previous !== undefined ? _rtData.previous : curr;
+      cycleStatus = _rtData.cycleStatus || "aberto";
+      currCrit = _rtData.criticalAlerts || 0;
+      prevCrit = currCrit;
+      const _rtMonths = S._rtMonths || this.MONTHS_AV;
+      const _mi = _rtMonths.findIndex((m) => m.value === dashMonth);
+      monthLabel = _rtMonths[_mi] ? _rtMonths[_mi].label : dashMonth;
+      prevLabel = _rtMonths[_mi + 1] ? _rtMonths[_mi + 1].label : "—";
+      ubList = [];
+      alerts = S._rtAlerts || [];
+      trend = _rtData.trendData || [];
+    } else if (S._rtMode === "real") {
+      // REAL MODE aguardando carregamento — zeros honestos
+      results = []; curr = { ..._emptyM }; prev = { ..._emptyM };
+      cycleStatus = "aberto"; currCrit = 0; prevCrit = 0;
+      const _rtMonths = S._rtMonths || this.MONTHS_AV;
+      const _mi = _rtMonths.findIndex((m) => m.value === dashMonth);
+      monthLabel = _rtMonths[_mi] ? _rtMonths[_mi].label : dashMonth;
+      prevLabel = "—"; ubList = []; alerts = []; trend = [];
+    } else {
+      // DEMO MODE — computação original preservada
+      results = this.scaledResults(dashMonth, ugId);
+      curr = this.aggregate(results);
+      const mi = this.MONTHS_AV.findIndex((m) => m.value === dashMonth);
+      const prevM = this.MONTHS_AV[mi + 1];
+      prev = prevM ? this.aggregate(this.scaledResults(prevM.value, ugId)) : curr;
+      monthLabel = this.MONTHS_AV[mi] ? this.MONTHS_AV[mi].label : dashMonth;
+      prevLabel = prevM ? prevM.label : "—";
+      cycleStatus = this.MONTHS_AV[mi] ? this.MONTHS_AV[mi].status : "aberto";
+      currCrit = this.CRITICAL[dashMonth] || 0;
+      prevCrit = prevM ? (this.CRITICAL[prevM.value] !== undefined ? this.CRITICAL[prevM.value] : currCrit) : currCrit;
+      ubList = ugId ? this.UBS.filter((b) => b.ugId === ugId) : this.UBS;
+      alerts = this.ALERTS.filter((a) => a.month === dashMonth && (!ugId || a.unit === ugId));
+      trend = [...this.MONTHS_AV].reverse().map((m) => {
+        const agg = this.aggregate(this.scaledResults(m.value, ugId));
+        return { label: m.label.split(" ")[0].slice(0, 3), Receita: agg.revenue, Repasse: agg.ownerPayment, Spread: agg.spread, Geracao: agg.generation, Consumo: agg.compensated + agg.generation * 0.05 };
+      });
+    }
     const isClosed = cycleStatus === "fechado";
-    const currCrit = this.CRITICAL[dashMonth] || 0;
-    const prevCrit = prevM ? (this.CRITICAL[prevM.value] !== undefined ? this.CRITICAL[prevM.value] : currCrit) : currCrit;
-    const ubList = ugId ? this.UBS.filter((b) => b.ugId === ugId) : this.UBS;
-    const alerts = this.ALERTS.filter((a) => a.month === dashMonth && (!ugId || a.unit === ugId));
 
     const mkDelta = (c, p, invert, label) => {
       const d = this.delta(c, p);
@@ -3207,9 +3243,12 @@ class Component extends DCLogic {
       hasIcon: !!o.iconEl, hasDelta: false, hasHint: !!o.hint, deltaText: "", deltaColor: "", deltaLabel: "", deltaIcon: null, hint: o.hint || "", onClick: o.onClick || undefined, ...o,
     });
 
+    const _ugCount = _rtData ? (_rtData.generatingUnitCount || 0) : (ugId ? 1 : this.UGS.length);
+    const _ugActiveHint = _rtData ? (_rtData.activeUGCount || _rtData.generatingUnitCount || 0) : (ugId ? this.UGS.filter((u) => u.id === ugId && u.status === "ativa").length : this.UGS.filter((u) => u.status === "ativa").length);
+    const _ubCount = _rtData ? (_rtData.beneficiaryUnitCount || 0) : ubList.length;
     const opKpis = [
-      kpi({ label: "Unidades Geradoras", value: String(ugId ? 1 : this.UGS.length), hint: (ugId ? this.UGS.filter((u) => u.id === ugId && u.status === "ativa").length : this.UGS.filter((u) => u.status === "ativa").length) + " ativas", iconEl: this.I("sun", 16, "#00a86b") }),
-      kpi({ label: "Unidades Beneficiárias", value: String(ubList.length), hint: ubList.length + " ativas", iconEl: this.I("building", 16, "#00a86b") }),
+      kpi({ label: "Unidades Geradoras", value: String(_ugCount), hint: _ugActiveHint + " ativas", iconEl: this.I("sun", 16, "#00a86b") }),
+      kpi({ label: "Unidades Beneficiárias", value: String(_ubCount), hint: _ubCount + " ativas", iconEl: this.I("building", 16, "#00a86b") }),
       kpi({ label: "Créditos gerados", value: kwh(curr.generation), iconEl: this.I("zap", 16, "#00a86b"), onClick: () => this.setState({ drill: { kind: "generation" } }), ...mkDelta(curr.generation, prev.generation) }),
       kpi({ label: "Créditos compensados", value: kwh(curr.compensated), tone: "accent", iconEl: this.I("trendingUp", 16, "#00a86b"), onClick: () => this.setState({ drill: { kind: "compensated" } }), ...mkDelta(curr.compensated, prev.compensated) }),
       kpi({ label: "Saldo atual", value: kwh(curr.balance), iconEl: this.I("wallet", 16, "#00a86b"), onClick: () => this.setState({ drill: { kind: "balance" } }), ...mkDelta(curr.balance, prev.balance) }),
@@ -3223,11 +3262,6 @@ class Component extends DCLogic {
       kpi({ label: "Alertas críticos", value: String(currCrit), tone: "negative", iconEl: this.I("alertTriangle", 16, "#00a86b"), onClick: () => this.setState({ view: "alertas" }), ...mkDelta(currCrit, prevCrit, true) }),
     ];
 
-    // Trend
-    const trend = [...this.MONTHS_AV].reverse().map((m) => {
-      const agg = this.aggregate(this.scaledResults(m.value, ugId));
-      return { label: m.label.split(" ")[0].slice(0, 3), Receita: agg.revenue, Repasse: agg.ownerPayment, Spread: agg.spread, Geracao: agg.generation, Consumo: agg.compensated + agg.generation * 0.05 };
-    });
     const kFmt = (v) => (v >= 1000 ? Math.round(v / 1000) + "k" : String(Math.round(v)));
     const brlFmt = (v) => (v >= 1000 ? "R$" + Math.round(v / 1000) + "k" : "R$" + Math.round(v));
     const chartGenVsCons = results.map((r) => ({ name: r.ug.name.replace("UG Solar ", ""), Geração: Math.round(r.generation), Consumo: Math.round(r.rows.reduce((s, x) => s + x.ub.monthlyConsumption, 0)) }));
@@ -3313,7 +3347,8 @@ class Component extends DCLogic {
           drillVals.drillActions = [actBtn("Abrir cadastro", () => this.setState({ view: "ub", drill: null })), actBtn("Ver fatura ESA", () => this.setState({ view: "fatura", invUbId: row.ub.id, drill: null, compDetailsOpen: false }), true), actBtn("Gerar relatório", () => this.setState({ view: "relatorios", drill: null }), true)];
         }
       } else if (drill.kind === "alert") {
-        const a = this.ALERTS.find((x) => x.id === drill.id);
+        const _alertSrc = S._rtMode === "real" && S._rtAlerts ? S._rtAlerts : this.ALERTS;
+        const a = _alertSrc.find((x) => x.id === drill.id);
         if (a) {
           drillVals.drillTitle = a.code;
           drillVals.drillHasPill = true;
@@ -4301,10 +4336,10 @@ class Component extends DCLogic {
       openFaturaExample: () => this.setState({ view: "fatura", compDetailsOpen: false }),
 
       // dashboard
-      dashMonth, dashMonths: this.MONTHS_AV, dashMonthLabel: monthLabel,
+      dashMonth, dashMonths: (S._rtMode === "real" && S._rtMonths) ? S._rtMonths : this.MONTHS_AV, dashMonthLabel: monthLabel,
       onDashMonthChange: (e) => this.setState({ dashMonth: e.target.value }),
       ugFilter: S.ugFilter,
-      ugFilterOptions: [{ value: "all", label: "Todas as UGs" }, ...this.UGS.map((u) => ({ value: u.id, label: u.name }))],
+      ugFilterOptions: [{ value: "all", label: "Todas as UGs" }, ...(S._rtMode === "real" && S._rtUgs ? S._rtUgs : this.UGS).map((u) => ({ value: u.id, label: u.name }))],
       onUgFilterChange: (e) => this.setState({ ugFilter: e.target.value }),
       filterIcon: this.I("filter", 14, "#94a3b8"),
       cycleBadge: this.cycleBadgeFor(cycleStatus), isClosed,
@@ -4685,6 +4720,42 @@ class Component extends DCLogic {
   componentDidMount() {
     // Reaplica valores controlados dos <select> após o streaming das <option>
     [100, 600, 1500].forEach((ms) => setTimeout(() => this.forceUpdate(), ms));
+    // GATE 3 — inicializa modo real se bridge já estiver pronta
+    this._initRealMode();
+    window.addEventListener("esa:runtime:ready", this._initRealMode.bind(this));
+  }
+
+  componentDidUpdate(prevProps, prevState) {
+    if (this.state._rtMode !== "real") return;
+    const monthChanged = this.state.dashMonth !== prevState.dashMonth;
+    const ugChanged = this.state.ugFilter !== prevState.ugFilter;
+    if ((monthChanged || ugChanged) && !this.state._rtLoading) {
+      this._loadRealDash(this.state.dashMonth, this.state.ugFilter);
+    }
+  }
+
+  _initRealMode() {
+    const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
+    if (!rt || rt.mode !== "real" || this.state._rtMode === "real") return;
+    Promise.all([rt.listMonths(), rt.listGeneratingUnits()]).then((result) => {
+      const months = result[0]; const ugs = result[1];
+      const initMonth = (months[0] || {}).value || this.state.dashMonth;
+      this.setState({ _rtMode: "real", _rtMonths: months, _rtUgs: ugs, dashMonth: initMonth });
+      this._loadRealDash(initMonth, "all");
+    }).catch((err) => { console.error("[ESA] Real mode init error", err); });
+  }
+
+  _loadRealDash(month, ugFilter) {
+    const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
+    if (!rt || rt.mode !== "real") return;
+    const ugId = ugFilter && ugFilter !== "all" ? ugFilter : undefined;
+    this.setState({ _rtLoading: true });
+    Promise.all([rt.getDashboardData({ month, ugId }), rt.listAlerts({ month })]).then((result) => {
+      this.setState({ _rtDash: result[0], _rtAlerts: result[1], _rtLoading: false });
+    }).catch((err) => {
+      console.error("[ESA] Dashboard data load error", err);
+      this.setState({ _rtLoading: false });
+    });
   }
 
   showToast(title, desc) {

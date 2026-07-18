@@ -48,6 +48,14 @@ function unwrap(result: unknown): unknown {
   return r.data;
 }
 
+function safeCall(fn: () => unknown): unknown {
+  try {
+    return unwrap(fn());
+  } catch {
+    return null;
+  }
+}
+
 function ok(): MutationResult { return { ok: true }; }
 
 function emptyAggregateMetrics(): AggregateMetrics {
@@ -91,29 +99,49 @@ export function createEsaRuntimeProvider(uiProvider: UIProvider): EnergyCreditsR
     // ---- Dashboard ----
     async getDashboardData(filter): Promise<DashboardData> {
       const { month, ugId } = filter;
-      // NOT_IMPLEMENTED: Gate 3 — map getExecutiveSummary + getMonthlyTrend to DashboardData
       const cycleStatus: CycleStatus = AVAILABLE_MONTHS.find((m) => m.value === month)?.status ?? 'aberto';
-      const rawSummary = unwrap(uiProvider.getExecutiveSummary({ referenceMonth: month, ugId }));
+
+      // Current month executive summary
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const s = rawSummary as any;
-      const current: AggregateMetrics = s ? {
-        generation:   s.totalGenerationKwh     ?? 0,
-        compensated:  s.totalCompensatedKwh    ?? 0,
-        balance:      s.totalCurrentBalanceKwh ?? 0,
-        revenue:      s.totalEsaRevenue        ?? 0,
-        ownerPayment: s.totalOwnerReturn       ?? 0,
-        spread:       s.grossSpread            ?? 0,
-        savings:      s.totalMonthlyDiscount   ?? 0,
+      const s = safeCall(() => uiProvider.getExecutiveSummary({ referenceMonth: month, ugId })) as any;
+      const toMetrics = (r: any): AggregateMetrics => r ? {
+        generation:   r.totalGenerationKwh     ?? 0,
+        compensated:  r.totalCompensatedKwh    ?? 0,
+        balance:      r.totalCurrentBalanceKwh ?? 0,
+        revenue:      r.totalEsaRevenue        ?? 0,
+        ownerPayment: r.totalOwnerReturn       ?? 0,
+        spread:       r.grossSpread            ?? 0,
+        savings:      r.totalMonthlyDiscount   ?? 0,
       } : emptyAggregateMetrics();
-      const results: SettlementResult[] = []; // NOT_IMPLEMENTED: Gate 3
-      const trendData: TrendRow[] = []; // NOT_IMPLEMENTED: Gate 3
+      const current = toMetrics(s);
+
+      // Previous month for MoM deltas
+      const mi = AVAILABLE_MONTHS.findIndex((m) => m.value === month);
+      const prevM = AVAILABLE_MONTHS[mi + 1];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sPrev = prevM ? safeCall(() => uiProvider.getExecutiveSummary({ referenceMonth: prevM.value, ugId })) as any : null;
+      const previous: AggregateMetrics | null = sPrev ? toMetrics(sPrev) : null;
+
+      // Trend from financial summaries (Receita × Repasse chart)
+      const trendData: TrendRow[] = AVAILABLE_MONTHS.slice().reverse().map((m) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const d = safeCall(() => uiProvider.getFinancialSummary({ referenceMonth: m.value, ugId })) as any;
+        return {
+          month: m.value, label: m.label.split(' ')[0].slice(0, 3),
+          Receita: d?.totalEsaRevenue  ?? 0, Repasse: d?.totalOwnerReturn ?? 0,
+          Spread:  d?.grossSpread      ?? 0,
+          Geracao: 0, Consumo: 0, // Core não expõe geração/consumo por ciclo
+        };
+      });
+
       return {
-        month, cycleStatus, current, previous: null,
-        criticalAlerts: s?.criticalAlertCount ?? 0,
-        generatingUnitCount: s?.generatingUnitCount ?? 0,
-        beneficiaryUnitCount: s?.beneficiaryUnitCount ?? 0,
-        activeUGCount: s?.generatingUnitCount ?? 0,
-        results, trendData,
+        month, cycleStatus, current, previous,
+        criticalAlerts:       s?.criticalAlertCount    ?? 0,
+        generatingUnitCount:  s?.generatingUnitCount   ?? 0,
+        beneficiaryUnitCount: s?.beneficiaryUnitCount  ?? 0,
+        activeUGCount:        s?.generatingUnitCount   ?? 0,
+        results: [], // NOT_IMPLEMENTED: Core não expõe SettlementResult por UG
+        trendData,
       };
     },
     async getMonthlyTrend(filter): Promise<TrendRow[]> {

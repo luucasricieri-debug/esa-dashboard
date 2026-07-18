@@ -1092,25 +1092,49 @@
 					referenceMonth: month,
 					ugId
 				}));
+				const toMetrics = (r) => r ? {
+					generation: r.totalGenerationKwh ?? 0,
+					compensated: r.totalCompensatedKwh ?? 0,
+					balance: r.totalCurrentBalanceKwh ?? 0,
+					revenue: r.totalEsaRevenue ?? 0,
+					ownerPayment: r.totalOwnerReturn ?? 0,
+					spread: r.grossSpread ?? 0,
+					savings: r.totalMonthlyDiscount ?? 0
+				} : emptyAggregateMetrics();
+				const current = toMetrics(s);
+				const mi = AVAILABLE_MONTHS.findIndex((m) => m.value === month);
+				const prevM = AVAILABLE_MONTHS[mi + 1];
+				const sPrev = prevM ? unwrap(uiProvider.getExecutiveSummary({
+					referenceMonth: prevM.value,
+					ugId
+				})) : null;
+				const previous = sPrev ? toMetrics(sPrev) : null;
+				const trendData = AVAILABLE_MONTHS.slice().reverse().map((m) => {
+					const d = unwrap(uiProvider.getFinancialSummary({
+						referenceMonth: m.value,
+						ugId
+					}));
+					return {
+						month: m.value,
+						label: m.label.split(" ")[0].slice(0, 3),
+						Receita: d?.totalEsaRevenue ?? 0,
+						Repasse: d?.totalOwnerReturn ?? 0,
+						Spread: d?.grossSpread ?? 0,
+						Geracao: 0,
+						Consumo: 0
+					};
+				});
 				return {
 					month,
 					cycleStatus,
-					current: s ? {
-						generation: s.totalGenerationKwh ?? 0,
-						compensated: s.totalCompensatedKwh ?? 0,
-						balance: s.totalCurrentBalanceKwh ?? 0,
-						revenue: s.totalEsaRevenue ?? 0,
-						ownerPayment: s.totalOwnerReturn ?? 0,
-						spread: s.grossSpread ?? 0,
-						savings: s.totalMonthlyDiscount ?? 0
-					} : emptyAggregateMetrics(),
-					previous: null,
+					current,
+					previous,
 					criticalAlerts: s?.criticalAlertCount ?? 0,
 					generatingUnitCount: s?.generatingUnitCount ?? 0,
 					beneficiaryUnitCount: s?.beneficiaryUnitCount ?? 0,
 					activeUGCount: s?.generatingUnitCount ?? 0,
 					results: [],
-					trendData: []
+					trendData
 				};
 			},
 			async getMonthlyTrend(filter) {
