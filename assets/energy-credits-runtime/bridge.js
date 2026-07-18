@@ -1539,21 +1539,34 @@
 	}
 	async function initBridge() {
 		if (resolveMode() === "demo") {
+			window.__ESA_RUNTIME_STATUS__ = { status: "ready" };
 			window.ESA_ENERGY_CREDITS_RUNTIME = demoRuntimeProvider;
 			window.dispatchEvent(new CustomEvent("esa:runtime:ready", { detail: { mode: "demo" } }));
 			return;
 		}
 		const provider = await resolveRealProvider();
 		if (provider) {
+			window.__ESA_RUNTIME_STATUS__ = { status: "ready" };
 			window.ESA_ENERGY_CREDITS_RUNTIME = provider;
 			window.dispatchEvent(new CustomEvent("esa:runtime:ready", { detail: { mode: "real" } }));
-		} else window.dispatchEvent(new CustomEvent("esa:runtime:error", { detail: { reason: "provider_unavailable" } }));
+		} else {
+			window.__ESA_RUNTIME_STATUS__ = {
+				status: "error",
+				reason: "provider_unavailable"
+			};
+			window.dispatchEvent(new CustomEvent("esa:runtime:error", { detail: { reason: "provider_unavailable" } }));
+		}
 	}
 	if (resolveMode() === "demo") {
+		window.__ESA_RUNTIME_STATUS__ = { status: "ready" };
 		window.ESA_ENERGY_CREDITS_RUNTIME = demoRuntimeProvider;
 		window.dispatchEvent(new CustomEvent("esa:runtime:ready", { detail: { mode: "demo" } }));
 	} else initBridge().catch((err) => {
 		console.error("[ESA-Bridge] Fatal init error", err);
+		window.__ESA_RUNTIME_STATUS__ = {
+			status: "error",
+			reason: "init_exception"
+		};
 		window.dispatchEvent(new CustomEvent("esa:runtime:error", { detail: {
 			reason: "init_exception",
 			error: err?.message

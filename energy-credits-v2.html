@@ -5568,6 +5568,12 @@ class Component extends DCLogic {
     window.addEventListener("esa:runtime:ready", this._initRealMode.bind(this));
     // GATE 5B — captura erro explícito de bridge (never-demo policy no runtime real)
     window.addEventListener("esa:runtime:error", this._handleRuntimeError.bind(this));
+    // Hotfix: safety timeout — garante transição para erro honesto se ainda em booting após 8s
+    try {
+      if (new URLSearchParams(window.location.search).get('runtime') === 'real') {
+        setTimeout(() => { if (this.state._rtStatus === 'booting') this.setState({ _rtStatus: 'error', _rtError: 'timeout' }); }, 8000);
+      }
+    } catch(e) {}
   }
 
   _handleRuntimeError(evt) {
@@ -5633,7 +5639,18 @@ class Component extends DCLogic {
 
   _initRealMode() {
     const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
-    if (!rt) return;
+    if (!rt) {
+      // Hotfix: bridge dispara esa:runtime:error antes de componentDidMount registrar o listener
+      // Lê __ESA_RUNTIME_STATUS__ para recuperar o resultado já publicado pelo bridge
+      const bridgeSt = window.__ESA_RUNTIME_STATUS__;
+      if (bridgeSt && bridgeSt.status === 'error') {
+        try {
+          const reqReal = new URLSearchParams(window.location.search).get('runtime') === 'real';
+          if (reqReal && this.state._rtStatus === 'booting') this.setState({ _rtStatus: 'error', _rtError: bridgeSt.reason || 'provider_unavailable' });
+        } catch(e) {}
+      }
+      return;
+    }
     // GATE 5B — if bridge gave a non-real provider when real was requested, show error
     if (rt.mode !== "real") {
       try {

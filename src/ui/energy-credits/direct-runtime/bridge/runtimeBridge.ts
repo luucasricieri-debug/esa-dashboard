@@ -12,6 +12,8 @@ declare global {
     ESA_ENERGY_CREDITS_RUNTIME: EnergyCreditsRuntimeContract;
     // Set by the legacy bridge when real mode is requested
     __ESA_UI_PROVIDER__?: unknown;
+    // Written before each event so componentDidMount can read the result even if the event fired first
+    __ESA_RUNTIME_STATUS__?: { status: 'ready' | 'error'; reason?: string };
   }
 }
 
@@ -45,6 +47,7 @@ async function initBridge(): Promise<void> {
   const mode = resolveMode();
 
   if (mode === 'demo') {
+    window.__ESA_RUNTIME_STATUS__ = { status: 'ready' };
     window.ESA_ENERGY_CREDITS_RUNTIME = demoRuntimeProvider;
     window.dispatchEvent(new CustomEvent('esa:runtime:ready', { detail: { mode: 'demo' } }));
     return;
@@ -52,10 +55,12 @@ async function initBridge(): Promise<void> {
 
   const provider = await resolveRealProvider();
   if (provider) {
+    window.__ESA_RUNTIME_STATUS__ = { status: 'ready' };
     window.ESA_ENERGY_CREDITS_RUNTIME = provider;
     window.dispatchEvent(new CustomEvent('esa:runtime:ready', { detail: { mode: 'real' } }));
   } else {
     // Never assign demo — dispatch explicit error so UI can show honest state.
+    window.__ESA_RUNTIME_STATUS__ = { status: 'error', reason: 'provider_unavailable' };
     window.dispatchEvent(new CustomEvent('esa:runtime:error', { detail: { reason: 'provider_unavailable' } }));
   }
 }
@@ -63,11 +68,13 @@ async function initBridge(): Promise<void> {
 // Run immediately — synchronous assignment for demo, async for real.
 // Demo path is guaranteed synchronous so the DC Component can call methods on first render.
 if (resolveMode() === 'demo') {
+  window.__ESA_RUNTIME_STATUS__ = { status: 'ready' };
   window.ESA_ENERGY_CREDITS_RUNTIME = demoRuntimeProvider;
   window.dispatchEvent(new CustomEvent('esa:runtime:ready', { detail: { mode: 'demo' } }));
 } else {
   initBridge().catch((err) => {
     console.error('[ESA-Bridge] Fatal init error', err);
+    window.__ESA_RUNTIME_STATUS__ = { status: 'error', reason: 'init_exception' };
     window.dispatchEvent(new CustomEvent('esa:runtime:error', { detail: { reason: 'init_exception', error: (err as Error)?.message } }));
   });
 }
