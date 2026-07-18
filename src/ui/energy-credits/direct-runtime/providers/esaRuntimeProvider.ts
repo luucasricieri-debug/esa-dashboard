@@ -17,6 +17,7 @@ import type {
   AlertFilter,
   AllocationOverride,
   AllocationPlan,
+  AllocationRow,
   BeneficiaryInvoice,
   ConsumptionAverage,
   CsvImportType,
@@ -180,12 +181,13 @@ export function createEsaRuntimeProvider(uiProvider: UIProvider): EnergyCreditsR
       if (!d) return null;
       return { name: d.name ?? '', document: d.document ?? '', pixKey: d.pixKey ?? '', pixType: d.pixType ?? 'cpf' };
     },
-    async getAppliedPrice(_ugId: string, _month: string): Promise<number> {
-      // NOT_IMPLEMENTED: Gate 3 — Core does not expose historical applied prices per cycle
-      return 0;
+    async getAppliedPrice(ugId: string, _month: string): Promise<number> {
+      // Gate 3C: Core has no cycle-level applied price. Return standard purchase price.
+      const ug = await this.getGeneratingUnit(ugId);
+      return ug?.purchasePrice ?? 0;
     },
     async updateCyclePrice(_ugId, _month, _price, _reason) {
-      // NOT_IMPLEMENTED: Gate 3
+      // NOT_IMPLEMENTED: Gate 3C — Core has no cycle price update endpoint. persist=false.
       return ok();
     },
 
@@ -230,18 +232,73 @@ export function createEsaRuntimeProvider(uiProvider: UIProvider): EnergyCreditsR
 
     // ---- Allocation Plan ----
     async getAllocationPlan(ugId: string, month: string, overrides: Record<string, AllocationOverride> = {}): Promise<AllocationPlan | null> {
+      // Gate 3C: Build AllocationPlan from real Core data.
+      // Core's getAllocationPlan returns { generatingUnitId, beneficiaries } — shape mismatch.
+      // We derive the plan from listBeneficiaryUnits + getGeneratingUnit + getGeneratingUnitSummary.
+      // This is operational planning (credit distribution), not billing (no invoice calculation).
+      const [ug, ubs] = await Promise.all([
+        this.getGeneratingUnit(ugId),
+        this.listBeneficiaryUnits({ ugId }),
+      ]);
+      if (!ug) return null;
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const d = unwrap(uiProvider.getAllocationPlan(ugId, month, { overrides })) as any;
-      // NOT_IMPLEMENTED: Gate 3 — Core shape needs full mapping to AllocationPlan
-      if (!d) return null;
-      return null; // NOT_IMPLEMENTED: Gate 3 — AllocationPlan shape mismatch with Core
+      const cycSummary = safeCall(() => uiProvider.getGeneratingUnitSummary(ugId, { referenceMonth: month })) as any;
+      const generation = cycSummary?.totalGenerationKwh ?? (ug.monthlyGeneration ?? 0);
+
+      // Pre-compute needs per UB (for recommendedPct denominator)
+      const needs = ubs.map((ub) => {
+        const ov = overrides[ub.id] ?? {};
+        const pm = ov.preventiveMargin ?? (ub.preventiveMargin ?? 0);
+        const ma = (ub.annualAverage ?? 0) / 12;
+        return Math.max(0, ma * (1 + pm) - (ub.previousCreditBalance ?? 0));
+      });
+      const sumNeeds = needs.reduce((s, n) => s + n, 0);
+
+      const rows: AllocationRow[] = ubs.map((ub, i) => {
+        const ov = overrides[ub.id] ?? {};
+        const allocationPct = ov.allocationPct ?? (ub.allocationPct ?? 0);
+        const preventiveMargin = ov.preventiveMargin ?? (ub.preventiveMargin ?? 0);
+        const monthlyAverage = (ub.annualAverage ?? 0) / 12;
+        const targetCredit = monthlyAverage * (1 + preventiveMargin);
+        const currentBalance = ub.previousCreditBalance ?? 0;
+        const recommendedAdd = needs[i];
+        const recommendedPct = sumNeeds > 0 ? recommendedAdd / sumNeeds : 0;
+        const planned = generation * allocationPct;
+        const consumption = ub.monthlyConsumption ?? 0;
+        const avail = currentBalance + planned;
+        const compensated = Math.min(consumption, avail);
+        const finalBalance = avail - compensated;
+        return {
+          ub, monthlyAverage, preventiveMargin, targetCredit, currentBalance,
+          recommendedAdd, recommendedPct, allocationPct, planned, received: planned,
+          consumption, compensated, finalBalance,
+          coverageMonths: monthlyAverage > 0 ? finalBalance / monthlyAverage : 0,
+        } as AllocationRow;
+      });
+
+      const totalCompensated = rows.reduce((s, r) => s + r.compensated, 0);
+      const appliedPrice = ug.purchasePrice ?? 0;
+
+      return {
+        ug, generation, rows,
+        totalPct: rows.reduce((s, r) => s + r.allocationPct, 0),
+        totalProjected: rows.reduce((s, r) => s + r.planned, 0),
+        totalCompensated,
+        totalFinalBalance: rows.reduce((s, r) => s + r.finalBalance, 0),
+        totalRecommended: rows.reduce((s, r) => s + r.recommendedAdd, 0),
+        totalConsumption: rows.reduce((s, r) => s + r.consumption, 0),
+        ownerPayment: totalCompensated * appliedPrice,
+        esaRevenue: rows.reduce((s, r) => s + r.compensated * (r.ub.esaPrice ?? 0), 0),
+      };
     },
     async saveAllocationOverrides(_ugId, _month, _overrides) {
-      // NOT_IMPLEMENTED: Gate 3
+      // NOT_IMPLEMENTED: Gate 3C — Core has no endpoint to persist manual allocation overrides.
+      // persist=false: overrides are local to this session only.
       return ok();
     },
     async closeMonthlySettlement(_ugId, _month) {
-      // NOT_IMPLEMENTED: Gate 3
+      // NOT_IMPLEMENTED: Gate 3C — Core does not expose a cycle-close endpoint via uiProvider.
       return ok();
     },
 

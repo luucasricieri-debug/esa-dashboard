@@ -2726,6 +2726,8 @@ class Component extends DCLogic {
     _rtMode: "demo", _rtLoading: false, _rtDash: null, _rtMonths: null, _rtUgs: null, _rtAlerts: null,
     // GATE 3B — lazy-loaded UG/UB detail and UB list
     _rtUbs: null, _rtUbsLoading: false, _rtUgDetail: null, _rtUgDetailLoading: false, _rtUbDetail: null, _rtUbDetailLoading: false,
+    // GATE 3C — Apuração Mensal
+    _rtApPlan: null, _rtApPlanLoading: false, _rtApSaving: false, _rtApClosing: false,
   };
 
   // ============================== DADOS (porta fiel do mockData/provider do Lovable) ==============================
@@ -3389,34 +3391,13 @@ class Component extends DCLogic {
     }
 
     // ---------- APURAÇÃO ----------
-    const apUg = this.UGS.find((u) => u.id === S.apUgId) || this.UGS[0];
-    const effOv = mode === "manual" ? S.ov : Object.fromEntries(Object.entries(S.ov).filter(([, v]) => v.preventiveMargin !== undefined).map(([k, v]) => [k, { preventiveMargin: v.preventiveMargin }]));
-    const plan = this.computeAllocationPlan(apUg, effOv);
-    const apStatus = (this.MONTHS_AV.find((m) => m.value === S.apMonth) || {}).status || "aberto";
-    const displayRows = plan.rows.map((r) => ({ ...r, displayPct: mode === "auto" ? r.recommendedPct : r.allocationPct, displayPlanned: mode === "auto" ? plan.generation * r.recommendedPct : r.planned }));
-    const totalDisplayPct = displayRows.reduce((s, r) => s + r.displayPct, 0);
-    const pctInvalid = Math.abs(totalDisplayPct - 1) > 0.0005;
-    const totPlanned = displayRows.reduce((s, r) => s + r.displayPlanned, 0);
-    const priceKey = S.apUgId + "-" + S.apMonth;
-    const appliedPrice = S.cyclePriceOverride[priceKey] !== undefined ? S.cyclePriceOverride[priceKey] : apUg.purchasePrice;
-
-    const cycleKpis = [
-      { label: "Geração disponível", value: kwh(plan.generation), valueColor: "#00a86b", hasHint: false, hint: "", title: "" },
-      { label: "Recomendado", value: kwh(plan.totalRecommended), valueColor: "#062e20", hasHint: false, hint: "", title: "" },
-      { label: "Planejado", value: kwh(totPlanned), valueColor: "#062e20", hasHint: false, hint: "", title: "" },
-      { label: "Recebido", value: kwh(totPlanned), valueColor: "#062e20", hasHint: false, hint: "", title: "" },
-      { label: "Compensado", value: kwh(plan.totalCompensated), valueColor: "#00875a", hasHint: false, hint: "", title: "" },
-      { label: "Saldo total nas UCs", value: kwh(plan.totalFinalBalance), valueColor: "#062e20", hasHint: true, hint: "Soma dos saldos das UCs beneficiárias", title: "Soma dos créditos acumulados nas Unidades Consumidoras Beneficiárias. Não representa saldo disponível na Unidade Geradora." },
-      { label: "Beneficiárias", value: String(plan.rows.length), valueColor: "#062e20", hasHint: false, hint: "", title: "" },
-    ];
-
     const covBadge = (m) => {
       const txt = m.toFixed(2).replace(".", ",") + " mês · ";
       if (m <= 0.25) return { covText: txt + "Baixa", covBg: "#fff1f2", covColor: "#be123c", covBorder: "#fecdd3" };
       if (m > 1.5) return { covText: txt + "Elevada", covBg: "#fffbeb", covColor: "#92400e", covBorder: "#fde68a" };
       return { covText: txt + "Adequada", covBg: "#eaf8f1", covColor: "#00875a", covBorder: "#a9e4cb" };
     };
-    const allocationRows = displayRows.map((r) => {
+    const mkAllocationRows = (displayRows) => displayRows.map((r) => {
       const diff = r.displayPlanned - r.recommendedAdd;
       return {
         name: r.ub.name, uc: r.ub.uc,
@@ -3436,10 +3417,89 @@ class Component extends DCLogic {
         ...covBadge(r.monthlyAverage > 0 ? Math.max(0, r.currentBalance + r.displayPlanned - Math.min(r.consumption, r.currentBalance + r.displayPlanned)) / r.monthlyAverage : 0),
       };
     });
-    const dispCompensated = displayRows.reduce((s, r) => s + Math.min(r.consumption, r.currentBalance + r.displayPlanned), 0);
-    const dispFinal = displayRows.reduce((s, r) => s + Math.max(0, r.currentBalance + r.displayPlanned - Math.min(r.consumption, r.currentBalance + r.displayPlanned)), 0);
-    const ownerPayment = dispCompensated * appliedPrice;
-    const esaRevenue = displayRows.reduce((s, r) => s + Math.min(r.consumption, r.currentBalance + r.displayPlanned) * r.ub.esaPrice, 0);
+
+    let apUg, plan, apStatus, displayRows, totalDisplayPct, pctInvalid, totPlanned, appliedPrice, cycleKpis, allocationRows, dispCompensated, dispFinal, ownerPayment, esaRevenue;
+    const priceKey = S.apUgId + "-" + S.apMonth;
+
+    if (S._rtMode === "real") {
+      // GATE 3C — real mode: use lazy-loaded _rtApPlan; apply local overrides on top
+      const _rtPlan = S._rtApPlan;
+      const _rtUgSrc = S._rtUgs || [];
+      apUg = _rtUgSrc.find((u) => u.id === S.apUgId) || _rtUgSrc[0] || null;
+      apStatus = ((S._rtMonths || this.MONTHS_AV).find((m) => m.value === S.apMonth) || {}).status || "aberto";
+
+      if (_rtPlan && _rtPlan.rows) {
+        const rows = _rtPlan.rows;
+        displayRows = rows.map((r) => {
+          const ov = S.ov[r.ub.id] || {};
+          const effPct = mode === "auto" ? r.recommendedPct : (ov.allocationPct !== undefined ? ov.allocationPct : r.allocationPct);
+          const effPm = ov.preventiveMargin !== undefined ? ov.preventiveMargin : r.preventiveMargin;
+          const effRow = { ...r, preventiveMargin: effPm };
+          return { ...effRow, displayPct: effPct, displayPlanned: _rtPlan.generation * effPct };
+        });
+        totalDisplayPct = displayRows.reduce((s, r) => s + r.displayPct, 0);
+        pctInvalid = rows.length > 0 && Math.abs(totalDisplayPct - 1) > 0.0005;
+        totPlanned = displayRows.reduce((s, r) => s + r.displayPlanned, 0);
+        appliedPrice = S.cyclePriceOverride[priceKey] !== undefined ? S.cyclePriceOverride[priceKey] : (_rtPlan.ug ? _rtPlan.ug.purchasePrice : (apUg ? apUg.purchasePrice : 0));
+        dispCompensated = displayRows.reduce((s, r) => s + Math.min(r.consumption, r.currentBalance + r.displayPlanned), 0);
+        dispFinal = displayRows.reduce((s, r) => s + Math.max(0, r.currentBalance + r.displayPlanned - Math.min(r.consumption, r.currentBalance + r.displayPlanned)), 0);
+        // Financial summary from provider plan totals (preço aplicado × compensado = repasse ao proprietário)
+        ownerPayment = dispCompensated * appliedPrice;
+        esaRevenue = _rtPlan.esaRevenue !== undefined ? _rtPlan.esaRevenue : displayRows.reduce((s, r) => s + Math.min(r.consumption, r.currentBalance + r.displayPlanned) * (r.ub.esaPrice || 0), 0);
+        cycleKpis = [
+          { label: "Geração disponível", value: kwh(_rtPlan.generation), valueColor: "#00a86b", hasHint: false, hint: "", title: "" },
+          { label: "Recomendado", value: kwh(_rtPlan.totalRecommended), valueColor: "#062e20", hasHint: false, hint: "", title: "" },
+          { label: "Planejado", value: kwh(totPlanned), valueColor: "#062e20", hasHint: false, hint: "", title: "" },
+          { label: "Recebido", value: kwh(totPlanned), valueColor: "#062e20", hasHint: false, hint: "", title: "" },
+          { label: "Compensado", value: kwh(dispCompensated), valueColor: "#00875a", hasHint: false, hint: "", title: "" },
+          { label: "Saldo total nas UCs", value: kwh(dispFinal), valueColor: "#062e20", hasHint: true, hint: "Soma dos saldos das UCs beneficiárias", title: "Soma dos créditos acumulados nas Unidades Consumidoras Beneficiárias. Não representa saldo disponível na Unidade Geradora." },
+          { label: "Beneficiárias", value: String(rows.length), valueColor: "#062e20", hasHint: false, hint: "", title: "" },
+        ];
+        allocationRows = mkAllocationRows(displayRows);
+      } else {
+        // Loading or no data — safe empty state
+        displayRows = []; totalDisplayPct = 0; pctInvalid = false; totPlanned = 0;
+        appliedPrice = S.cyclePriceOverride[priceKey] !== undefined ? S.cyclePriceOverride[priceKey] : (apUg ? apUg.purchasePrice : 0);
+        dispCompensated = 0; dispFinal = 0; ownerPayment = 0; esaRevenue = 0;
+        const _apLoading = S._rtApPlanLoading;
+        const _loadingTxt = _apLoading ? "Carregando..." : "—";
+        cycleKpis = [
+          { label: "Geração disponível", value: _loadingTxt, valueColor: "#00a86b", hasHint: false, hint: "", title: "" },
+          { label: "Recomendado", value: _loadingTxt, valueColor: "#062e20", hasHint: false, hint: "", title: "" },
+          { label: "Planejado", value: _loadingTxt, valueColor: "#062e20", hasHint: false, hint: "", title: "" },
+          { label: "Recebido", value: _loadingTxt, valueColor: "#062e20", hasHint: false, hint: "", title: "" },
+          { label: "Compensado", value: _loadingTxt, valueColor: "#00875a", hasHint: false, hint: "", title: "" },
+          { label: "Saldo total nas UCs", value: _loadingTxt, valueColor: "#062e20", hasHint: true, hint: "Soma dos saldos das UCs beneficiárias", title: "" },
+          { label: "Beneficiárias", value: _loadingTxt, valueColor: "#062e20", hasHint: false, hint: "", title: "" },
+        ];
+        allocationRows = [];
+      }
+    } else {
+      // DEMO MODE — preservado integralmente
+      apUg = this.UGS.find((u) => u.id === S.apUgId) || this.UGS[0];
+      const effOv = mode === "manual" ? S.ov : Object.fromEntries(Object.entries(S.ov).filter(([, v]) => v.preventiveMargin !== undefined).map(([k, v]) => [k, { preventiveMargin: v.preventiveMargin }]));
+      plan = this.computeAllocationPlan(apUg, effOv);
+      apStatus = (this.MONTHS_AV.find((m) => m.value === S.apMonth) || {}).status || "aberto";
+      displayRows = plan.rows.map((r) => ({ ...r, displayPct: mode === "auto" ? r.recommendedPct : r.allocationPct, displayPlanned: mode === "auto" ? plan.generation * r.recommendedPct : r.planned }));
+      totalDisplayPct = displayRows.reduce((s, r) => s + r.displayPct, 0);
+      pctInvalid = Math.abs(totalDisplayPct - 1) > 0.0005;
+      totPlanned = displayRows.reduce((s, r) => s + r.displayPlanned, 0);
+      appliedPrice = S.cyclePriceOverride[priceKey] !== undefined ? S.cyclePriceOverride[priceKey] : apUg.purchasePrice;
+      cycleKpis = [
+        { label: "Geração disponível", value: kwh(plan.generation), valueColor: "#00a86b", hasHint: false, hint: "", title: "" },
+        { label: "Recomendado", value: kwh(plan.totalRecommended), valueColor: "#062e20", hasHint: false, hint: "", title: "" },
+        { label: "Planejado", value: kwh(totPlanned), valueColor: "#062e20", hasHint: false, hint: "", title: "" },
+        { label: "Recebido", value: kwh(totPlanned), valueColor: "#062e20", hasHint: false, hint: "", title: "" },
+        { label: "Compensado", value: kwh(plan.totalCompensated), valueColor: "#00875a", hasHint: false, hint: "", title: "" },
+        { label: "Saldo total nas UCs", value: kwh(plan.totalFinalBalance), valueColor: "#062e20", hasHint: true, hint: "Soma dos saldos das UCs beneficiárias", title: "Soma dos créditos acumulados nas Unidades Consumidoras Beneficiárias. Não representa saldo disponível na Unidade Geradora." },
+        { label: "Beneficiárias", value: String(plan.rows.length), valueColor: "#062e20", hasHint: false, hint: "", title: "" },
+      ];
+      allocationRows = mkAllocationRows(displayRows);
+      dispCompensated = displayRows.reduce((s, r) => s + Math.min(r.consumption, r.currentBalance + r.displayPlanned), 0);
+      dispFinal = displayRows.reduce((s, r) => s + Math.max(0, r.currentBalance + r.displayPlanned - Math.min(r.consumption, r.currentBalance + r.displayPlanned)), 0);
+      ownerPayment = dispCompensated * appliedPrice;
+      esaRevenue = displayRows.reduce((s, r) => s + Math.min(r.consumption, r.currentBalance + r.displayPlanned) * r.ub.esaPrice, 0);
+    }
 
     // ---------- FATURA ESA — BENEFICIÁRIO ----------
     const invMonth = "2026-07";
@@ -4583,13 +4643,41 @@ class Component extends DCLogic {
       stopProp: (e) => e.stopPropagation(),
 
       // apuração
-      apMonth: S.apMonth, apMonths: this.AP_MONTHS,
+      apMonth: S.apMonth,
+      apMonths: S._rtMode === "real" ? (S._rtMonths || this.MONTHS_AV).map((m) => m.value) : this.AP_MONTHS,
       onApMonthChange: (e) => this.setState({ apMonth: e.target.value }),
-      apUgId: S.apUgId, apUgOptions: this.UGS.map((u) => ({ value: u.id, label: u.name })),
-      onApUgChange: (e) => this.setState({ apUgId: e.target.value, ov: {} }),
+      apUgId: S.apUgId,
+      apUgOptions: S._rtMode === "real" ? (S._rtUgs || []).map((u) => ({ value: u.id, label: u.name })) : this.UGS.map((u) => ({ value: u.id, label: u.name })),
+      onApUgChange: (e) => this.setState({ apUgId: e.target.value, ov: {}, _rtApPlan: null }),
       apCycleBadge: this.cycleBadgeFor(apStatus),
-      onSalvar: () => this.showToast("Apuração salva", "Rascunho do ciclo " + S.apMonth + " atualizado."),
-      onFecharMes: () => this.showToast("Fechamento solicitado", "O ciclo " + S.apMonth + " será validado antes do fechamento."),
+      onSalvar: S._rtMode === "real" ? () => {
+        if (S._rtApSaving) return;
+        const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
+        if (!rt) return;
+        this.setState({ _rtApSaving: true });
+        rt.saveAllocationOverrides(S.apUgId, S.apMonth, S.ov).then(() => {
+          this.setState({ _rtApSaving: false });
+          this.showToast("Apuração salva", "Rascunho do ciclo " + S.apMonth + " atualizado. (persist=false — overrides locais)");
+        }).catch((err) => {
+          this.setState({ _rtApSaving: false });
+          this.showToast("Erro ao salvar", (err && err.message) || "Tente novamente.");
+        });
+      } : () => this.showToast("Apuração salva", "Rascunho do ciclo " + S.apMonth + " atualizado."),
+      onFecharMes: S._rtMode === "real" ? () => {
+        if (S._rtApClosing) return;
+        if (pctInvalid) { this.showToast("Fechamento bloqueado", "A soma dos percentuais de rateio deve totalizar 100%."); return; }
+        const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
+        if (!rt) return;
+        this.setState({ _rtApClosing: true });
+        rt.closeMonthlySettlement(S.apUgId, S.apMonth).then(() => {
+          this.setState({ _rtApClosing: false });
+          this.showToast("Ciclo encerrado", "O ciclo " + S.apMonth + " foi fechado.");
+          this._loadRealApPlan(S.apUgId, S.apMonth);
+        }).catch((err) => {
+          this.setState({ _rtApClosing: false });
+          this.showToast("Erro ao fechar ciclo", (err && err.message) || "Verifique os alertas bloqueantes.");
+        });
+      } : () => this.showToast("Fechamento solicitado", "O ciclo " + S.apMonth + " será validado antes do fechamento."),
       onExportar: () => this.showToast("Exportação iniciada", "O arquivo será gerado em instantes."),
       goRelatorios: () => this.setState({ view: "relatorios" }),
       saveIcon: this.I("save", 16, "currentColor"), lockIcon: this.I("lock", 16, "currentColor"),
@@ -4607,8 +4695,8 @@ class Component extends DCLogic {
       totPctTxt: (totalDisplayPct * 100).toFixed(2).replace(".", ","), totPctColor: pctInvalid ? "#e11d48" : "#00875a",
       totPlannedTxt: kwh(totPlanned), totReceivedTxt: kwh(totPlanned),
       totConsTxt: kwh(plan.totalConsumption), totCompTxt: kwh(dispCompensated), totFinalTxt: kwh(dispFinal),
-      standardPriceTxt: "R$ " + num(apUg.purchasePrice, 2) + "/kWh",
-      appliedPriceTxt: "R$ " + num(appliedPrice, 2) + "/kWh",
+      standardPriceTxt: apUg ? "R$ " + num(apUg.purchasePrice, 2) + "/kWh" : "—",
+      appliedPriceTxt: "R$ " + num(appliedPrice || 0, 2) + "/kWh",
       finSummaryKpis: [
         { label: "Preço aplicado", value: "R$ " + num(appliedPrice, 2) + "/kWh", valueColor: "#062e20" },
         { label: "Repasse ao proprietário", value: brl(ownerPayment), valueColor: "#e11d48" },
@@ -4704,7 +4792,7 @@ class Component extends DCLogic {
 
       // price modal
       priceModalOpen: S.priceModalOpen,
-      openPriceModal: () => this.setState({ priceModalOpen: true, priceInput: appliedPrice.toFixed(2), priceReason: "" }),
+      openPriceModal: () => this.setState({ priceModalOpen: true, priceInput: (appliedPrice || 0).toFixed(2), priceReason: "" }),
       closePriceModal: () => this.setState({ priceModalOpen: false }),
       priceInput: S.priceInput, onPriceInputChange: (e) => this.setState({ priceInput: e.target.value }),
       priceReason: S.priceReason, onPriceReasonChange: (e) => this.setState({ priceReason: e.target.value }),
@@ -4712,7 +4800,8 @@ class Component extends DCLogic {
         const v = Number(String(S.priceInput).replace(",", "."));
         if (!isNaN(v) && v > 0) {
           this.setState((s) => ({ cyclePriceOverride: { ...s.cyclePriceOverride, [priceKey]: v }, priceModalOpen: false }));
-          this.showToast("Preço aplicado somente neste ciclo", "O preço padrão da UG não foi alterado.");
+          const note = S._rtMode === "real" ? "Preço local nesta sessão — persist=false." : "O preço padrão da UG não foi alterado.";
+          this.showToast("Preço aplicado somente neste ciclo", note);
         }
       },
 
@@ -5012,6 +5101,15 @@ class Component extends DCLogic {
     if (this.state.ubDetailId && this.state.ubDetailId !== prevState.ubDetailId && !this.state._rtUbDetailLoading) {
       this._loadRealUbDetail(this.state.ubDetailId);
     }
+    // Gate 3C — load allocation plan on apuração view entry or filter change
+    if (this.state.view === "apuracao") {
+      const viewEntered = prevState.view !== "apuracao";
+      const ugMudou = this.state.apUgId !== prevState.apUgId;
+      const mesMudou = this.state.apMonth !== prevState.apMonth;
+      if ((viewEntered || ugMudou || mesMudou) && !this.state._rtApPlanLoading) {
+        this._loadRealApPlan(this.state.apUgId, this.state.apMonth);
+      }
+    }
   }
 
   _initRealMode() {
@@ -5083,6 +5181,22 @@ class Component extends DCLogic {
     }).catch((err) => {
       console.error("[ESA] UB detail load error", err);
       this.setState({ _rtUbDetailLoading: false });
+    });
+  }
+
+  _loadRealApPlan(ugId, month) {
+    const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
+    if (!rt || rt.mode !== "real" || !ugId) return;
+    this._apPlanSeq = (this._apPlanSeq || 0) + 1;
+    const seq = this._apPlanSeq;
+    this.setState({ _rtApPlanLoading: true, _rtApPlan: null });
+    rt.getAllocationPlan(ugId, month || this.state.apMonth, {}).then((plan) => {
+      if (seq !== this._apPlanSeq) return;
+      this.setState({ _rtApPlan: plan, _rtApPlanLoading: false });
+    }).catch((err) => {
+      if (seq !== this._apPlanSeq) return;
+      console.error("[ESA] AP plan load error", err);
+      this.setState({ _rtApPlanLoading: false });
     });
   }
 

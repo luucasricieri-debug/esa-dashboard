@@ -1184,8 +1184,8 @@
 					pixType: d.pixType ?? "cpf"
 				};
 			},
-			async getAppliedPrice(_ugId, _month) {
-				return 0;
+			async getAppliedPrice(ugId, _month) {
+				return (await this.getGeneratingUnit(ugId))?.purchasePrice ?? 0;
 			},
 			async updateCyclePrice(_ugId, _month, _price, _reason) {
 				return ok();
@@ -1223,8 +1223,61 @@
 				return unwrap(uiProvider.getBeneficiaryHistory(id, { upToMonth }))?.months ?? [];
 			},
 			async getAllocationPlan(ugId, month, overrides = {}) {
-				if (!unwrap(uiProvider.getAllocationPlan(ugId, month, { overrides }))) return null;
-				return null;
+				const [ug, ubs] = await Promise.all([this.getGeneratingUnit(ugId), this.listBeneficiaryUnits({ ugId })]);
+				if (!ug) return null;
+				const generation = safeCall(() => uiProvider.getGeneratingUnitSummary(ugId, { referenceMonth: month }))?.totalGenerationKwh ?? ug.monthlyGeneration ?? 0;
+				const needs = ubs.map((ub) => {
+					const pm = (overrides[ub.id] ?? {}).preventiveMargin ?? ub.preventiveMargin ?? 0;
+					const ma = (ub.annualAverage ?? 0) / 12;
+					return Math.max(0, ma * (1 + pm) - (ub.previousCreditBalance ?? 0));
+				});
+				const sumNeeds = needs.reduce((s, n) => s + n, 0);
+				const rows = ubs.map((ub, i) => {
+					const ov = overrides[ub.id] ?? {};
+					const allocationPct = ov.allocationPct ?? ub.allocationPct ?? 0;
+					const preventiveMargin = ov.preventiveMargin ?? ub.preventiveMargin ?? 0;
+					const monthlyAverage = (ub.annualAverage ?? 0) / 12;
+					const targetCredit = monthlyAverage * (1 + preventiveMargin);
+					const currentBalance = ub.previousCreditBalance ?? 0;
+					const recommendedAdd = needs[i];
+					const recommendedPct = sumNeeds > 0 ? recommendedAdd / sumNeeds : 0;
+					const planned = generation * allocationPct;
+					const consumption = ub.monthlyConsumption ?? 0;
+					const avail = currentBalance + planned;
+					const compensated = Math.min(consumption, avail);
+					const finalBalance = avail - compensated;
+					return {
+						ub,
+						monthlyAverage,
+						preventiveMargin,
+						targetCredit,
+						currentBalance,
+						recommendedAdd,
+						recommendedPct,
+						allocationPct,
+						planned,
+						received: planned,
+						consumption,
+						compensated,
+						finalBalance,
+						coverageMonths: monthlyAverage > 0 ? finalBalance / monthlyAverage : 0
+					};
+				});
+				const totalCompensated = rows.reduce((s, r) => s + r.compensated, 0);
+				const appliedPrice = ug.purchasePrice ?? 0;
+				return {
+					ug,
+					generation,
+					rows,
+					totalPct: rows.reduce((s, r) => s + r.allocationPct, 0),
+					totalProjected: rows.reduce((s, r) => s + r.planned, 0),
+					totalCompensated,
+					totalFinalBalance: rows.reduce((s, r) => s + r.finalBalance, 0),
+					totalRecommended: rows.reduce((s, r) => s + r.recommendedAdd, 0),
+					totalConsumption: rows.reduce((s, r) => s + r.consumption, 0),
+					ownerPayment: totalCompensated * appliedPrice,
+					esaRevenue: rows.reduce((s, r) => s + r.compensated * (r.ub.esaPrice ?? 0), 0)
+				};
 			},
 			async saveAllocationOverrides(_ugId, _month, _overrides) {
 				return ok();
