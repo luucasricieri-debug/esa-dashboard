@@ -79,16 +79,16 @@ async function suiteV() {
   assert('V2 listMonths não lança com repositório vazio', Array.isArray(months));
 
   const saveResult = await rt.saveAllocationOverrides('UG-X', '2026-07', {});
-  assert('V3 saveAllocationOverrides retorna ok mesmo sem UG', saveResult.ok === true);
+  assert('V3 saveAllocationOverrides retorna persisted=false (capability explícita)', saveResult.persisted === false);
 
   const closeResult = await rt.closeMonthlySettlement('UG-X', '2026-07');
-  assert('V4 closeMonthlySettlement retorna ok (NOT_IMPLEMENTED seguro)', closeResult.ok === true);
+  assert('V4 closeMonthlySettlement retorna persisted=false (capability explícita)', closeResult.persisted === false);
 
   const price = await rt.getAppliedPrice('UG-INEXISTENTE', '2026-07');
   assert('V5 getAppliedPrice retorna 0 quando UG não existe', price === 0);
 
   const updatePrice = await rt.updateCyclePrice('UG-X', '2026-07', 0.4, 'teste');
-  assert('V6 updateCyclePrice retorna ok (persist=false)', updatePrice.ok === true);
+  assert('V6 updateCyclePrice retorna persisted=false (capability explícita)', updatePrice.persisted === false);
 }
 
 // ============================================================
@@ -235,7 +235,7 @@ async function suiteAB() {
   assert('AB1 getAppliedPrice retorna purchasePrice da UG', Math.abs(price - REAL_UG.purchasePrice) < 0.0001);
 
   const updateResult = await rt.updateCyclePrice('UG-REAL-001', '2026-07', 0.42, 'ajuste ciclo');
-  assert('AB2 updateCyclePrice retorna ok (persist=false)', updateResult.ok === true);
+  assert('AB2 updateCyclePrice retorna persisted=false (capability explícita)', updateResult.persisted === false);
 }
 
 // ============================================================
@@ -257,10 +257,10 @@ async function suiteAC() {
   assert('AC2 plan usa purchasePrice como appliedPrice base', plan !== null && plan.ug.purchasePrice === REAL_UG.purchasePrice);
 
   const saveResult = await rt.saveAllocationOverrides('UG-REAL-001', '2026-06', { 'UB-REAL-001': { allocationPct: 0.9 } });
-  assert('AC3 saveAllocationOverrides retorna ok (persist=false documentado)', saveResult.ok === true);
+  assert('AC3 saveAllocationOverrides retorna persisted=false (capability explícita)', saveResult.persisted === false);
 
   const closeResult = await rt.closeMonthlySettlement('UG-REAL-001', '2026-06');
-  assert('AC4 closeMonthlySettlement retorna ok (NOT_IMPLEMENTED)', closeResult.ok === true);
+  assert('AC4 closeMonthlySettlement retorna persisted=false (capability explícita)', closeResult.persisted === false);
 }
 
 // ============================================================

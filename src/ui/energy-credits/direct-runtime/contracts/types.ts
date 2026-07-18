@@ -401,4 +401,7 @@ export interface ImportHistoryRecord {
 export interface MutationResult {
   ok: boolean;
   error?: string;
+  persisted?: boolean;
+  capability?: string;
+  message?: string;
 }

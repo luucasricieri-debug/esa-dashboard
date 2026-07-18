@@ -4655,12 +4655,13 @@ class Component extends DCLogic {
         const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
         if (!rt) return;
         this.setState({ _rtApSaving: true });
-        rt.saveAllocationOverrides(S.apUgId, S.apMonth, S.ov).then(() => {
+        rt.saveAllocationOverrides(S.apUgId, S.apMonth, S.ov).then((result) => {
           this.setState({ _rtApSaving: false });
-          this.showToast("Apuração salva", "Rascunho do ciclo " + S.apMonth + " atualizado. (persist=false — overrides locais)");
+          const msg = (result && result.message) || "Prévia calculada. Persistência ainda não habilitada.";
+          this.showToast("Prévia calculada", msg);
         }).catch((err) => {
           this.setState({ _rtApSaving: false });
-          this.showToast("Erro ao salvar", (err && err.message) || "Tente novamente.");
+          this.showToast("Erro ao calcular prévia", (err && err.message) || "Tente novamente.");
         });
       } : () => this.showToast("Apuração salva", "Rascunho do ciclo " + S.apMonth + " atualizado."),
       onFecharMes: S._rtMode === "real" ? () => {
@@ -4669,10 +4670,10 @@ class Component extends DCLogic {
         const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
         if (!rt) return;
         this.setState({ _rtApClosing: true });
-        rt.closeMonthlySettlement(S.apUgId, S.apMonth).then(() => {
+        rt.closeMonthlySettlement(S.apUgId, S.apMonth).then((result) => {
           this.setState({ _rtApClosing: false });
-          this.showToast("Ciclo encerrado", "O ciclo " + S.apMonth + " foi fechado.");
-          this._loadRealApPlan(S.apUgId, S.apMonth);
+          const msg = (result && result.message) || "Fechamento indisponível: persistência do ciclo ainda não habilitada.";
+          this.showToast("Fechamento indisponível", msg);
         }).catch((err) => {
           this.setState({ _rtApClosing: false });
           this.showToast("Erro ao fechar ciclo", (err && err.message) || "Verifique os alertas bloqueantes.");
@@ -4799,9 +4800,18 @@ class Component extends DCLogic {
       applyCyclePrice: () => {
         const v = Number(String(S.priceInput).replace(",", "."));
         if (!isNaN(v) && v > 0) {
-          this.setState((s) => ({ cyclePriceOverride: { ...s.cyclePriceOverride, [priceKey]: v }, priceModalOpen: false }));
-          const note = S._rtMode === "real" ? "Preço local nesta sessão — persist=false." : "O preço padrão da UG não foi alterado.";
-          this.showToast("Preço aplicado somente neste ciclo", note);
+          if (S._rtMode === "real") {
+            const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
+            if (!rt) return;
+            this.setState((s) => ({ cyclePriceOverride: { ...s.cyclePriceOverride, [priceKey]: v }, priceModalOpen: false }));
+            rt.updateCyclePrice(S.apUgId, S.apMonth, v, S.priceReason || "").then((result) => {
+              const msg = (result && result.message) || "Preço simulado nesta sessão. Alteração ainda não persistida.";
+              this.showToast("Simulação de preço", msg);
+            });
+          } else {
+            this.setState((s) => ({ cyclePriceOverride: { ...s.cyclePriceOverride, [priceKey]: v }, priceModalOpen: false }));
+            this.showToast("Preço aplicado somente neste ciclo", "O preço padrão da UG não foi alterado.");
+          }
         }
       },
 

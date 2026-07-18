@@ -187,8 +187,8 @@ export function createEsaRuntimeProvider(uiProvider: UIProvider): EnergyCreditsR
       return ug?.purchasePrice ?? 0;
     },
     async updateCyclePrice(_ugId, _month, _price, _reason) {
-      // NOT_IMPLEMENTED: Gate 3C — Core has no cycle price update endpoint. persist=false.
-      return ok();
+      // NOT_IMPLEMENTED: Gate 3C — Core has no cycle price update endpoint.
+      return { ok: false, persisted: false, capability: 'not_available', message: 'Preço simulado nesta sessão. Alteração ainda não persistida.' };
     },
 
     // ---- Beneficiary Units ----
@@ -294,12 +294,11 @@ export function createEsaRuntimeProvider(uiProvider: UIProvider): EnergyCreditsR
     },
     async saveAllocationOverrides(_ugId, _month, _overrides) {
       // NOT_IMPLEMENTED: Gate 3C — Core has no endpoint to persist manual allocation overrides.
-      // persist=false: overrides are local to this session only.
-      return ok();
+      return { ok: false, persisted: false, capability: 'not_available', message: 'Prévia calculada. Persistência ainda não habilitada.' };
     },
     async closeMonthlySettlement(_ugId, _month) {
       // NOT_IMPLEMENTED: Gate 3C — Core does not expose a cycle-close endpoint via uiProvider.
-      return ok();
+      return { ok: false, persisted: false, capability: 'not_available', message: 'Fechamento indisponível: persistência do ciclo ainda não habilitada.' };
     },
 
     // ---- Invoice ----

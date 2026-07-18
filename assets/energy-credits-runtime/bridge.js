@@ -1188,7 +1188,12 @@
 				return (await this.getGeneratingUnit(ugId))?.purchasePrice ?? 0;
 			},
 			async updateCyclePrice(_ugId, _month, _price, _reason) {
-				return ok();
+				return {
+					ok: false,
+					persisted: false,
+					capability: "not_available",
+					message: "Preço simulado nesta sessão. Alteração ainda não persistida."
+				};
 			},
 			async listBeneficiaryUnits(filter) {
 				const d = safeCall(() => uiProvider.searchBeneficiaryUnits({
@@ -1280,10 +1285,20 @@
 				};
 			},
 			async saveAllocationOverrides(_ugId, _month, _overrides) {
-				return ok();
+				return {
+					ok: false,
+					persisted: false,
+					capability: "not_available",
+					message: "Prévia calculada. Persistência ainda não habilitada."
+				};
 			},
 			async closeMonthlySettlement(_ugId, _month) {
-				return ok();
+				return {
+					ok: false,
+					persisted: false,
+					capability: "not_available",
+					message: "Fechamento indisponível: persistência do ciclo ainda não habilitada."
+				};
 			},
 			async getBeneficiaryInvoice(ubId, month) {
 				try {
