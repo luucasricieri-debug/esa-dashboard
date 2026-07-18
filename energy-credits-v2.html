@@ -2728,6 +2728,9 @@ class Component extends DCLogic {
     _rtUbs: null, _rtUbsLoading: false, _rtUgDetail: null, _rtUgDetailLoading: false, _rtUbDetail: null, _rtUbDetailLoading: false,
     // GATE 3C — Apuração Mensal
     _rtApPlan: null, _rtApPlanLoading: false, _rtApSaving: false, _rtApClosing: false,
+    // GATE 3D — Relatórios e Financeiro
+    _rtRepAll: null, _rtRepAllLoading: false,
+    _rtFinAll: null, _rtFinAllLoading: false,
   };
 
   // ============================== DADOS (porta fiel do mockData/provider do Lovable) ==============================
@@ -4190,79 +4193,136 @@ class Component extends DCLogic {
 
     // ---------- FINANCEIRO ----------
     const finMonth = S.finMonth;
-    const finF = this.MONTH_FACTOR[finMonth] !== undefined ? this.MONTH_FACTOR[finMonth] : 1;
     const finMObj = this.MONTHS_AV.find((m) => m.value === finMonth) || this.MONTHS_AV[0];
     const shortM = (mv) => { const mo = this.MONTHS_AV.find((m) => m.value === mv); return mo ? mo.label.split(" ")[0].slice(0, 3) + "/" + mv.split("-")[0] : mv; };
     const FAT_TXT = { pago: "PAGA", aberto: "EM ABERTO", vencido: "VENCIDA" };
     const REP_TXT = { pago: "PAGO", aberto: "EM ABERTO", vencido: "VENCIDO" };
     const dueDate = "10/" + finMonth.split("-")[1] + "/2026";
-    const finFatRows = this.UBS.map((ub) => {
-      const inv3 = this.buildInvoice(ub.id, finMonth);
-      const invoiceAmount = inv3.faturaEsa * finF;
-      const st = this.finStatus("fat", ub.id, finMonth);
-      const pill = this.statusPill(st.status);
-      return {
-        id: ub.id, name: ub.name, uc: ub.uc, mesTxt: shortM(finMonth),
-        valorTxt: brl(invoiceAmount), vencTxt: dueDate,
-        stText: FAT_TXT[st.status] || st.status.toUpperCase(), stBg: pill.bg, stColor: pill.color,
-        pagoEmTxt: st.paidAt || "—",
-        canPay: st.status !== "pago", canReopen: st.status === "pago",
-        openPay: () => this.setState({ payModal: { kind: "fat", id: ub.id }, payDate: "16/07/2026", payValue: brl(invoiceAmount).replace("R$", "").trim(), payNote: "" }),
-        openReopen: () => this.setState({ reopenModal: { kind: "fat", id: ub.id }, reopenReason: "", reopenMissing: false }),
-        openFatura: () => this.setState({ view: "fatura", invUbId: ub.id, compDetailsOpen: false }),
-        openUb: () => this.setState({ ubDetailId: ub.id, ubDetailTab: "visao", ubMonthSel: null }),
-        openDetail: () => this.setState({ finDetail: { kind: "fat", id: ub.id } }),
-        _amount: invoiceAmount, _status: st.status,
-      };
-    });
-    const finRepRows = this.UGS.map((ug) => {
-      const r = this.computeSettlement(ug);
-      const price = this.appliedPrice(ug.id, finMonth);
-      const comp = r.totalCompensated * finF;
-      const repasse = comp * price;
-      const payee = this.PAYEES[ug.id];
-      const st = this.finStatus("rep", ug.id, finMonth);
-      const pill = this.statusPill(st.status);
-      return {
-        id: ug.id, name: ug.name, owner: ug.owner, recName: payee.name, recDiff: payee.name !== ug.owner,
-        mesTxt: shortM(finMonth), priceTxt: "R$ " + num(price, 2), compTxt: kwh(comp), valorTxt: brl(repasse),
-        stText: REP_TXT[st.status] || st.status.toUpperCase(), stBg: pill.bg, stColor: pill.color,
-        pagoEmTxt: st.paidAt || "—",
-        canPay: st.status !== "pago", canReopen: st.status === "pago",
-        openPay: () => this.setState({ payModal: { kind: "rep", id: ug.id }, payDate: "16/07/2026", payValue: brl(repasse).replace("R$", "").trim(), payNote: "" }),
-        openReopen: () => this.setState({ reopenModal: { kind: "rep", id: ug.id }, reopenReason: "", reopenMissing: false }),
-        openPix: () => this.setState({ ugDetailId: ug.id, ugDetailTab: "pix" }),
-        openUg: () => this.setState({ ugDetailId: ug.id, ugDetailTab: "resumo" }),
-        openDetail: () => this.setState({ finDetail: { kind: "rep", id: ug.id } }),
-        _amount: repasse, _status: st.status,
-      };
-    });
-    const finReceita = finFatRows.reduce((s, r) => s + r._amount, 0);
-    const finRepasses = finRepRows.reduce((s, r) => s + r._amount, 0);
-    const finPagas = finFatRows.filter((r) => r._status === "pago").length;
-    const finAbertas = finFatRows.filter((r) => r._status === "aberto").length;
-    const finVencidas = finFatRows.filter((r) => r._status === "vencido").length;
-    const finValorAberto = finFatRows.filter((r) => r._status !== "pago").reduce((s, r) => s + r._amount, 0);
+    const brlFmt2 = (v) => (v >= 1000 ? "R$" + Math.round(v / 1000) + "k" : "R$" + Math.round(v));
+    let finF = 1, finFatRows, finRepRows, finRevChart, finSpreadChart;
+    if (S._rtMode !== "real") {
+      // DEMO — dados demonstrativos escalados por MONTH_FACTOR
+      finF = this.MONTH_FACTOR[finMonth] !== undefined ? this.MONTH_FACTOR[finMonth] : 1;
+      finFatRows = this.UBS.map((ub) => {
+        const inv3 = this.buildInvoice(ub.id, finMonth);
+        const invoiceAmount = inv3.faturaEsa * finF;
+        const st = this.finStatus("fat", ub.id, finMonth);
+        const pill = this.statusPill(st.status);
+        return {
+          id: ub.id, name: ub.name, uc: ub.uc, mesTxt: shortM(finMonth),
+          valorTxt: brl(invoiceAmount), vencTxt: dueDate,
+          stText: FAT_TXT[st.status] || st.status.toUpperCase(), stBg: pill.bg, stColor: pill.color,
+          pagoEmTxt: st.paidAt || "—",
+          canPay: st.status !== "pago", canReopen: st.status === "pago",
+          openPay: () => this.setState({ payModal: { kind: "fat", id: ub.id }, payDate: "16/07/2026", payValue: brl(invoiceAmount).replace("R$", "").trim(), payNote: "" }),
+          openReopen: () => this.setState({ reopenModal: { kind: "fat", id: ub.id }, reopenReason: "", reopenMissing: false }),
+          openFatura: () => this.setState({ view: "fatura", invUbId: ub.id, compDetailsOpen: false }),
+          openUb: () => this.setState({ ubDetailId: ub.id, ubDetailTab: "visao", ubMonthSel: null }),
+          openDetail: () => this.setState({ finDetail: { kind: "fat", id: ub.id } }),
+          _amount: invoiceAmount, _status: st.status,
+        };
+      });
+      finRepRows = this.UGS.map((ug) => {
+        const r = this.computeSettlement(ug);
+        const price = this.appliedPrice(ug.id, finMonth);
+        const comp = r.totalCompensated * finF;
+        const repasse = comp * price;
+        const payee = this.PAYEES[ug.id];
+        const st = this.finStatus("rep", ug.id, finMonth);
+        const pill = this.statusPill(st.status);
+        return {
+          id: ug.id, name: ug.name, owner: ug.owner, recName: payee.name, recDiff: payee.name !== ug.owner,
+          mesTxt: shortM(finMonth), priceTxt: "R$ " + num(price, 2), compTxt: kwh(comp), valorTxt: brl(repasse),
+          stText: REP_TXT[st.status] || st.status.toUpperCase(), stBg: pill.bg, stColor: pill.color,
+          pagoEmTxt: st.paidAt || "—",
+          canPay: st.status !== "pago", canReopen: st.status === "pago",
+          openPay: () => this.setState({ payModal: { kind: "rep", id: ug.id }, payDate: "16/07/2026", payValue: brl(repasse).replace("R$", "").trim(), payNote: "" }),
+          openReopen: () => this.setState({ reopenModal: { kind: "rep", id: ug.id }, reopenReason: "", reopenMissing: false }),
+          openPix: () => this.setState({ ugDetailId: ug.id, ugDetailTab: "pix" }),
+          openUg: () => this.setState({ ugDetailId: ug.id, ugDetailTab: "resumo" }),
+          openDetail: () => this.setState({ finDetail: { kind: "rep", id: ug.id } }),
+          _amount: repasse, _status: st.status,
+        };
+      });
+      const finTrend = [...this.MONTHS_AV].reverse().map((m) => {
+        const f = this.MONTH_FACTOR[m.value] !== undefined ? this.MONTH_FACTOR[m.value] : 1;
+        let rec = 0, rep = 0;
+        this.UBS.forEach((ub) => { rec += this.buildInvoice(ub.id, m.value).faturaEsa * f; });
+        this.UGS.forEach((ug) => { rep += this.computeSettlement(ug).totalCompensated * f * this.appliedPrice(ug.id, m.value); });
+        return { label: m.label.split(" ")[0].slice(0, 3), name: m.label.split(" ")[0].slice(0, 3), Receita: rec, Repasse: rep, Spread: rec - rep };
+      });
+      finRevChart = this.lineChart(finTrend, [{ key: "Receita", color: "#00a86b" }, { key: "Repasse", color: "#94a3b8", width: 2 }], brlFmt2);
+      finSpreadChart = this.barChart(finTrend, ["Spread"], ["#00a86b"], brlFmt2);
+    } else {
+      // GATE 3D — dados do provider real (S._rtFinAll)
+      const fa = S._rtFinAll;
+      if (fa) {
+        finFatRows = (fa.ubs || []).map((ub) => {
+          const inv = (fa.ubInvoices || {})[ub.id];
+          const amount = inv ? (inv.faturaEsa || 0) : 0;
+          const stCode = inv ? (inv.paymentStatus || "aberto") : "aberto";
+          const pill = this.statusPill(stCode);
+          return {
+            id: ub.id, name: ub.name, uc: ub.uc, mesTxt: shortM(finMonth),
+            valorTxt: brl(amount), vencTxt: dueDate,
+            stText: FAT_TXT[stCode] || stCode.toUpperCase(), stBg: pill.bg, stColor: pill.color,
+            pagoEmTxt: "—",
+            canPay: stCode !== "pago", canReopen: stCode === "pago",
+            openPay: () => this.setState({ payModal: { kind: "fat", id: ub.id }, payDate: "18/07/2026", payValue: brl(amount).replace("R$", "").trim(), payNote: "" }),
+            openReopen: () => this.setState({ reopenModal: { kind: "fat", id: ub.id }, reopenReason: "", reopenMissing: false }),
+            openFatura: () => this.setState({ view: "fatura", invUbId: ub.id, compDetailsOpen: false }),
+            openUb: () => this.setState({ ubDetailId: ub.id, ubDetailTab: "visao", ubMonthSel: null }),
+            openDetail: () => this.setState({ finDetail: { kind: "fat", id: ub.id } }),
+            _amount: amount, _status: stCode,
+          };
+        });
+        finRepRows = (fa.ugs || []).map((ug) => {
+          const or = (fa.ugOwnerReports || {})[ug.id];
+          const payee = (fa.ugPayees || {})[ug.id];
+          const comp = or ? (or.totalCompensated || 0) : 0;
+          const price = ug.purchasePrice || 0;
+          const repasse = or ? (or.ownerPayment || (comp * price)) : 0;
+          const pill = this.statusPill("aberto");
+          return {
+            id: ug.id, name: ug.name, owner: ug.owner, recName: payee ? payee.name : ug.owner, recDiff: !!(payee && payee.name !== ug.owner),
+            mesTxt: shortM(finMonth), priceTxt: "R$ " + num(price, 2), compTxt: kwh(comp), valorTxt: brl(repasse),
+            stText: REP_TXT["aberto"], stBg: pill.bg, stColor: pill.color,
+            pagoEmTxt: "—",
+            canPay: true, canReopen: false,
+            openPay: () => this.setState({ payModal: { kind: "rep", id: ug.id }, payDate: "18/07/2026", payValue: brl(repasse).replace("R$", "").trim(), payNote: "" }),
+            openReopen: () => this.setState({ reopenModal: { kind: "rep", id: ug.id }, reopenReason: "", reopenMissing: false }),
+            openPix: () => this.setState({ ugDetailId: ug.id, ugDetailTab: "pix" }),
+            openUg: () => this.setState({ ugDetailId: ug.id, ugDetailTab: "resumo" }),
+            openDetail: () => this.setState({ finDetail: { kind: "rep", id: ug.id } }),
+            _amount: repasse, _status: "aberto",
+          };
+        });
+        const trendRT = fa.trend || [];
+        finRevChart = this.lineChart(trendRT, [{ key: "Receita", color: "#00a86b" }, { key: "Repasse", color: "#94a3b8", width: 2 }], brlFmt2);
+        finSpreadChart = this.barChart(trendRT, ["Spread"], ["#00a86b"], brlFmt2);
+      } else {
+        finFatRows = [];
+        finRepRows = [];
+        finRevChart = this.lineChart([], [{ key: "Receita", color: "#00a86b" }, { key: "Repasse", color: "#94a3b8", width: 2 }], brlFmt2);
+        finSpreadChart = this.barChart([], ["Spread"], ["#00a86b"], brlFmt2);
+      }
+    }
+    const finReceita = (finFatRows || []).reduce((s, r) => s + r._amount, 0);
+    const finRepasses = (finRepRows || []).reduce((s, r) => s + r._amount, 0);
+    const finPagas = (finFatRows || []).filter((r) => r._status === "pago").length;
+    const finAbertas = (finFatRows || []).filter((r) => r._status === "aberto").length;
+    const finVencidas = (finFatRows || []).filter((r) => r._status === "vencido").length;
+    const finValorAberto = (finFatRows || []).filter((r) => r._status !== "pago").reduce((s, r) => s + r._amount, 0);
     const finKpiCards = [
       { label: "Receita ESA", value: brl(finReceita), color: "#00875a" },
       { label: "Repasses aos proprietários", value: brl(finRepasses), color: "#e11d48" },
       { label: "Spread bruto ESA", value: brl(finReceita - finRepasses), color: "#00a86b" },
-      { label: "Faturas emitidas", value: String(finFatRows.length), color: "#062e20" },
+      { label: "Faturas emitidas", value: String((finFatRows || []).length), color: "#062e20" },
       { label: "Faturas pagas", value: String(finPagas), color: "#00875a" },
       { label: "Faturas em aberto", value: String(finAbertas), color: "#062e20" },
       { label: "Faturas vencidas", value: String(finVencidas), color: "#be123c" },
       { label: "Valor em aberto", value: brl(finValorAberto), color: "#92400e" },
     ];
-    const finTrend = [...this.MONTHS_AV].reverse().map((m) => {
-      const f = this.MONTH_FACTOR[m.value] !== undefined ? this.MONTH_FACTOR[m.value] : 1;
-      let rec = 0, rep = 0;
-      this.UBS.forEach((ub) => { rec += this.buildInvoice(ub.id, m.value).faturaEsa * f; });
-      this.UGS.forEach((ug) => { rep += this.computeSettlement(ug).totalCompensated * f * this.appliedPrice(ug.id, m.value); });
-      return { label: m.label.split(" ")[0].slice(0, 3), name: m.label.split(" ")[0].slice(0, 3), Receita: rec, Repasse: rep, Spread: rec - rep };
-    });
-    const brlFmt2 = (v) => (v >= 1000 ? "R$" + Math.round(v / 1000) + "k" : "R$" + Math.round(v));
-    const finRevChart = this.lineChart(finTrend, [{ key: "Receita", color: "#00a86b" }, { key: "Repasse", color: "#94a3b8", width: 2 }], brlFmt2);
-    const finSpreadChart = this.barChart(finTrend, ["Spread"], ["#00a86b"], brlFmt2);
 
     // modais de pagamento/reabertura
     const pm = S.payModal;
@@ -4271,24 +4331,47 @@ class Component extends DCLogic {
       const isFat = pm.kind === "fat";
       payVals.payOpen = true;
       payVals.payTitle = isFat ? "Confirmar pagamento da Fatura ESA" : "Confirmar pagamento do repasse";
-      if (isFat) {
-        const ub = this.UBS.find((u) => u.id === pm.id);
-        payVals.payInfoRows = [
-          { label: "Beneficiária", value: ub.name }, { label: "UC", value: ub.uc },
-          { label: "Mês de referência", value: finMObj.label },
-          { label: "Valor da Fatura ESA", value: brl(this.buildInvoice(ub.id, finMonth).faturaEsa * finF) },
-        ];
+      if (S._rtMode === "real") {
+        const fa = S._rtFinAll;
+        if (isFat) {
+          const ub = (fa?.ubs || []).find((u) => u.id === pm.id);
+          const inv = ub ? (fa?.ubInvoices || {})[ub.id] : null;
+          payVals.payInfoRows = [
+            { label: "Beneficiária", value: ub ? ub.name : "—" }, { label: "UC", value: ub ? ub.uc : "—" },
+            { label: "Mês de referência", value: finMObj.label },
+            { label: "Valor da Fatura ESA", value: brl(inv ? (inv.faturaEsa || 0) : 0) },
+          ];
+        } else {
+          const ug = (fa?.ugs || []).find((u) => u.id === pm.id);
+          const payee = ug ? (fa?.ugPayees || {})[ug.id] : null;
+          const or = ug ? (fa?.ugOwnerReports || {})[ug.id] : null;
+          payVals.payInfoRows = [
+            { label: "Unidade Geradora", value: ug ? ug.name : "—" }, { label: "Proprietário", value: ug ? ug.owner : "—" },
+            { label: "Recebedor", value: payee ? payee.name : (ug ? ug.owner : "—") }, { label: "CPF / CNPJ do recebedor", value: payee ? payee.document : "—" },
+            { label: "Tipo PIX", value: payee ? (this.PIX_LABEL[payee.pixType] || payee.pixType) : "—" }, { label: "Chave PIX", value: payee ? payee.pixKey : "—" },
+            { label: "Valor do repasse", value: brl(or ? (or.ownerPayment || 0) : 0) },
+          ];
+        }
       } else {
-        const ug = this.UGS.find((u) => u.id === pm.id);
-        const payee = this.PAYEES[ug.id];
-        const price = this.appliedPrice(ug.id, finMonth);
-        const comp = this.computeSettlement(ug).totalCompensated * finF;
-        payVals.payInfoRows = [
-          { label: "Unidade Geradora", value: ug.name }, { label: "Proprietário", value: ug.owner },
-          { label: "Recebedor", value: payee.name }, { label: "CPF / CNPJ do recebedor", value: payee.document },
-          { label: "Tipo PIX", value: this.PIX_LABEL[payee.pixType] }, { label: "Chave PIX", value: payee.pixKey },
-          { label: "Valor do repasse", value: brl(comp * price) },
-        ];
+        if (isFat) {
+          const ub = this.UBS.find((u) => u.id === pm.id);
+          payVals.payInfoRows = [
+            { label: "Beneficiária", value: ub.name }, { label: "UC", value: ub.uc },
+            { label: "Mês de referência", value: finMObj.label },
+            { label: "Valor da Fatura ESA", value: brl(this.buildInvoice(ub.id, finMonth).faturaEsa * finF) },
+          ];
+        } else {
+          const ug = this.UGS.find((u) => u.id === pm.id);
+          const payee = this.PAYEES[ug.id];
+          const price = this.appliedPrice(ug.id, finMonth);
+          const comp = this.computeSettlement(ug).totalCompensated * finF;
+          payVals.payInfoRows = [
+            { label: "Unidade Geradora", value: ug.name }, { label: "Proprietário", value: ug.owner },
+            { label: "Recebedor", value: payee.name }, { label: "CPF / CNPJ do recebedor", value: payee.document },
+            { label: "Tipo PIX", value: this.PIX_LABEL[payee.pixType] }, { label: "Chave PIX", value: payee.pixKey },
+            { label: "Valor do repasse", value: brl(comp * price) },
+          ];
+        }
       }
       payVals.payHasInfo = true;
     }
@@ -4296,14 +4379,22 @@ class Component extends DCLogic {
     let reopenVals = { reopenOpen: false, reopenSubject: "", reopenAudit: [], reopenHasAudit: false };
     if (rm) {
       reopenVals.reopenOpen = true;
-      const st = this.finStatus(rm.kind, rm.id, finMonth);
-      reopenVals.reopenSubject = rm.kind === "fat"
-        ? "Fatura ESA — " + (this.UBS.find((u) => u.id === rm.id) || {}).name + " · " + finMObj.label
-        : "Repasse — " + (this.UGS.find((u) => u.id === rm.id) || {}).name + " · " + finMObj.label;
-      reopenVals.reopenAudit = [
-        { label: "Pago em", value: st.paidAt || "—" },
-        { label: "Confirmado por", value: st.by || "—" },
-      ];
+      if (S._rtMode === "real") {
+        const fa = S._rtFinAll;
+        reopenVals.reopenSubject = rm.kind === "fat"
+          ? "Fatura ESA — " + ((fa?.ubs || []).find((u) => u.id === rm.id) || {}).name + " · " + finMObj.label
+          : "Repasse — " + ((fa?.ugs || []).find((u) => u.id === rm.id) || {}).name + " · " + finMObj.label;
+        reopenVals.reopenAudit = [{ label: "Pago em", value: "—" }, { label: "Confirmado por", value: "—" }];
+      } else {
+        const st = this.finStatus(rm.kind, rm.id, finMonth);
+        reopenVals.reopenSubject = rm.kind === "fat"
+          ? "Fatura ESA — " + (this.UBS.find((u) => u.id === rm.id) || {}).name + " · " + finMObj.label
+          : "Repasse — " + (this.UGS.find((u) => u.id === rm.id) || {}).name + " · " + finMObj.label;
+        reopenVals.reopenAudit = [
+          { label: "Pago em", value: st.paidAt || "—" },
+          { label: "Confirmado por", value: st.by || "—" },
+        ];
+      }
       reopenVals.reopenHasAudit = true;
     }
 
@@ -4312,78 +4403,148 @@ class Component extends DCLogic {
     let fdVals = { fdOpen: false, fdTitle: "", fdMeta: "", fdRows: [], fdHistRows: [], fdHasHist: false, fdNote: "" };
     if (fd) {
       fdVals.fdOpen = true;
-      const st = this.finStatus(fd.kind, fd.id, finMonth);
-      const histRows = [];
-      if (st.paidAt) histRows.push({ label: "Pago em " + st.paidAt, value: "Confirmado por " + (st.by || this.FIN_BY) });
-      if (st.reopenedAt) histRows.push({ label: "Reaberto em " + st.reopenedAt, value: "Motivo: " + (st.reason || "—") });
-      if (!histRows.length) histRows.push({ label: "Sem pagamentos registrados neste ciclo", value: "" });
-      fdVals.fdHistRows = histRows; fdVals.fdHasHist = true;
-      if (fd.kind === "fat") {
-        const ub = this.UBS.find((u) => u.id === fd.id);
-        const inv4 = this.buildInvoice(ub.id, finMonth);
-        fdVals.fdTitle = "Fatura ESA — " + ub.name;
-        fdVals.fdMeta = ub.id + " · UC " + ub.uc + " · " + finMObj.label;
-        fdVals.fdRows = [
-          { label: "invoiceAmount (valor da fatura)", value: brl(inv4.faturaEsa * finF) },
-          { label: "Consumo do mês", value: kwh(inv4.consumption * finF) },
-          { label: "Créditos compensados", value: kwh(inv4.compensated * finF) },
-          { label: "Saldo final na UC", value: kwh(inv4.finalBalance * finF) },
-          { label: "Economia no mês", value: brl(inv4.monthlySavings * finF) },
-        ];
-        fdVals.fdNote = "Resumo do billingSnapshot — valores retornados pelo Billing Engine. A memória de cálculo interna não é exposta nesta visão.";
+      if (S._rtMode === "real") {
+        const fa = S._rtFinAll;
+        fdVals.fdHistRows = [{ label: "Histórico de pagamento não disponível nesta versão", value: "" }];
+        fdVals.fdHasHist = true;
+        if (fd.kind === "fat") {
+          const ub = (fa?.ubs || []).find((u) => u.id === fd.id);
+          const inv = ub ? (fa?.ubInvoices || {})[ub.id] : null;
+          fdVals.fdTitle = "Fatura ESA — " + (ub ? ub.name : "—");
+          fdVals.fdMeta = (ub ? ub.id : fd.id) + " · UC " + (ub ? ub.uc : "—") + " · " + finMObj.label;
+          fdVals.fdRows = [
+            { label: "Valor da fatura", value: brl(inv ? (inv.faturaEsa || 0) : 0) },
+            { label: "Consumo do mês", value: kwh(inv ? (inv.consumption || 0) : 0) },
+            { label: "Créditos compensados", value: kwh(inv ? (inv.compensated || 0) : 0) },
+            { label: "Saldo final na UC", value: kwh(inv ? (inv.finalBalance || 0) : 0) },
+            { label: "Economia no mês", value: brl(inv ? (inv.monthlySavings || 0) : 0) },
+          ];
+          fdVals.fdNote = "Resumo do billingSnapshot — valores retornados pelo Billing Engine.";
+        } else {
+          const ug = (fa?.ugs || []).find((u) => u.id === fd.id);
+          const payee = ug ? (fa?.ugPayees || {})[ug.id] : null;
+          const or = ug ? (fa?.ugOwnerReports || {})[ug.id] : null;
+          fdVals.fdTitle = "Repasse — " + (ug ? ug.name : "—");
+          fdVals.fdMeta = (ug ? ug.id : fd.id) + " · " + (ug ? ug.owner : "—") + " · " + finMObj.label;
+          fdVals.fdRows = [
+            { label: "Proprietário", value: ug ? ug.owner : "—" },
+            { label: "Recebedor do pagamento", value: payee ? payee.name : (ug ? ug.owner : "—") },
+            { label: "Preço de compra aplicado", value: "R$ " + num(ug ? (ug.purchasePrice || 0) : 0, 2) + "/kWh" },
+            { label: "Créditos compensados", value: kwh(or ? (or.totalCompensated || 0) : 0) },
+            { label: "Valor do repasse", value: brl(or ? (or.ownerPayment || 0) : 0) },
+            { label: "PIX (" + (payee ? (this.PIX_LABEL[payee.pixType] || payee.pixType) : "—") + ")", value: payee ? payee.pixKey : "—" },
+          ];
+          fdVals.fdNote = "Valor retornado pela apuração do ciclo — nenhum cálculo é refeito nesta tela.";
+        }
       } else {
-        const ug = this.UGS.find((u) => u.id === fd.id);
-        const payee = this.PAYEES[ug.id];
-        const price = this.appliedPrice(ug.id, finMonth);
-        const comp = this.computeSettlement(ug).totalCompensated * finF;
-        fdVals.fdTitle = "Repasse — " + ug.name;
-        fdVals.fdMeta = ug.id + " · " + ug.owner + " · " + finMObj.label;
-        fdVals.fdRows = [
-          { label: "Proprietário", value: ug.owner },
-          { label: "Recebedor do pagamento", value: payee.name },
-          { label: "Preço de compra aplicado", value: "R$ " + num(price, 2) + "/kWh" },
-          { label: "Créditos compensados", value: kwh(comp) },
-          { label: "Valor do repasse", value: brl(comp * price) },
-          { label: "PIX (" + this.PIX_LABEL[payee.pixType] + ")", value: payee.pixKey },
-        ];
-        fdVals.fdNote = "Valor retornado pela apuração do ciclo — nenhum cálculo é refeito nesta tela.";
+        const st = this.finStatus(fd.kind, fd.id, finMonth);
+        const histRows = [];
+        if (st.paidAt) histRows.push({ label: "Pago em " + st.paidAt, value: "Confirmado por " + (st.by || this.FIN_BY) });
+        if (st.reopenedAt) histRows.push({ label: "Reaberto em " + st.reopenedAt, value: "Motivo: " + (st.reason || "—") });
+        if (!histRows.length) histRows.push({ label: "Sem pagamentos registrados neste ciclo", value: "" });
+        fdVals.fdHistRows = histRows; fdVals.fdHasHist = true;
+        if (fd.kind === "fat") {
+          const ub = this.UBS.find((u) => u.id === fd.id);
+          const inv4 = this.buildInvoice(ub.id, finMonth);
+          fdVals.fdTitle = "Fatura ESA — " + ub.name;
+          fdVals.fdMeta = ub.id + " · UC " + ub.uc + " · " + finMObj.label;
+          fdVals.fdRows = [
+            { label: "invoiceAmount (valor da fatura)", value: brl(inv4.faturaEsa * finF) },
+            { label: "Consumo do mês", value: kwh(inv4.consumption * finF) },
+            { label: "Créditos compensados", value: kwh(inv4.compensated * finF) },
+            { label: "Saldo final na UC", value: kwh(inv4.finalBalance * finF) },
+            { label: "Economia no mês", value: brl(inv4.monthlySavings * finF) },
+          ];
+          fdVals.fdNote = "Resumo do billingSnapshot — valores retornados pelo Billing Engine. A memória de cálculo interna não é exposta nesta visão.";
+        } else {
+          const ug = this.UGS.find((u) => u.id === fd.id);
+          const payee = this.PAYEES[ug.id];
+          const price = this.appliedPrice(ug.id, finMonth);
+          const comp = this.computeSettlement(ug).totalCompensated * finF;
+          fdVals.fdTitle = "Repasse — " + ug.name;
+          fdVals.fdMeta = ug.id + " · " + ug.owner + " · " + finMObj.label;
+          fdVals.fdRows = [
+            { label: "Proprietário", value: ug.owner },
+            { label: "Recebedor do pagamento", value: payee.name },
+            { label: "Preço de compra aplicado", value: "R$ " + num(price, 2) + "/kWh" },
+            { label: "Créditos compensados", value: kwh(comp) },
+            { label: "Valor do repasse", value: brl(comp * price) },
+            { label: "PIX (" + this.PIX_LABEL[payee.pixType] + ")", value: payee.pixKey },
+          ];
+          fdVals.fdNote = "Valor retornado pela apuração do ciclo — nenhum cálculo é refeito nesta tela.";
+        }
       }
     }
 
     // ---------- RELATÓRIO MENSAL DO PROPRIETÁRIO ----------
-    const repUg = this.UGS.find((u) => u.id === S.repUgId) || this.UGS[0];
     const repMonth = S.repMonth;
-    const repF = this.MONTH_FACTOR[repMonth] !== undefined ? this.MONTH_FACTOR[repMonth] : 1;
     const repMObj = this.MONTHS_AV.find((m) => m.value === repMonth) || this.MONTHS_AV[0];
-    const repR = this.computeSettlement(repUg);
-    const repPlan = this.computeAllocationPlan(repUg, {});
-    const repPrice = this.appliedPrice(repUg.id, repMonth);
-    const repComp = repR.totalCompensated * repF;
-    const repRepasse = repComp * repPrice;
-    const repPayee = this.PAYEES[repUg.id];
-    const repSt = this.finStatus("rep", repUg.id, repMonth);
-    // Coerência: um repasse pago implica ciclo fechado — nunca exibir pagamento antes do fechamento
-    const repCycle = this.cycleBadgeFor(repSt.status === "pago" ? "fechado" : repMObj.status);
-    const repStPill = this.statusPill(repSt.status);
-    // Distribuído = créditos destinados pelo rateio (planned), não os compensados
-    const repDistribuido = repPlan.rows.reduce((s, r) => s + (r.planned !== undefined ? r.planned : 0), 0) * repF;
-    const repSaldoUcs = repPlan.rows.reduce((s, r) => s + r.finalBalance, 0) * repF;
-    const repConsumo = repPlan.rows.reduce((s, r) => s + r.consumption, 0) * repF;
-    const repDest = repPlan.rows.map((row) => {
-      const cb = covBadge(row.coverageMonths);
-      return {
-        name: row.ub.name, uc: row.ub.uc, distributor: row.ub.distributor,
-        pctTxt: (row.allocationPct * 100).toFixed(2).replace(".", ",") + "%",
-        pctW: Math.min(100, row.allocationPct * 100).toFixed(1),
-        recTxt: kwh((row.planned !== undefined ? row.planned : row.consumption) * repF),
-        consTxt: kwh(row.consumption * repF), compTxt: kwh(row.compensated * repF),
-        saldoAntTxt: kwh(row.ub.previousCreditBalance * repF), saldoTxt: kwh(row.finalBalance * repF),
-        covText: cb.covText, covBg: cb.covBg, covColor: cb.covColor, covBorder: cb.covBorder,
-        open: () => this.setState({ ubDetailId: row.ub.id, ubDetailTab: "visao", ubMonthSel: null }),
-      };
-    });
-    const repUbIds = repPlan.rows.map((x) => x.ub.id);
-    const repAlerts = this.ALERTS.filter((a) => (a.unit === repUg.id || repUbIds.includes(a.unit))).slice(0, 3).map((a) => ({ message: a.message, unit: a.unit, code: "ref. " + a.code, ...sevTone[a.severity] }));
+    let repF, repUg, repComp, repRepasse, repPayee, repSt, repCycle, repStPill;
+    let repDistribuido, repSaldoUcs, repConsumo, repDest, repUbIds, repAlerts;
+    if (S._rtMode === "real") {
+      const ra = S._rtRepAll;
+      repF = 1;
+      repUg = (ra && ra.ug) ? ra.ug : { id: S.repUgId, name: "—", owner: "—", purchasePrice: 0 };
+      const or = ra ? ra.ownerReport : null;
+      repPayee = (ra && ra.payee) ? ra.payee : { name: "—", document: "—", pixKey: "—", pixType: "cpf" };
+      repSt = { status: "aberto", paidAt: null, by: null };
+      repCycle = this.cycleBadgeFor("aberto");
+      repStPill = this.statusPill("aberto");
+      repComp = or ? (or.totalCompensated || 0) : 0;
+      repRepasse = or ? (or.ownerPayment || 0) : 0;
+      const raPlan = ra ? ra.allocationPlan : null;
+      if (raPlan && raPlan.rows) {
+        repDistribuido = raPlan.rows.reduce((s, r) => s + (r.planned !== undefined ? r.planned : 0), 0);
+        repSaldoUcs = raPlan.rows.reduce((s, r) => s + (r.finalBalance || 0), 0);
+        repConsumo = raPlan.rows.reduce((s, r) => s + (r.consumption || 0), 0);
+        repDest = raPlan.rows.map((row) => {
+          const cb = covBadge(row.coverageMonths || 0);
+          return {
+            name: row.ub ? row.ub.name : (row.ubId || "—"), uc: row.ub ? row.ub.uc : "—", distributor: row.ub ? row.ub.distributor : "—",
+            pctTxt: ((row.allocationPct || 0) * 100).toFixed(2).replace(".", ",") + "%",
+            pctW: Math.min(100, (row.allocationPct || 0) * 100).toFixed(1),
+            recTxt: kwh(row.planned !== undefined ? row.planned : (row.consumption || 0)),
+            consTxt: kwh(row.consumption || 0), compTxt: kwh(row.compensated || 0),
+            saldoAntTxt: kwh(row.ub ? (row.ub.previousCreditBalance || 0) : 0), saldoTxt: kwh(row.finalBalance || 0),
+            covText: cb.covText, covBg: cb.covBg, covColor: cb.covColor, covBorder: cb.covBorder,
+            open: () => this.setState({ ubDetailId: row.ub ? row.ub.id : row.ubId, ubDetailTab: "visao", ubMonthSel: null }),
+          };
+        });
+      } else {
+        repDistribuido = repComp; repSaldoUcs = 0; repConsumo = 0; repDest = [];
+      }
+      repUbIds = ra ? (ra.ubs || []).map((u) => u.id) : [];
+      repAlerts = ra ? (ra.alerts || []).filter((a) => a.unit === repUg.id || repUbIds.includes(a.unit)).slice(0, 3).map((a) => ({ message: a.message, unit: a.unit, code: "ref. " + (a.code || ""), ...sevTone[a.severity || "info"] })) : [];
+    } else {
+      repF = this.MONTH_FACTOR[repMonth] !== undefined ? this.MONTH_FACTOR[repMonth] : 1;
+      repUg = this.UGS.find((u) => u.id === S.repUgId) || this.UGS[0];
+      const repR = this.computeSettlement(repUg);
+      const repPlan = this.computeAllocationPlan(repUg, {});
+      repComp = repR.totalCompensated * repF;
+      repRepasse = repComp * this.appliedPrice(repUg.id, repMonth);
+      repPayee = this.PAYEES[repUg.id];
+      repSt = this.finStatus("rep", repUg.id, repMonth);
+      repCycle = this.cycleBadgeFor(repSt.status === "pago" ? "fechado" : repMObj.status);
+      repStPill = this.statusPill(repSt.status);
+      repDistribuido = repPlan.rows.reduce((s, r) => s + (r.planned !== undefined ? r.planned : 0), 0) * repF;
+      repSaldoUcs = repPlan.rows.reduce((s, r) => s + r.finalBalance, 0) * repF;
+      repConsumo = repPlan.rows.reduce((s, r) => s + r.consumption, 0) * repF;
+      repDest = repPlan.rows.map((row) => {
+        const cb = covBadge(row.coverageMonths);
+        return {
+          name: row.ub.name, uc: row.ub.uc, distributor: row.ub.distributor,
+          pctTxt: (row.allocationPct * 100).toFixed(2).replace(".", ",") + "%",
+          pctW: Math.min(100, row.allocationPct * 100).toFixed(1),
+          recTxt: kwh((row.planned !== undefined ? row.planned : row.consumption) * repF),
+          consTxt: kwh(row.consumption * repF), compTxt: kwh(row.compensated * repF),
+          saldoAntTxt: kwh(row.ub.previousCreditBalance * repF), saldoTxt: kwh(row.finalBalance * repF),
+          covText: cb.covText, covBg: cb.covBg, covColor: cb.covColor, covBorder: cb.covBorder,
+          open: () => this.setState({ ubDetailId: row.ub.id, ubDetailTab: "visao", ubMonthSel: null }),
+        };
+      });
+      repUbIds = repPlan.rows.map((x) => x.ub.id);
+      repAlerts = this.ALERTS.filter((a) => (a.unit === repUg.id || repUbIds.includes(a.unit))).slice(0, 3).map((a) => ({ message: a.message, unit: a.unit, code: "ref. " + a.code, ...sevTone[a.severity] }));
+    }
 
     // ---------- ALERTAS ----------
     const alSevCounts = { critico: 0, risco: 0, atencao: 0, info: 0 };
@@ -4487,114 +4648,201 @@ class Component extends DCLogic {
       cols: cols.map((c) => (typeof c === "string" ? { label: c, align: "left" } : c)),
       rows,
     });
-    const riF = repF;
-    const riCycle = this.cycleBadgeFor(repMObj.status);
-    const riResults = this.UGS.map((ug) => ({ ug, r: this.computeSettlement(ug), plan: this.computeAllocationPlan(ug, {}) }));
-    const riGen = riResults.reduce((s, x) => s + x.r.generation, 0) * riF;
-    const riDist = riResults.reduce((s, x) => s + x.plan.rows.reduce((t, r2) => t + (r2.planned || 0), 0), 0) * riF;
-    const riComp = riResults.reduce((s, x) => s + x.r.totalCompensated, 0) * riF;
-    // Saldo canônico das UCs beneficiárias — mesma fonte dos saldos exibidos nas listas (reconcilia com a soma individual)
-    const riSaldoUcs = this.UBS.reduce((s, ub) => s + this.buildInvoice(ub.id, repMonth).finalBalance, 0) * riF;
-    const riFatAgg = this.UBS.map((ub) => {
-      const st = this.finStatus("fat", ub.id, repMonth);
-      return { ub, amount: this.buildInvoice(ub.id, repMonth).faturaEsa * riF, status: st.status, paidAt: st.paidAt };
-    });
-    const riRepAgg = this.UGS.map((ug) => {
-      const price = this.appliedPrice(ug.id, repMonth);
-      const comp = this.computeSettlement(ug).totalCompensated * riF;
-      const st = this.finStatus("rep", ug.id, repMonth);
-      return { ug, price, comp, amount: comp * price, status: st.status, paidAt: st.paidAt, payee: this.PAYEES[ug.id] };
-    });
-    const riReceita = riFatAgg.reduce((s, x) => s + x.amount, 0);
-    const riRepasses = riRepAgg.reduce((s, x) => s + x.amount, 0);
-    const riPagasV = riFatAgg.filter((x) => x.status === "pago").reduce((s, x) => s + x.amount, 0);
-    const riAbertoV = riFatAgg.filter((x) => x.status === "aberto").reduce((s, x) => s + x.amount, 0);
-    const riVencidoV = riFatAgg.filter((x) => x.status === "vencido").reduce((s, x) => s + x.amount, 0);
-    const riAlertCounts = { critico: 0, risco: 0, atencao: 0, info: 0 };
-    this.ALERTS.forEach((a) => { if (a.month === repMonth) riAlertCounts[a.severity]++; });
-    const riCardsOp = [
-      { label: "Geração total", value: kwh(riGen) }, { label: "Créditos distribuídos", value: kwh(riDist) },
-      { label: "Créditos compensados", value: kwh(riComp) }, { label: "Saldos nas UCs beneficiárias", value: kwh(riSaldoUcs) },
-      { label: "Unidades Geradoras", value: String(this.UGS.length) }, { label: "Unidades Beneficiárias", value: String(this.UBS.length) },
-    ];
-    const riCardsFin = [
-      { label: "Receita ESA", value: brl(riReceita) }, { label: "Repasses aos proprietários", value: brl(riRepasses) },
-      { label: "Spread bruto", value: brl(riReceita - riRepasses) }, { label: "Faturas emitidas", value: String(riFatAgg.length) },
-      { label: "Faturas pagas", value: String(riFatAgg.filter((x) => x.status === "pago").length) },
-      { label: "Faturas em aberto", value: String(riFatAgg.filter((x) => x.status === "aberto").length) },
-      { label: "Faturas vencidas", value: String(riFatAgg.filter((x) => x.status === "vencido").length) },
-      { label: "Valor em aberto", value: brl(riAbertoV + riVencidoV) },
-    ];
-    // Ciclos do mês: um por UG (3 UGs). Alertas bloqueantes é um subconjunto, não um ciclo adicional.
-    const riCicloApuracao = repMObj.status === "em_apuracao" ? 1 : 0;
-    const riCardsCiclo = [
-      { label: "Ciclos abertos", value: "0" },
-      { label: "Ciclos em apuração", value: String(riCicloApuracao) },
-      { label: "Ciclos fechados", value: String(this.UGS.length - riCicloApuracao) },
-      { label: "Ciclos com alertas bloqueantes", value: riAlertCounts.critico > 0 ? "1" : "0" },
-    ];
-    const riCardsAlertas = [
-      { label: "Críticos", value: String(riAlertCounts.critico) }, { label: "Riscos", value: String(riAlertCounts.risco) },
-      { label: "Atenção", value: String(riAlertCounts.atencao) }, { label: "Informação", value: String(riAlertCounts.info) },
-    ];
-    const riPend = [
-      { label: "Contas da distribuidora aguardando vínculo de beneficiária", value: "1" },
-      { label: "Contas duplicadas aguardando decisão", value: "1" },
-      { label: "Beneficiárias sem histórico suficiente", value: "1" },
-      { label: "Unidades sem recebedor de repasse definido", value: "0" },
-      { label: "Ciclos com rateio abaixo de 100%", value: riAlertCounts.critico > 0 ? "1" : "0" },
-      { label: "Pagamentos aguardando confirmação", value: String(riFatAgg.filter((x) => x.status !== "pago").length + riRepAgg.filter((x) => x.status !== "pago").length) },
-    ];
-    const riSections = [
-      mkSection("ugperf", S.riOpen, "Desempenho por UG", ["UG", { label: "Geração", align: "right" }, { label: "Compensado", align: "right" }, { label: "Saldo", align: "right" }, { label: "Receita ESA", align: "right" }, { label: "Repasse", align: "right" }, { label: "Spread", align: "right" }],
-        riResults.map((x) => ({ cells: [mkCell(x.ug.name, { weight: "600", color: "#062e20" }), mkCell(kwh(x.r.generation * riF), { align: "right" }), mkCell(kwh(x.r.totalCompensated * riF), { align: "right" }), mkCell(kwh(x.r.currentBalance * riF), { align: "right" }), mkCell(brl(x.r.esaRevenue * riF), { align: "right", color: "#00875a" }), mkCell(brl(x.r.ownerPayment * riF), { align: "right", color: "#e11d48" }), mkCell(brl(x.r.spread * riF), { align: "right", weight: "600", color: "#062e20" })] }))),
-      mkSection("ubsaldo", S.riOpen, "Saldos das beneficiárias", ["Beneficiária", "UG", { label: "Consumo", align: "right" }, { label: "Compensado", align: "right" }, { label: "Saldo final", align: "right" }, { label: "Cobertura", align: "right" }],
-        riResults.flatMap((x) => x.plan.rows.map((r2) => ({ cells: [mkCell(r2.ub.name, { weight: "600", color: "#062e20" }), mkCell(x.ug.id), mkCell(kwh(r2.consumption * riF), { align: "right" }), mkCell(kwh(r2.compensated * riF), { align: "right" }), mkCell(kwh(r2.finalBalance * riF), { align: "right" }), mkCell(r2.coverageMonths.toFixed(2).replace(".", ",") + " mês", { align: "right" })] })))),
-      mkSection("rifat", S.riOpen, "Faturas ESA do ciclo", ["Beneficiária", "UC", { label: "Valor Fatura ESA", align: "right" }, "Status", "Pago em"],
-        riFatAgg.map((x) => ({ cells: [mkCell(x.ub.name, { weight: "600", color: "#062e20" }), mkCell(x.ub.uc), mkCell(brl(x.amount), { align: "right", weight: "600" }), mkCell(FAT_TXT[x.status] || x.status, { color: this.statusPill(x.status).color, weight: "700" }), mkCell(x.paidAt || "—")] }))),
-      mkSection("rirep", S.riOpen, "Repasses do ciclo", ["UG", "Proprietário", "Recebedor", { label: "Preço aplicado", align: "right" }, { label: "Valor", align: "right" }, "Status"],
-        riRepAgg.map((x) => ({ cells: [mkCell(x.ug.name, { weight: "600", color: "#062e20" }), mkCell(x.ug.owner), mkCell(x.payee.name), mkCell("R$ " + num(x.price, 2), { align: "right" }), mkCell(brl(x.amount), { align: "right", weight: "600", color: "#e11d48" }), mkCell(REP_TXT[x.status] || x.status, { color: this.statusPill(x.status).color, weight: "700" })] }))),
-      mkSection("rialertas", S.riOpen, "Alertas do ciclo", ["Severidade", "Título", "Entidade", "Status", "Código"],
-        this.ALERTS.filter((a) => a.month === repMonth).map((a) => { const st2 = this.alertState(a.id); return { cells: [mkCell(this.AL_SEV_META[a.severity].label, { color: sevTone[a.severity].color, weight: "700" }), mkCell(this.ALERT_TITLES[a.code] || a.code, { weight: "600", color: "#062e20" }), mkCell(a.unit), mkCell(this.AL_STATUS_META[st2.status].text, { color: this.AL_STATUS_META[st2.status].color, weight: "700" }), mkCell(a.code, { color: "#94a3b8" })] }; })),
-      mkSection("riimport", S.riOpen, "Importações pendentes", ["Arquivo", "UC", "Situação", "Recebido em"],
-        [{ cells: [mkCell("conta-copel-90123.pdf", { weight: "600", color: "#062e20" }), mkCell("901234567"), mkCell("Aguardando vínculo de beneficiária", { color: "#92400e", weight: "600" }), mkCell("14/07/2026")] },
-         { cells: [mkCell("conta-copel-11122.pdf", { weight: "600", color: "#062e20" }), mkCell("111222333"), mkCell("Duplicada — aguardando decisão", { color: "#be123c", weight: "600" }), mkCell("15/07/2026")] }]),
-    ];
-
-    // relatório financeiro
-    const rfFatRows = riFatAgg.filter((x) => S.rfStatus === "all" || x.status === S.rfStatus);
-    const rfSections = [
-      mkSection("rffat", S.riOpen, "Faturas ESA", ["Beneficiária", "UC", "Mês", { label: "Valor Fatura ESA", align: "right" }, "Vencimento", "Status", "Pago em", { label: "Valor em aberto", align: "right" }],
-        rfFatRows.map((x) => ({ cells: [mkCell(x.ub.name, { weight: "600", color: "#062e20" }), mkCell(x.ub.uc), mkCell(shortM(repMonth)), mkCell(brl(x.amount), { align: "right", weight: "600" }), mkCell("10/" + repMonth.split("-")[1] + "/2026"), mkCell(FAT_TXT[x.status] || x.status, { color: this.statusPill(x.status).color, weight: "700" }), mkCell(x.paidAt || "—"), mkCell(x.status === "pago" ? brl(0) : brl(x.amount), { align: "right", color: x.status === "pago" ? "#94a3b8" : "#92400e", weight: "600" })] }))),
-      mkSection("rfrep", S.riOpen, "Repasses", ["UG", "Proprietário", "Recebedor", { label: "Preço aplicado", align: "right" }, { label: "Compensado", align: "right" }, { label: "Valor", align: "right" }, "Status", "Pago em"],
-        riRepAgg.map((x) => ({ cells: [mkCell(x.ug.name, { weight: "600", color: "#062e20" }), mkCell(x.ug.owner), mkCell(x.payee.name), mkCell("R$ " + num(x.price, 2), { align: "right" }), mkCell(kwh(x.comp), { align: "right" }), mkCell(brl(x.amount), { align: "right", weight: "600", color: "#e11d48" }), mkCell(REP_TXT[x.status] || x.status, { color: this.statusPill(x.status).color, weight: "700" }), mkCell(x.paidAt || "—")] }))),
-    ];
-    const rfRecon = [
-      { label: "Receita ESA esperada", value: brl(riReceita) },
-      { label: "Faturas emitidas", value: String(riFatAgg.length) },
-      { label: "Pagamentos recebidos", value: brl(riPagasV) },
-      { label: "Pagamentos em aberto", value: brl(riAbertoV + riVencidoV) },
-      { label: "Repasses esperados", value: brl(riRepasses) },
-      { label: "Repasses pagos", value: brl(riRepAgg.filter((x) => x.status === "pago").reduce((s, x) => s + x.amount, 0)) },
-      { label: "Repasses em aberto", value: brl(riRepAgg.filter((x) => x.status !== "pago").reduce((s, x) => s + x.amount, 0)) },
-      { label: "Spread bruto", value: brl(riReceita - riRepasses) },
-    ];
-    const rfCards = [
-      { label: "Receita ESA", value: brl(riReceita), color: "#00875a" },
-      { label: "Repasses aos proprietários", value: brl(riRepasses), color: "#e11d48" },
-      { label: "Spread bruto", value: brl(riReceita - riRepasses), color: "#00a86b" },
-      { label: "Margem bruta", value: (riReceita > 0 ? ((riReceita - riRepasses) / riReceita) * 100 : 0).toFixed(1).replace(".", ",") + "%", color: "#062e20" },
-      { label: "Faturado", value: brl(riReceita), color: "#062e20" },
-      { label: "Recebido", value: brl(riPagasV), color: "#00875a" },
-      { label: "Valor em aberto", value: brl(riAbertoV), color: "#92400e" },
-      { label: "Valor vencido", value: brl(riVencidoV), color: "#be123c" },
-    ];
-    const rfMax = Math.max(riPagasV, riAbertoV, riVencidoV, 1);
-    const rfStatusBars = [
-      { label: "Pagas", value: brl(riPagasV), w: ((riPagasV / rfMax) * 100).toFixed(1), color: "#00a86b" },
-      { label: "Em aberto", value: brl(riAbertoV), w: ((riAbertoV / rfMax) * 100).toFixed(1), color: "#f59e0b" },
-      { label: "Vencidas", value: brl(riVencidoV), w: ((riVencidoV / rfMax) * 100).toFixed(1), color: "#e11d48" },
-    ];
+    let riF, riCycle, riCardsOp, riCardsFin, riCardsCiclo, riCardsAlertas, riPend, riSections, rfCards, rfSections, rfRecon, rfStatusBars;
+    if (S._rtMode === "real") {
+      const ra = S._rtRepAll;
+      riF = 1;
+      riCycle = this.cycleBadgeFor("aberto");
+      const riUgs = ra ? (ra.ugs || []) : [];
+      const riUbs = ra ? (ra.ubs || []) : [];
+      const riAlerts = ra ? (ra.alerts || []) : [];
+      const riUgResults = riUgs.map((ug) => ({
+        ug, or: (ra && ra.ugOwnerReports) ? ra.ugOwnerReports[ug.id] : null,
+        plan: (ra && ra.ugAllocationPlans) ? ra.ugAllocationPlans[ug.id] : null,
+      }));
+      const riComp = riUgResults.reduce((s, x) => s + (x.or ? (x.or.totalCompensated || 0) : 0), 0);
+      const riGen = riComp;
+      const riDist = riUgResults.reduce((s, x) => s + (x.plan ? x.plan.rows.reduce((t, r2) => t + (r2.planned || 0), 0) : 0), 0);
+      // Saldo canônico — única fonte: execDash.current.balance
+      const riSaldoUcs = (ra && ra.execDash && ra.execDash.current) ? (ra.execDash.current.balance || 0) : 0;
+      const riRealFatAgg = riUbs.map((ub) => {
+        const inv = (ra && ra.ubInvoices) ? ra.ubInvoices[ub.id] : null;
+        return { ub, amount: inv ? (inv.faturaEsa || 0) : 0, status: "aberto", paidAt: null };
+      });
+      const riRealRepAgg = riUgResults.map(({ ug, or }) => {
+        const payee = (ra && ra.ugPayees) ? (ra.ugPayees[ug.id] || { name: ug.owner || "—", document: "—", pixKey: "—", pixType: "cpf" }) : { name: ug.owner || "—", document: "—", pixKey: "—", pixType: "cpf" };
+        return { ug, price: ug.purchasePrice || 0, comp: or ? (or.totalCompensated || 0) : 0, amount: or ? (or.ownerPayment || 0) : 0, status: "aberto", paidAt: null, payee };
+      });
+      const riReceita = riRealFatAgg.reduce((s, x) => s + x.amount, 0);
+      const riRepasses = riRealRepAgg.reduce((s, x) => s + x.amount, 0);
+      const riAlertCounts = { critico: 0, risco: 0, atencao: 0, info: 0 };
+      riAlerts.forEach((a) => { if (a.month === repMonth && riAlertCounts[a.severity] !== undefined) riAlertCounts[a.severity]++; });
+      riCardsOp = [
+        { label: "Geração total", value: kwh(riGen) }, { label: "Créditos distribuídos", value: kwh(riDist) },
+        { label: "Créditos compensados", value: kwh(riComp) }, { label: "Saldos nas UCs beneficiárias", value: kwh(riSaldoUcs) },
+        { label: "Unidades Geradoras", value: String(riUgs.length) }, { label: "Unidades Beneficiárias", value: String(riUbs.length) },
+      ];
+      riCardsFin = [
+        { label: "Receita ESA", value: brl(riReceita) }, { label: "Repasses aos proprietários", value: brl(riRepasses) },
+        { label: "Spread bruto", value: brl(riReceita - riRepasses) }, { label: "Faturas emitidas", value: String(riRealFatAgg.length) },
+        { label: "Faturas pagas", value: "—" }, { label: "Faturas em aberto", value: String(riRealFatAgg.length) },
+        { label: "Faturas vencidas", value: "—" }, { label: "Valor em aberto", value: brl(riReceita) },
+      ];
+      riCardsCiclo = [
+        { label: "Ciclos abertos", value: String(riUgs.length) }, { label: "Ciclos em apuração", value: "0" },
+        { label: "Ciclos fechados", value: "0" }, { label: "Ciclos com alertas bloqueantes", value: riAlertCounts.critico > 0 ? "1" : "0" },
+      ];
+      riCardsAlertas = [
+        { label: "Críticos", value: String(riAlertCounts.critico) }, { label: "Riscos", value: String(riAlertCounts.risco) },
+        { label: "Atenção", value: String(riAlertCounts.atencao) }, { label: "Informação", value: String(riAlertCounts.info) },
+      ];
+      riPend = [
+        { label: "Contas da distribuidora aguardando vínculo de beneficiária", value: "—" },
+        { label: "Contas duplicadas aguardando decisão", value: "—" },
+        { label: "Beneficiárias sem histórico suficiente", value: "—" },
+        { label: "Unidades sem recebedor de repasse definido", value: "—" },
+        { label: "Ciclos com rateio abaixo de 100%", value: "—" },
+        { label: "Pagamentos aguardando confirmação", value: String(riRealFatAgg.length + riRealRepAgg.length) },
+      ];
+      riSections = [
+        mkSection("ugperf", S.riOpen, "Desempenho por UG", ["UG", { label: "Compensado", align: "right" }, { label: "Receita ESA", align: "right" }, { label: "Repasse", align: "right" }, { label: "Spread", align: "right" }],
+          riUgResults.map(({ ug, or }) => { const rev = (or ? (or.totalCompensated || 0) : 0) * (ug.purchasePrice || 0); const rep = or ? (or.ownerPayment || 0) : 0; return { cells: [mkCell(ug.name, { weight: "600", color: "#062e20" }), mkCell(kwh(or ? (or.totalCompensated || 0) : 0), { align: "right" }), mkCell(brl(rev), { align: "right", color: "#00875a" }), mkCell(brl(rep), { align: "right", color: "#e11d48" }), mkCell(brl(rev - rep), { align: "right", weight: "600", color: "#062e20" })] }; })),
+        mkSection("ubsaldo", S.riOpen, "Saldos das beneficiárias", ["Beneficiária", "UG", { label: "Compensado", align: "right" }, { label: "Saldo final", align: "right" }],
+          riRealFatAgg.map(({ ub, amount }) => ({ cells: [mkCell(ub.name, { weight: "600", color: "#062e20" }), mkCell(ub.ugId || "—"), mkCell(kwh(0), { align: "right" }), mkCell(kwh(0), { align: "right" })] }))),
+        mkSection("rifat", S.riOpen, "Faturas ESA do ciclo", ["Beneficiária", "UC", { label: "Valor Fatura ESA", align: "right" }, "Status"],
+          riRealFatAgg.map((x) => ({ cells: [mkCell(x.ub.name, { weight: "600", color: "#062e20" }), mkCell(x.ub.uc || "—"), mkCell(brl(x.amount), { align: "right", weight: "600" }), mkCell("Em aberto", { color: "#92400e", weight: "700" })] }))),
+        mkSection("rirep", S.riOpen, "Repasses do ciclo", ["UG", "Proprietário", "Recebedor", { label: "Valor", align: "right" }, "Status"],
+          riRealRepAgg.map((x) => ({ cells: [mkCell(x.ug.name, { weight: "600", color: "#062e20" }), mkCell(x.ug.owner || "—"), mkCell(x.payee.name), mkCell(brl(x.amount), { align: "right", weight: "600", color: "#e11d48" }), mkCell("Em aberto", { color: "#92400e", weight: "700" })] }))),
+        mkSection("rialertas", S.riOpen, "Alertas do ciclo", ["Severidade", "Título", "Entidade", "Código"],
+          riAlerts.filter((a) => a.month === repMonth).map((a) => ({ cells: [mkCell((this.AL_SEV_META[a.severity] || {}).label || a.severity, { color: (sevTone[a.severity] || {}).color, weight: "700" }), mkCell(this.ALERT_TITLES[a.code] || a.code || "—", { weight: "600", color: "#062e20" }), mkCell(a.unit || "—"), mkCell(a.code || "—", { color: "#94a3b8" })] }))),
+        mkSection("riimport", S.riOpen, "Importações pendentes", ["Situação"],
+          [{ cells: [mkCell("Dados de importação não disponíveis nesta visualização", { color: "#94a3b8" })] }]),
+      ];
+      const rfFatRows2 = riRealFatAgg.filter((x) => S.rfStatus === "all" || x.status === S.rfStatus);
+      rfSections = [
+        mkSection("rffat", S.riOpen, "Faturas ESA", ["Beneficiária", "UC", "Mês", { label: "Valor Fatura ESA", align: "right" }, "Status"],
+          rfFatRows2.map((x) => ({ cells: [mkCell(x.ub.name, { weight: "600", color: "#062e20" }), mkCell(x.ub.uc || "—"), mkCell(shortM(repMonth)), mkCell(brl(x.amount), { align: "right", weight: "600" }), mkCell("Em aberto", { color: "#92400e", weight: "700" })] }))),
+        mkSection("rfrep", S.riOpen, "Repasses", ["UG", "Proprietário", "Recebedor", { label: "Compensado", align: "right" }, { label: "Valor", align: "right" }, "Status"],
+          riRealRepAgg.map((x) => ({ cells: [mkCell(x.ug.name, { weight: "600", color: "#062e20" }), mkCell(x.ug.owner || "—"), mkCell(x.payee.name), mkCell(kwh(x.comp), { align: "right" }), mkCell(brl(x.amount), { align: "right", weight: "600", color: "#e11d48" }), mkCell("Em aberto", { color: "#92400e", weight: "700" })] }))),
+      ];
+      rfRecon = [
+        { label: "Receita ESA esperada", value: brl(riReceita) }, { label: "Faturas emitidas", value: String(riRealFatAgg.length) },
+        { label: "Pagamentos recebidos", value: "—" }, { label: "Pagamentos em aberto", value: brl(riReceita) },
+        { label: "Repasses esperados", value: brl(riRepasses) }, { label: "Repasses pagos", value: "—" },
+        { label: "Repasses em aberto", value: brl(riRepasses) }, { label: "Spread bruto", value: brl(riReceita - riRepasses) },
+      ];
+      rfCards = [
+        { label: "Receita ESA", value: brl(riReceita), color: "#00875a" }, { label: "Repasses aos proprietários", value: brl(riRepasses), color: "#e11d48" },
+        { label: "Spread bruto", value: brl(riReceita - riRepasses), color: "#00a86b" },
+        { label: "Margem bruta", value: riReceita > 0 ? (((riReceita - riRepasses) / riReceita) * 100).toFixed(1).replace(".", ",") + "%" : "—%", color: "#062e20" },
+        { label: "Faturado", value: brl(riReceita), color: "#062e20" }, { label: "Recebido", value: "—", color: "#00875a" },
+        { label: "Valor em aberto", value: brl(riReceita), color: "#92400e" }, { label: "Valor vencido", value: "—", color: "#be123c" },
+      ];
+      rfStatusBars = [
+        { label: "Pagas", value: "—", w: "0", color: "#00a86b" },
+        { label: "Em aberto", value: brl(riReceita), w: "100", color: "#f59e0b" },
+        { label: "Vencidas", value: "—", w: "0", color: "#e11d48" },
+      ];
+    } else {
+      riF = repF;
+      riCycle = this.cycleBadgeFor(repMObj.status);
+      const riResults = this.UGS.map((ug) => ({ ug, r: this.computeSettlement(ug), plan: this.computeAllocationPlan(ug, {}) }));
+      const riGen = riResults.reduce((s, x) => s + x.r.generation, 0) * riF;
+      const riDist = riResults.reduce((s, x) => s + x.plan.rows.reduce((t, r2) => t + (r2.planned || 0), 0), 0) * riF;
+      const riComp = riResults.reduce((s, x) => s + x.r.totalCompensated, 0) * riF;
+      const riSaldoUcs = this.UBS.reduce((s, ub) => s + this.buildInvoice(ub.id, repMonth).finalBalance, 0) * riF;
+      const riFatAgg = this.UBS.map((ub) => {
+        const st = this.finStatus("fat", ub.id, repMonth);
+        return { ub, amount: this.buildInvoice(ub.id, repMonth).faturaEsa * riF, status: st.status, paidAt: st.paidAt };
+      });
+      const riRepAgg = this.UGS.map((ug) => {
+        const price = this.appliedPrice(ug.id, repMonth);
+        const comp = this.computeSettlement(ug).totalCompensated * riF;
+        const st = this.finStatus("rep", ug.id, repMonth);
+        return { ug, price, comp, amount: comp * price, status: st.status, paidAt: st.paidAt, payee: this.PAYEES[ug.id] };
+      });
+      const riReceita = riFatAgg.reduce((s, x) => s + x.amount, 0);
+      const riRepasses = riRepAgg.reduce((s, x) => s + x.amount, 0);
+      const riPagasV = riFatAgg.filter((x) => x.status === "pago").reduce((s, x) => s + x.amount, 0);
+      const riAbertoV = riFatAgg.filter((x) => x.status === "aberto").reduce((s, x) => s + x.amount, 0);
+      const riVencidoV = riFatAgg.filter((x) => x.status === "vencido").reduce((s, x) => s + x.amount, 0);
+      const riAlertCounts = { critico: 0, risco: 0, atencao: 0, info: 0 };
+      this.ALERTS.forEach((a) => { if (a.month === repMonth) riAlertCounts[a.severity]++; });
+      riCardsOp = [
+        { label: "Geração total", value: kwh(riGen) }, { label: "Créditos distribuídos", value: kwh(riDist) },
+        { label: "Créditos compensados", value: kwh(riComp) }, { label: "Saldos nas UCs beneficiárias", value: kwh(riSaldoUcs) },
+        { label: "Unidades Geradoras", value: String(this.UGS.length) }, { label: "Unidades Beneficiárias", value: String(this.UBS.length) },
+      ];
+      riCardsFin = [
+        { label: "Receita ESA", value: brl(riReceita) }, { label: "Repasses aos proprietários", value: brl(riRepasses) },
+        { label: "Spread bruto", value: brl(riReceita - riRepasses) }, { label: "Faturas emitidas", value: String(riFatAgg.length) },
+        { label: "Faturas pagas", value: String(riFatAgg.filter((x) => x.status === "pago").length) },
+        { label: "Faturas em aberto", value: String(riFatAgg.filter((x) => x.status === "aberto").length) },
+        { label: "Faturas vencidas", value: String(riFatAgg.filter((x) => x.status === "vencido").length) },
+        { label: "Valor em aberto", value: brl(riAbertoV + riVencidoV) },
+      ];
+      const riCicloApuracao = repMObj.status === "em_apuracao" ? 1 : 0;
+      riCardsCiclo = [
+        { label: "Ciclos abertos", value: "0" }, { label: "Ciclos em apuração", value: String(riCicloApuracao) },
+        { label: "Ciclos fechados", value: String(this.UGS.length - riCicloApuracao) },
+        { label: "Ciclos com alertas bloqueantes", value: riAlertCounts.critico > 0 ? "1" : "0" },
+      ];
+      riCardsAlertas = [
+        { label: "Críticos", value: String(riAlertCounts.critico) }, { label: "Riscos", value: String(riAlertCounts.risco) },
+        { label: "Atenção", value: String(riAlertCounts.atencao) }, { label: "Informação", value: String(riAlertCounts.info) },
+      ];
+      riPend = [
+        { label: "Contas da distribuidora aguardando vínculo de beneficiária", value: "1" },
+        { label: "Contas duplicadas aguardando decisão", value: "1" },
+        { label: "Beneficiárias sem histórico suficiente", value: "1" },
+        { label: "Unidades sem recebedor de repasse definido", value: "0" },
+        { label: "Ciclos com rateio abaixo de 100%", value: riAlertCounts.critico > 0 ? "1" : "0" },
+        { label: "Pagamentos aguardando confirmação", value: String(riFatAgg.filter((x) => x.status !== "pago").length + riRepAgg.filter((x) => x.status !== "pago").length) },
+      ];
+      riSections = [
+        mkSection("ugperf", S.riOpen, "Desempenho por UG", ["UG", { label: "Geração", align: "right" }, { label: "Compensado", align: "right" }, { label: "Saldo", align: "right" }, { label: "Receita ESA", align: "right" }, { label: "Repasse", align: "right" }, { label: "Spread", align: "right" }],
+          riResults.map((x) => ({ cells: [mkCell(x.ug.name, { weight: "600", color: "#062e20" }), mkCell(kwh(x.r.generation * riF), { align: "right" }), mkCell(kwh(x.r.totalCompensated * riF), { align: "right" }), mkCell(kwh(x.r.currentBalance * riF), { align: "right" }), mkCell(brl(x.r.esaRevenue * riF), { align: "right", color: "#00875a" }), mkCell(brl(x.r.ownerPayment * riF), { align: "right", color: "#e11d48" }), mkCell(brl(x.r.spread * riF), { align: "right", weight: "600", color: "#062e20" })] }))),
+        mkSection("ubsaldo", S.riOpen, "Saldos das beneficiárias", ["Beneficiária", "UG", { label: "Consumo", align: "right" }, { label: "Compensado", align: "right" }, { label: "Saldo final", align: "right" }, { label: "Cobertura", align: "right" }],
+          riResults.flatMap((x) => x.plan.rows.map((r2) => ({ cells: [mkCell(r2.ub.name, { weight: "600", color: "#062e20" }), mkCell(x.ug.id), mkCell(kwh(r2.consumption * riF), { align: "right" }), mkCell(kwh(r2.compensated * riF), { align: "right" }), mkCell(kwh(r2.finalBalance * riF), { align: "right" }), mkCell(r2.coverageMonths.toFixed(2).replace(".", ",") + " mês", { align: "right" })] })))),
+        mkSection("rifat", S.riOpen, "Faturas ESA do ciclo", ["Beneficiária", "UC", { label: "Valor Fatura ESA", align: "right" }, "Status", "Pago em"],
+          riFatAgg.map((x) => ({ cells: [mkCell(x.ub.name, { weight: "600", color: "#062e20" }), mkCell(x.ub.uc), mkCell(brl(x.amount), { align: "right", weight: "600" }), mkCell(FAT_TXT[x.status] || x.status, { color: this.statusPill(x.status).color, weight: "700" }), mkCell(x.paidAt || "—")] }))),
+        mkSection("rirep", S.riOpen, "Repasses do ciclo", ["UG", "Proprietário", "Recebedor", { label: "Preço aplicado", align: "right" }, { label: "Valor", align: "right" }, "Status"],
+          riRepAgg.map((x) => ({ cells: [mkCell(x.ug.name, { weight: "600", color: "#062e20" }), mkCell(x.ug.owner), mkCell(x.payee.name), mkCell("R$ " + num(x.price, 2), { align: "right" }), mkCell(brl(x.amount), { align: "right", weight: "600", color: "#e11d48" }), mkCell(REP_TXT[x.status] || x.status, { color: this.statusPill(x.status).color, weight: "700" })] }))),
+        mkSection("rialertas", S.riOpen, "Alertas do ciclo", ["Severidade", "Título", "Entidade", "Status", "Código"],
+          this.ALERTS.filter((a) => a.month === repMonth).map((a) => { const st2 = this.alertState(a.id); return { cells: [mkCell(this.AL_SEV_META[a.severity].label, { color: sevTone[a.severity].color, weight: "700" }), mkCell(this.ALERT_TITLES[a.code] || a.code, { weight: "600", color: "#062e20" }), mkCell(a.unit), mkCell(this.AL_STATUS_META[st2.status].text, { color: this.AL_STATUS_META[st2.status].color, weight: "700" }), mkCell(a.code, { color: "#94a3b8" })] }; })),
+        mkSection("riimport", S.riOpen, "Importações pendentes", ["Arquivo", "UC", "Situação", "Recebido em"],
+          [{ cells: [mkCell("conta-copel-90123.pdf", { weight: "600", color: "#062e20" }), mkCell("901234567"), mkCell("Aguardando vínculo de beneficiária", { color: "#92400e", weight: "600" }), mkCell("14/07/2026")] },
+           { cells: [mkCell("conta-copel-11122.pdf", { weight: "600", color: "#062e20" }), mkCell("111222333"), mkCell("Duplicada — aguardando decisão", { color: "#be123c", weight: "600" }), mkCell("15/07/2026")] }]),
+      ];
+      const rfFatRows = riFatAgg.filter((x) => S.rfStatus === "all" || x.status === S.rfStatus);
+      rfSections = [
+        mkSection("rffat", S.riOpen, "Faturas ESA", ["Beneficiária", "UC", "Mês", { label: "Valor Fatura ESA", align: "right" }, "Vencimento", "Status", "Pago em", { label: "Valor em aberto", align: "right" }],
+          rfFatRows.map((x) => ({ cells: [mkCell(x.ub.name, { weight: "600", color: "#062e20" }), mkCell(x.ub.uc), mkCell(shortM(repMonth)), mkCell(brl(x.amount), { align: "right", weight: "600" }), mkCell("10/" + repMonth.split("-")[1] + "/2026"), mkCell(FAT_TXT[x.status] || x.status, { color: this.statusPill(x.status).color, weight: "700" }), mkCell(x.paidAt || "—"), mkCell(x.status === "pago" ? brl(0) : brl(x.amount), { align: "right", color: x.status === "pago" ? "#94a3b8" : "#92400e", weight: "600" })] }))),
+        mkSection("rfrep", S.riOpen, "Repasses", ["UG", "Proprietário", "Recebedor", { label: "Preço aplicado", align: "right" }, { label: "Compensado", align: "right" }, { label: "Valor", align: "right" }, "Status", "Pago em"],
+          riRepAgg.map((x) => ({ cells: [mkCell(x.ug.name, { weight: "600", color: "#062e20" }), mkCell(x.ug.owner), mkCell(x.payee.name), mkCell("R$ " + num(x.price, 2), { align: "right" }), mkCell(kwh(x.comp), { align: "right" }), mkCell(brl(x.amount), { align: "right", weight: "600", color: "#e11d48" }), mkCell(REP_TXT[x.status] || x.status, { color: this.statusPill(x.status).color, weight: "700" }), mkCell(x.paidAt || "—")] }))),
+      ];
+      rfRecon = [
+        { label: "Receita ESA esperada", value: brl(riReceita) }, { label: "Faturas emitidas", value: String(riFatAgg.length) },
+        { label: "Pagamentos recebidos", value: brl(riPagasV) }, { label: "Pagamentos em aberto", value: brl(riAbertoV + riVencidoV) },
+        { label: "Repasses esperados", value: brl(riRepasses) },
+        { label: "Repasses pagos", value: brl(riRepAgg.filter((x) => x.status === "pago").reduce((s, x) => s + x.amount, 0)) },
+        { label: "Repasses em aberto", value: brl(riRepAgg.filter((x) => x.status !== "pago").reduce((s, x) => s + x.amount, 0)) },
+        { label: "Spread bruto", value: brl(riReceita - riRepasses) },
+      ];
+      rfCards = [
+        { label: "Receita ESA", value: brl(riReceita), color: "#00875a" }, { label: "Repasses aos proprietários", value: brl(riRepasses), color: "#e11d48" },
+        { label: "Spread bruto", value: brl(riReceita - riRepasses), color: "#00a86b" },
+        { label: "Margem bruta", value: (riReceita > 0 ? ((riReceita - riRepasses) / riReceita) * 100 : 0).toFixed(1).replace(".", ",") + "%", color: "#062e20" },
+        { label: "Faturado", value: brl(riReceita), color: "#062e20" }, { label: "Recebido", value: brl(riPagasV), color: "#00875a" },
+        { label: "Valor em aberto", value: brl(riAbertoV), color: "#92400e" }, { label: "Valor vencido", value: brl(riVencidoV), color: "#be123c" },
+      ];
+      const rfMax = Math.max(riPagasV, riAbertoV, riVencidoV, 1);
+      rfStatusBars = [
+        { label: "Pagas", value: brl(riPagasV), w: ((riPagasV / rfMax) * 100).toFixed(1), color: "#00a86b" },
+        { label: "Em aberto", value: brl(riAbertoV), w: ((riAbertoV / rfMax) * 100).toFixed(1), color: "#f59e0b" },
+        { label: "Vencidas", value: brl(riVencidoV), w: ((riVencidoV / rfMax) * 100).toFixed(1), color: "#e11d48" },
+      ];
+    }
 
     const toast = S.toast;
 
@@ -4971,7 +5219,17 @@ class Component extends DCLogic {
       payValue: S.payValue, onPayValue: (e) => this.setState({ payValue: e.target.value }),
       payNote: S.payNote, onPayNote: (e) => this.setState({ payNote: e.target.value }),
       payClose: () => this.setState({ payModal: null }),
-      payConfirm: () => {
+      payConfirm: S._rtMode === "real" ? () => {
+        const p = S.payModal; if (!p) return;
+        const rt = window.ESA_ENERGY_CREDITS_RUNTIME; if (!rt) return;
+        const payment = { paidAt: S.payDate || new Date().toISOString().slice(0, 10), amount: parseFloat(S.payValue) || 0, note: S.payNote };
+        const call = p.kind === "fat" ? rt.confirmInvoicePayment(p.id, finMonth, payment) : rt.confirmOwnerPayment(p.id, finMonth, payment);
+        Promise.resolve(call).then((result) => {
+          this.setState({ payModal: null });
+          if (result && result.ok === false) { this.showToast("Pagamento não confirmado", result.message || "Confirmação rejeitada pelo servidor."); }
+          else { this.showToast("Pagamento registrado", (p.kind === "fat" ? "Fatura ESA" : "Repasse") + " — confirmação enviada."); this._loadRealFin(finMonth); }
+        }).catch((err) => { this.setState({ payModal: null }); this.showToast("Erro ao confirmar", (err && err.message) || "Tente novamente."); });
+      } : () => {
         const p = S.payModal; if (!p) return;
         const key = this.finKey(p.kind, p.id, finMonth);
         this.setState((s) => ({ payModal: null, finPay: { ...s.finPay, [key]: { status: "pago", paidAt: s.payDate || "16/07/2026", by: this.FIN_BY + " (você)", value: s.payValue, note: s.payNote, reopenedAt: null, reason: null } } }));
@@ -4984,7 +5242,17 @@ class Component extends DCLogic {
       onReopenReason: (e) => this.setState({ reopenReason: e.target.value, reopenMissing: false }),
       reopenMissing: S.reopenMissing,
       reopenClose: () => this.setState({ reopenModal: null }),
-      reopenConfirm: () => {
+      reopenConfirm: S._rtMode === "real" ? () => {
+        const p = S.reopenModal; if (!p) return;
+        if (!S.reopenReason.trim()) { this.setState({ reopenMissing: true }); return; }
+        if (p.kind === "rep") { this.setState({ reopenModal: null }); this.showToast("Reabertura indisponível", "Reabertura de repasse ainda não habilitada no ESA OS."); return; }
+        const rt = window.ESA_ENERGY_CREDITS_RUNTIME; if (!rt) return;
+        Promise.resolve(rt.reopenInvoicePayment(p.id, finMonth, S.reopenReason)).then((result) => {
+          this.setState({ reopenModal: null });
+          if (result && result.ok === false) { this.showToast("Reabertura não realizada", result.message || "Reabertura rejeitada pelo servidor."); }
+          else { this.showToast("Pagamento reaberto", "Registro reaberto — motivo registrado para auditoria."); this._loadRealFin(finMonth); }
+        }).catch((err) => { this.setState({ reopenModal: null }); this.showToast("Erro ao reabrir", (err && err.message) || "Tente novamente."); });
+      } : () => {
         const p = S.reopenModal; if (!p) return;
         if (!S.reopenReason.trim()) { this.setState({ reopenMissing: true }); return; }
         const key = this.finKey(p.kind, p.id, finMonth);
@@ -4999,8 +5267,8 @@ class Component extends DCLogic {
 
       // relatório do proprietário
       repMonth, repUgId: S.repUgId,
-      repMonthOpts: this.MONTHS_AV.map((m) => ({ value: m.value, label: m.label })),
-      repUgOpts: this.UGS.map((g) => ({ value: g.id, label: g.name })),
+      repMonthOpts: (S._rtMode === "real" && S._rtMonths) ? S._rtMonths : this.MONTHS_AV.map((m) => ({ value: m.value, label: m.label })),
+      repUgOpts: (S._rtMode === "real" && S._rtUgs) ? S._rtUgs.map((g) => ({ value: g.id, label: g.name })) : this.UGS.map((g) => ({ value: g.id, label: g.name })),
       onRepMonth: (e) => this.setState({ repMonth: e.target.value }),
       onRepUg: (e) => this.setState({ repUgId: e.target.value }),
       repHeader: {
@@ -5120,6 +5388,23 @@ class Component extends DCLogic {
         this._loadRealApPlan(this.state.apUgId, this.state.apMonth);
       }
     }
+    // Gate 3D — load reports on relatorios view entry or filter change
+    if (this.state.view === "relatorios") {
+      const viewEntered = prevState.view !== "relatorios";
+      const ugMudou = this.state.repUgId !== prevState.repUgId;
+      const mesMudou = this.state.repMonth !== prevState.repMonth;
+      if ((viewEntered || ugMudou || mesMudou) && !this.state._rtRepAllLoading) {
+        this._loadRealReports(this.state.repUgId, this.state.repMonth);
+      }
+    }
+    // Gate 3D — load financeiro on financeiro view entry or month change
+    if (this.state.view === "financeiro") {
+      const viewEntered = prevState.view !== "financeiro";
+      const mesMudou = this.state.finMonth !== prevState.finMonth;
+      if ((viewEntered || mesMudou) && !this.state._rtFinAllLoading) {
+        this._loadRealFin(this.state.finMonth);
+      }
+    }
   }
 
   _initRealMode() {
@@ -5128,7 +5413,8 @@ class Component extends DCLogic {
     Promise.all([rt.listMonths(), rt.listGeneratingUnits()]).then((result) => {
       const months = result[0]; const ugs = result[1];
       const initMonth = (months[0] || {}).value || this.state.dashMonth;
-      this.setState({ _rtMode: "real", _rtMonths: months, _rtUgs: ugs, dashMonth: initMonth });
+      const firstUgId = (ugs[0] || {}).value || (ugs[0] || {}).id || this.state.apUgId;
+      this.setState({ _rtMode: "real", _rtMonths: months, _rtUgs: ugs, dashMonth: initMonth, finMonth: initMonth, repMonth: initMonth, apMonth: initMonth, repUgId: firstUgId });
       this._loadRealDash(initMonth, "all");
     }).catch((err) => { console.error("[ESA] Real mode init error", err); });
   }
@@ -5207,6 +5493,84 @@ class Component extends DCLogic {
       if (seq !== this._apPlanSeq) return;
       console.error("[ESA] AP plan load error", err);
       this.setState({ _rtApPlanLoading: false });
+    });
+  }
+
+  _loadRealReports(ugId, month) {
+    const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
+    if (!rt || rt.mode !== "real" || !ugId) return;
+    this._repSeq = (this._repSeq || 0) + 1;
+    const seq = this._repSeq;
+    this.setState({ _rtRepAllLoading: true, _rtRepAll: null });
+    Promise.all([
+      rt.getOwnerReport(ugId, month),
+      rt.getGeneratingUnit(ugId),
+      rt.getGeneratingUnitPayee(ugId),
+      rt.listGeneratingUnits(),
+      rt.listBeneficiaryUnits(),
+      rt.listAlerts({ month }),
+      rt.getDashboardData({ month }),
+      rt.getAllocationPlan(ugId, month, {}),
+    ]).then((res) => {
+      if (seq !== this._repSeq) return;
+      const [ownerReport, ug, payee, ugs, ubs, alerts, execDash, allocationPlan] = res;
+      const realUbs = ubs || [];
+      const realUgs = ugs || [];
+      return Promise.all([
+        ...realUbs.map((ub) => rt.getBeneficiaryInvoice(ub.id || ub.value, month).catch(() => null)),
+        ...realUgs.map((g) => rt.getOwnerReport(g.id || g.value, month).catch(() => null)),
+        ...realUgs.map((g) => rt.getAllocationPlan(g.id || g.value, month, {}).catch(() => null)),
+        ...realUgs.map((g) => rt.getGeneratingUnitPayee(g.id || g.value).catch(() => null)),
+      ]).then((res2) => {
+        const n = realUbs.length; const m2 = realUgs.length;
+        const ubInvoices = {};
+        realUbs.forEach((ub, i) => { ubInvoices[ub.id || ub.value] = res2[i]; });
+        const ugOwnerReports = {};
+        realUgs.forEach((g, i) => { ugOwnerReports[g.id || g.value] = res2[n + i]; });
+        const ugAllocationPlans = {};
+        realUgs.forEach((g, i) => { ugAllocationPlans[g.id || g.value] = res2[n + m2 + i]; });
+        const ugPayees = {};
+        realUgs.forEach((g, i) => { ugPayees[g.id || g.value] = res2[n + 2 * m2 + i]; });
+        if (seq !== this._repSeq) return;
+        this.setState({ _rtRepAll: { ownerReport, ug, payee, ugs: realUgs, ubs: realUbs, alerts: alerts || [], execDash, allocationPlan, ubInvoices, ugOwnerReports, ugAllocationPlans, ugPayees }, _rtRepAllLoading: false });
+      });
+    }).catch((err) => {
+      if (seq !== this._repSeq) return;
+      console.error("[ESA] Reports load error", err);
+      this.setState({ _rtRepAllLoading: false });
+    });
+  }
+
+  _loadRealFin(month) {
+    const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
+    if (!rt || rt.mode !== "real") return;
+    this._finSeq = (this._finSeq || 0) + 1;
+    const seq = this._finSeq;
+    this.setState({ _rtFinAllLoading: true, _rtFinAll: null });
+    Promise.all([rt.listGeneratingUnits(), rt.listBeneficiaryUnits()]).then((res) => {
+      if (seq !== this._finSeq) return;
+      const ugs = res[0] || []; const ubs = res[1] || [];
+      return Promise.all([
+        ...ubs.map((ub) => rt.getBeneficiaryInvoice(ub.id || ub.value, month).catch(() => null)),
+        ...ugs.map((g) => rt.getGeneratingUnitPayee(g.id || g.value).catch(() => null)),
+        ...ugs.map((g) => rt.getOwnerReport(g.id || g.value, month).catch(() => null)),
+        rt.getMonthlyTrend({}).catch(() => null),
+      ]).then((res2) => {
+        const n = ubs.length; const m2 = ugs.length;
+        const ubInvoices = {};
+        ubs.forEach((ub, i) => { ubInvoices[ub.id || ub.value] = res2[i]; });
+        const ugPayees = {};
+        ugs.forEach((g, i) => { ugPayees[g.id || g.value] = res2[n + i]; });
+        const ugOwnerReports = {};
+        ugs.forEach((g, i) => { ugOwnerReports[g.id || g.value] = res2[n + m2 + i]; });
+        const trend = res2[n + 2 * m2];
+        if (seq !== this._finSeq) return;
+        this.setState({ _rtFinAll: { ugs, ubs, ubInvoices, ugPayees, ugOwnerReports, trend: trend || [] }, _rtFinAllLoading: false });
+      });
+    }).catch((err) => {
+      if (seq !== this._finSeq) return;
+      console.error("[ESA] Financeiro load error", err);
+      this.setState({ _rtFinAllLoading: false });
     });
   }
 

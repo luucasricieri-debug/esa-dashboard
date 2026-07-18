@@ -32,6 +32,8 @@ import type {
   MutationResult,
   OwnerReport,
   PaymentInput,
+  PaymentStatus,
+  PixType,
   SavingsHistoryRow,
   TrendRow,
   AggregateMetrics,
@@ -354,7 +356,32 @@ export function createEsaRuntimeProvider(uiProvider: UIProvider): EnergyCreditsR
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const d = unwrap(uiProvider.getOwnerMonthlyReport(ugId, month)) as any;
-        return d as OwnerReport | null;
+        if (!d) return null;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const payeeRaw = (d.payee ?? d.recipient ?? null) as any;
+        return {
+          ugId: d.generatingUnitId ?? d.ugId ?? ugId,
+          ugName: d.ugName ?? d.name ?? '',
+          month: d.referenceMonth ?? d.month ?? month,
+          appliedPrice: d.appliedPrice ?? d.purchasePrice ?? 0,
+          totalCompensated: d.totalCompensatedKwh ?? d.totalCompensated ?? 0,
+          ownerPayment: d.ownerReturn ?? d.ownerPayment ?? 0,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          beneficiaryBreakdown: (d.beneficiaries ?? d.beneficiaryBreakdown ?? []).map((b: any) => ({
+            ubId: b.beneficiaryUnitId ?? b.ubId ?? '',
+            ubName: b.name ?? b.ubName ?? '',
+            compensated: b.compensatedKwh ?? b.compensated ?? 0,
+            share: b.allocationPct ?? b.share ?? 0,
+            repasse: b.ownerReturn ?? b.repasse ?? 0,
+            status: (b.paymentStatus ?? b.status ?? 'aberto') as PaymentStatus,
+          })),
+          payee: payeeRaw ? {
+            name: payeeRaw.name ?? '',
+            document: payeeRaw.document ?? payeeRaw.cpf ?? payeeRaw.cnpj ?? '',
+            pixKey: payeeRaw.pixKey ?? payeeRaw.pix ?? '',
+            pixType: (payeeRaw.pixType ?? payeeRaw.type ?? 'cpf') as PixType,
+          } : { name: '', document: '', pixKey: '', pixType: 'cpf' as PixType },
+        };
       } catch (err: unknown) {
         const msg = (err as Error)?.message ?? '';
         if (/\[buildOwnerMonthlyReport\]/.test(msg) && /não encontrada/.test(msg)) return null;
@@ -376,13 +403,22 @@ export function createEsaRuntimeProvider(uiProvider: UIProvider): EnergyCreditsR
       return { month: filter.month, invoices: [], ownerPayments: [], totalRevenue: 0, totalOwnerPayment: 0, spread: 0 };
     },
     async confirmInvoicePayment(ubId: string, _month: string, payment: PaymentInput) {
-      return (unwrap(uiProvider.confirmInvoicePayment(ubId, payment)) as MutationResult | null) ?? ok();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const raw = uiProvider.confirmInvoicePayment(ubId, payment) as any;
+      if (raw?.ok === false) return { ok: false, persisted: false, capability: 'rejected', message: raw.message ?? raw.error ?? 'Confirmação rejeitada pelo servidor.' };
+      return { ok: true };
     },
     async reopenInvoicePayment(ubId: string, _month: string, _reason: string) {
-      return (unwrap(uiProvider.reopenInvoicePayment(ubId, _reason)) as MutationResult | null) ?? ok();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const raw = uiProvider.reopenInvoicePayment(ubId, _reason) as any;
+      if (raw?.ok === false) return { ok: false, persisted: false, capability: 'rejected', message: raw.message ?? raw.error ?? 'Reabertura rejeitada pelo servidor.' };
+      return { ok: true };
     },
     async confirmOwnerPayment(ugId: string, _month: string, payment: PaymentInput) {
-      return (unwrap(uiProvider.confirmOwnerSettlementPayment(ugId, payment)) as MutationResult | null) ?? ok();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const raw = uiProvider.confirmOwnerSettlementPayment(ugId, payment) as any;
+      if (raw?.ok === false) return { ok: false, persisted: false, capability: 'rejected', message: raw.message ?? raw.error ?? 'Confirmação rejeitada pelo servidor.' };
+      return { ok: true };
     },
 
     // ---- Alerts ----
