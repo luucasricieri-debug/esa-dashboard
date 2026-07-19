@@ -301,18 +301,23 @@ function classifyMigration(report) {
   const warnings = [];
 
   if (report.source.firebaseUnavailable) blockers.push('Firebase indisponível');
-  if (!report.source.userExists) blockers.push(`Usuário origem não encontrado: ${report.source.maskedUid}`);
+  // userExists verifica users/{uid} diretamente — não confundir com energyCredits vazio
+  if (report.source.userExists === false) blockers.push(`Usuário origem não encontrado: ${report.source.maskedUid}`);
   if (report.destination.hasOperationalData) blockers.push('Destino já possui dados operacionais (MIGRATION_DESTINATION_NOT_EMPTY)');
 
   const totalInvalid = report.source.collections.reduce((s, c) => s + (c.invalidRecords?.length || 0), 0);
   const totalForbidden = report.source.collections.reduce((s, c) => s + (c.forbiddenKeyRecords?.length || 0), 0);
   const orphans = (report.references || []).filter(r => r.status === 'orphan');
-  const totalCount = report.source.collections.reduce((s, c) => s + (c.count || 0), 0);
 
   if (totalInvalid > 0) warnings.push(`${totalInvalid} registro(s) inválido(s) na origem`);
   if (totalForbidden > 0) warnings.push(`${totalForbidden} registro(s) com chaves proibidas`);
   if (orphans.length > 0) warnings.push(`${orphans.length} referência(s) órfã(s) detectada(s)`);
-  if (totalCount === 0) warnings.push('Origem não possui dados operacionais');
+  // Origem vazia é warning, não bloqueador — usuário existe mas sem dados para migrar
+  // Fallback: calcular de collections quando hasOperationalData não está no report
+  const hasOperationalData = report.source.hasOperationalData !== undefined
+    ? report.source.hasOperationalData
+    : report.source.collections.reduce((s, c) => s + (c.count || 0), 0) > 0;
+  if (!hasOperationalData) warnings.push('Origem não possui dados operacionais; a migração copiará zero registros.');
 
   const classification = blockers.length > 0
     ? 'DRY_RUN_BLOCKED'
@@ -338,6 +343,15 @@ function initFirebaseForScript() {
     admin.initializeApp({ credential: admin.credential.cert(serviceAccount), databaseURL });
   }
   return admin.database();
+}
+
+async function checkUserExists(db, uid) {
+  try {
+    const snap = await db.ref(`users/${uid}`).once('value');
+    return snap.exists();
+  } catch (_) {
+    return false;
+  }
 }
 
 async function loadEnergyCreditsFromPath(db, basePath, collectionsToLoad) {
@@ -523,6 +537,8 @@ async function main() {
     source: {
       maskedUid: maskUid(args.sourceUid),
       userExists: false,
+      energyCreditsExists: false,
+      hasOperationalData: false,
       firebaseUnavailable: false,
       collections: [],
       totalCount: 0,
@@ -576,9 +592,15 @@ async function main() {
   const sourceBasePath = `users/${args.sourceUid}/energyCredits`;
   const sourceRaw = await loadEnergyCreditsFromPath(db, sourceBasePath, collectionsToProcess);
 
-  // Verificar se o usuário existe (ao menos uma collection com dados)
-  const hasAnySource = collectionsToProcess.some(c => sourceRaw[c] !== null);
-  report.source.userExists = hasAnySource;
+  // Verificar existência do usuário independentemente dos dados de energyCredits
+  report.source.userExists = await checkUserExists(db, args.sourceUid);
+
+  // Verificar se o path energyCredits existe (ao menos uma collection não-null no RTDB)
+  const hasAnyEnergyCredits = collectionsToProcess.some(c => sourceRaw[c] !== null);
+  report.source.energyCreditsExists = hasAnyEnergyCredits;
+
+  // Verificar se há dados operacionais (ao menos um registro em qualquer collection)
+  // (calculado após inventário abaixo)
 
   const inventoryByCollection = {};
   for (const col of collectionsToProcess) {
@@ -594,6 +616,7 @@ async function main() {
 
   report.source.totalCount = report.source.collections.reduce((s, c) => s + c.count, 0);
   report.source.totalSizeBytes = report.source.collections.reduce((s, c) => s + c.sizeBytes, 0);
+  report.source.hasOperationalData = report.source.totalCount > 0;
 
   // Hash da origem (todas as collections combinadas)
   const sourceHashes = report.source.collections.map(c => c.hash).join('|');

@@ -402,6 +402,79 @@ assert('CD09 Idempotência: mesma execução duas vezes é segura',
   orgScriptSrc.includes('findOrgBySlug') && orgScriptSrc.includes('process.exit(0)'));
 
 // ══════════════════════════════════════════════════════════════════════════════
+// Suite 15 — Separação userExists vs. energyCredits vazio (hotfix Gate 8C.1)
+// ══════════════════════════════════════════════════════════════════════════════
+console.log('\n=== Suite 15 — userExists vs. energyCredits vazio ===');
+
+// usuário inexistente → bloqueado
+const clUserNotFound = classifyMigration({
+  source: { firebaseUnavailable: false, userExists: false, hasOperationalData: false, collections: [], maskedUid: '****' },
+  destination: { hasOperationalData: false, collections: [] },
+  references: [],
+});
+assert('UE01 usuário inexistente → DRY_RUN_BLOCKED',
+  clUserNotFound.classification === 'DRY_RUN_BLOCKED');
+assert('UE02 blocker menciona "não encontrado"',
+  clUserNotFound.blockers.some(b => b.includes('não encontrado')));
+assert('UE03 blocker NÃO aparece quando usuário existe',
+  (() => {
+    const r = classifyMigration({
+      source: { firebaseUnavailable: false, userExists: true, hasOperationalData: false, collections: [], maskedUid: '****' },
+      destination: { hasOperationalData: false, collections: [] },
+      references: [],
+    });
+    return !r.blockers.some(b => b.includes('não encontrado'));
+  })());
+
+// usuário existente com energyCredits vazio → READY_WITH_WARNINGS
+const clUserExistsNoData = classifyMigration({
+  source: { firebaseUnavailable: false, userExists: true, hasOperationalData: false, collections: [], maskedUid: '****' },
+  destination: { hasOperationalData: false, collections: [] },
+  references: [],
+});
+assert('UE04 usuário existe sem dados → DRY_RUN_READY_WITH_WARNINGS',
+  clUserExistsNoData.classification === 'DRY_RUN_READY_WITH_WARNINGS');
+assert('UE05 warning menciona "zero registros"',
+  clUserExistsNoData.warnings.some(w => w.includes('zero registros')));
+assert('UE06 sem bloqueadores quando usuário existe e destino vazio',
+  clUserExistsNoData.blockers.length === 0);
+
+// usuário existente com dados → READY_FOR_COPY
+const clUserExistsWithData = classifyMigration({
+  source: { firebaseUnavailable: false, userExists: true, hasOperationalData: true, collections: [], maskedUid: '****' },
+  destination: { hasOperationalData: false, collections: [] },
+  references: [],
+});
+assert('UE07 usuário existe com dados → DRY_RUN_READY_FOR_COPY',
+  clUserExistsWithData.classification === 'DRY_RUN_READY_FOR_COPY');
+assert('UE08 sem warning de "zero registros" quando há dados',
+  !clUserExistsWithData.warnings.some(w => w.includes('zero registros')));
+
+// destino não vazio → bloqueado mesmo quando usuário existe
+const clDestNotEmpty = classifyMigration({
+  source: { firebaseUnavailable: false, userExists: true, hasOperationalData: true, collections: [], maskedUid: '****' },
+  destination: { hasOperationalData: true, collections: [] },
+  references: [],
+});
+assert('UE09 destino não vazio → DRY_RUN_BLOCKED',
+  clDestNotEmpty.classification === 'DRY_RUN_BLOCKED');
+assert('UE10 blocker menciona MIGRATION_DESTINATION_NOT_EMPTY',
+  clDestNotEmpty.blockers.some(b => b.includes('MIGRATION_DESTINATION_NOT_EMPTY')));
+
+// Verificar que o script usa checkUserExists separado (código fonte)
+const { migrScriptSrc: _ } = (() => ({ migrScriptSrc: migrScriptSrc }))();
+assert('UE11 checkUserExists presente no script',
+  migrScriptSrc.includes('checkUserExists'));
+assert('UE12 userExists calculado via checkUserExists (não via collections)',
+  migrScriptSrc.includes('report.source.userExists = await checkUserExists'));
+assert('UE13 energyCreditsExists no report',
+  migrScriptSrc.includes('energyCreditsExists'));
+assert('UE14 hasOperationalData no report source',
+  migrScriptSrc.includes('report.source.hasOperationalData'));
+assert('UE15 mensagem de zero registros no warning',
+  migrScriptSrc.includes('zero registros'));
+
+// ══════════════════════════════════════════════════════════════════════════════
 // Relatório final
 // ══════════════════════════════════════════════════════════════════════════════
 
