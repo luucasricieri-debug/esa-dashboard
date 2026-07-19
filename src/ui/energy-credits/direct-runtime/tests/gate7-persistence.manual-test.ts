@@ -144,7 +144,8 @@ async function suiteCY() {
 
   assert('CY1 arquivo existe', fs.existsSync(path.join(DRT, 'bootstrap/sessionResolver.ts')));
 
-  assert('CY2 exporta resolveSessionToken',
+  assert('CY2 exporta resolveSessionToken (async)',
+    sessionResSrc.includes('export async function resolveSessionToken') ||
     sessionResSrc.includes('export function resolveSessionToken'));
 
   assert('CY3 lê de sessionStorage.getItem("esa_session")',
@@ -153,15 +154,16 @@ async function suiteCY() {
   assert('CY4 lê de localStorage.getItem("esa_remember") como fallback',
     sessionResSrc.includes('"esa_remember"') || sessionResSrc.includes("'esa_remember'"));
 
-  assert('CY5 retorna null se token ausente',
-    sessionResSrc.includes('return null'));
+  assert('CY5 retorna token: null se sessão ausente',
+    sessionResSrc.includes('token: null'));
 
   assert('CY6 sem PII em logs',
     !sessionResSrc.match(/console\.(log|info|warn)\s*\(/));
 
-  // resolveSessionToken retorna null em ambiente Node (sem sessionStorage/localStorage)
-  const token = resolveSessionToken();
-  assert('CY7 resolveSessionToken retorna null em ambiente sem sessão (Node)', token === null);
+  // resolveSessionToken retorna token=null em ambiente Node (sem sessionStorage/localStorage)
+  const sessionRes = await resolveSessionToken();
+  assert('CY7 resolveSessionToken retorna token=null em ambiente sem sessão (Node)',
+    sessionRes !== null && typeof sessionRes === 'object' && sessionRes.token === null);
 }
 
 // ============================================================

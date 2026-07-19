@@ -11654,24 +11654,92 @@
 	var ESA = new ESAApplication();
 	//#endregion
 	//#region bootstrap/sessionResolver.ts
-	function parseSession(raw) {
+	function parseStoredSession(raw) {
 		if (!raw) return null;
 		try {
-			const token = JSON.parse(raw)?.sessionToken;
-			if (!token || typeof token !== "string") return null;
-			return token;
+			return JSON.parse(raw);
 		} catch {
 			return null;
 		}
 	}
-	function resolveSessionToken() {
+	async function exchangeSessionToken(uid, login) {
 		try {
-			const ss = parseSession(sessionStorage.getItem("esa_session"));
-			if (ss) return ss;
-			return parseSession(localStorage.getItem("esa_remember"));
+			const res = await fetch("/.netlify/functions/session-token", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					uid,
+					login
+				})
+			});
+			if (res.status === 401) return {
+				token: null,
+				code: "unauthorized"
+			};
+			if (!res.ok) return {
+				token: null,
+				code: "session_exchange_failed"
+			};
+			const data = await res.json();
+			const token = typeof data?.sessionToken === "string" ? data.sessionToken : null;
+			return {
+				token,
+				code: token ? "ok" : "session_exchange_failed"
+			};
 		} catch {
-			return null;
+			return {
+				token: null,
+				code: "backend_unavailable"
+			};
 		}
+	}
+	function cacheToken(token) {
+		try {
+			const stored = parseStoredSession(sessionStorage.getItem("esa_session")) ?? {};
+			stored.sessionToken = token;
+			sessionStorage.setItem("esa_session", JSON.stringify(stored));
+		} catch {}
+	}
+	async function resolveSessionToken() {
+		let parsed = null;
+		try {
+			parsed = parseStoredSession(sessionStorage.getItem("esa_session"));
+			if (!parsed) parsed = parseStoredSession(localStorage.getItem("esa_remember"));
+		} catch {
+			return {
+				token: null,
+				code: "no_session"
+			};
+		}
+		if (!parsed) return {
+			token: null,
+			code: "no_session"
+		};
+		if (!parsed.uid || typeof parsed.uid !== "string") return {
+			token: null,
+			code: "invalid_session_format"
+		};
+		if (parsed.sessionToken && typeof parsed.sessionToken === "string") return {
+			token: parsed.sessionToken,
+			code: null
+		};
+		const login = typeof parsed.login === "string" ? parsed.login.trim() : "";
+		if (!login) return {
+			token: null,
+			code: "invalid_session_format"
+		};
+		const { token, code } = await exchangeSessionToken(parsed.uid, login);
+		if (token) {
+			cacheToken(token);
+			return {
+				token,
+				code: null
+			};
+		}
+		return {
+			token: null,
+			code
+		};
 	}
 	//#endregion
 	//#region bootstrap/httpFirebaseClient.ts
@@ -11852,10 +11920,18 @@
 	(function bootstrapStandaloneProvider() {
 		(async () => {
 			try {
-				const sessionToken = resolveSessionToken();
+				const SESSION_ERROR_MESSAGES = {
+					no_session: "Sessão não encontrada. Faça login para acessar o painel.",
+					invalid_session_format: "Formato de sessão inválido. Faça login novamente.",
+					session_exchange_failed: "Não foi possível renovar a sessão. Faça login novamente.",
+					unauthorized: "Sessão não autorizada. Faça login novamente.",
+					backend_unavailable: "Serviço de autenticação indisponível. Tente novamente em instantes."
+				};
+				const { token: sessionToken, code: sessionCode } = await resolveSessionToken();
 				if (!sessionToken) {
-					dispatchProviderError("no_session", "Sessão não encontrada. Faça login para acessar o painel.");
-					console.warn("[ESA Standalone] no_session");
+					const code = sessionCode ?? "no_session";
+					dispatchProviderError(code, SESSION_ERROR_MESSAGES[code] ?? "Erro de sessão desconhecido.");
+					console.warn("[ESA Standalone]", code);
 					return;
 				}
 				const uid = decodeUidFromToken(sessionToken);

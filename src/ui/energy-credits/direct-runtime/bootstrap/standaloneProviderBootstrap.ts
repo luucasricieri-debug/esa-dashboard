@@ -15,6 +15,7 @@
 import { ESA }                                                    from '../../../../core/app.js';
 import { EnergyCreditsUIProvider }                                from '../../energy-credits-ui-provider.js';
 import { resolveSessionToken }                                    from './sessionResolver.js';
+import type { SessionResolution }                                 from './sessionResolver.js';
 import { createHttpFirebaseClient, loadEnergyCreditsSnapshot }    from './httpFirebaseClient.js';
 import { createPersistentUiProvider }                             from './persistentUiProvider.js';
 
@@ -54,10 +55,20 @@ function dispatchProviderError(code: string, reason: string): void {
   (async (): Promise<void> => {
     try {
       // ── 1. Session validation ────────────────────────────────────────────────
-      const sessionToken = resolveSessionToken();
+      const SESSION_ERROR_MESSAGES: Record<string, string> = {
+        no_session:              'Sessão não encontrada. Faça login para acessar o painel.',
+        invalid_session_format:  'Formato de sessão inválido. Faça login novamente.',
+        session_exchange_failed: 'Não foi possível renovar a sessão. Faça login novamente.',
+        unauthorized:            'Sessão não autorizada. Faça login novamente.',
+        backend_unavailable:     'Serviço de autenticação indisponível. Tente novamente em instantes.',
+      };
+
+      const { token: sessionToken, code: sessionCode }: SessionResolution = await resolveSessionToken();
       if (!sessionToken) {
-        dispatchProviderError('no_session', 'Sessão não encontrada. Faça login para acessar o painel.');
-        console.warn('[ESA Standalone] no_session');
+        const code = sessionCode ?? 'no_session';
+        const msg = SESSION_ERROR_MESSAGES[code] ?? 'Erro de sessão desconhecido.';
+        dispatchProviderError(code, msg);
+        console.warn('[ESA Standalone]', code);
         return;
       }
 

@@ -5026,8 +5026,9 @@ class Component extends DCLogic {
     const isRtBooting = _reqReal && S._rtStatus === "booting";
     const isRtError = _reqReal && S._rtStatus === "error";
     const isRtOverride = isRtBooting || isRtError;
-    const rtErrorMsg = S._rtError === "provider_unavailable" ? "O provedor de dados não está disponível." : S._rtError === "init_failed" ? "Falha ao inicializar o runtime de créditos." : S._rtError === "render_error" ? "Erro ao processar dados do runtime. Tente novamente." : "Erro desconhecido no runtime.";
-    const rtRetry = () => { if (S._rtError === "render_error") { this._renderFatalLogged = false; this.setState({ _rtStatus: "booting", _rtError: null, _rtLastDashKey: null }); setTimeout(() => this._initRealMode(), 0); } else { window.location.reload(); } };
+    const _rtSessionErrors = ["no_session", "invalid_session_format", "invalid_session", "session_exchange_failed", "unauthorized"];
+    const rtErrorMsg = S._rtError === "provider_unavailable" ? "O provedor de dados não está disponível." : S._rtError === "init_failed" ? "Falha ao inicializar o runtime de créditos." : S._rtError === "render_error" ? "Erro ao processar dados do runtime. Tente novamente." : S._rtError === "no_session" ? "Sessão não encontrada. Faça login para acessar o painel." : (S._rtError === "invalid_session_format" || S._rtError === "invalid_session") ? "Sessão inválida. Faça login novamente." : (S._rtError === "session_exchange_failed" || S._rtError === "unauthorized") ? "Sessão expirada. Faça login novamente." : S._rtError === "backend_unavailable" ? "Serviço de autenticação indisponível. Tente novamente em instantes." : S._rtError === "timeout" ? "Tempo esgotado ao carregar. Verifique sua conexão e tente novamente." : "Erro desconhecido no runtime.";
+    const rtRetry = () => { if (S._rtError === "render_error") { this._renderFatalLogged = false; this.setState({ _rtStatus: "booting", _rtError: null, _rtLastDashKey: null }); setTimeout(() => this._initRealMode(), 0); } else if (_rtSessionErrors.indexOf(S._rtError) !== -1) { window.location.href = '/'; } else { window.location.reload(); } };
     const rtBack = () => { window.history.length > 1 ? window.history.back() : window.location.assign('/'); };
 
     try { return {
