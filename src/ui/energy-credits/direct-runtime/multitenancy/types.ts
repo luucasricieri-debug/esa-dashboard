@@ -88,3 +88,12 @@ export interface VersionConflictError {
   expectedVersion: number;
   currentVersion: number;
 }
+
+// ── Dual-read — Gate 8B ───────────────────────────────────────────────────────
+export type DataSource = 'organization' | 'legacy-single-user';
+
+export interface SnapshotResult {
+  data: Record<string, unknown[]>;
+  dataSource: DataSource;
+  migrationRequired: boolean;
+}

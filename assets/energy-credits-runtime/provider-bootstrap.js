@@ -11744,6 +11744,14 @@
 	//#endregion
 	//#region bootstrap/httpFirebaseClient.ts
 	var ENDPOINT = "/.netlify/functions/energy-credits-data";
+	var VersionConflictException = class extends Error {
+		constructor(expectedVersion, currentVersion) {
+			super(`Conflito de versão: esperado ${expectedVersion}, atual ${currentVersion}`);
+			this.name = "VersionConflictException";
+			this.expectedVersion = expectedVersion;
+			this.currentVersion = currentVersion;
+		}
+	};
 	async function callEndpoint(body) {
 		let response;
 		try {
@@ -11762,13 +11770,18 @@
 		if (!response.ok) throw new Error(`[ESA] Erro do servidor (${response.status}): ${json.error ?? "erro desconhecido"}`);
 		return json;
 	}
-	function createHttpFirebaseClient(sessionToken) {
+	function createHttpFirebaseClient(sessionToken, orgContext) {
+		const orgBody = orgContext?.tenancyMode === "organization" ? {
+			organizationId: orgContext.organizationId,
+			tenancyMode: orgContext.tenancyMode
+		} : {};
 		return {
 			async get(path) {
 				return (await callEndpoint({
 					sessionToken,
 					operation: "get",
-					path
+					path,
+					...orgBody
 				})).data ?? null;
 			},
 			async set(path, value) {
@@ -11776,19 +11789,56 @@
 					sessionToken,
 					operation: "set",
 					path,
-					value
+					value,
+					...orgBody
 				});
 				if (!result.ok) throw new Error(`[ESA] Falha na escrita (${path}): ${result.error ?? "erro desconhecido"}`);
+			},
+			async setVersioned(path, value, expectedVersion, clientRequestId) {
+				let response;
+				try {
+					response = await fetch(ENDPOINT, {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({
+							sessionToken,
+							operation: "set",
+							path,
+							value,
+							...orgBody,
+							expectedVersion,
+							requestId: clientRequestId
+						})
+					});
+				} catch (networkErr) {
+					throw new Error(`[ESA] Sem conexão com o servidor: ${networkErr.message}`);
+				}
+				const json = await response.json().catch(() => ({
+					ok: false,
+					error: `HTTP ${response.status}`
+				}));
+				if (response.status === 409) throw new VersionConflictException(json.expectedVersion ?? expectedVersion, json.currentVersion ?? -1);
+				if (!response.ok) throw new Error(`[ESA] Erro do servidor (${response.status}): ${json.error ?? "erro desconhecido"}`);
+				return { version: json.version ?? expectedVersion + 1 };
 			}
 		};
 	}
-	async function loadEnergyCreditsSnapshot(sessionToken) {
+	async function loadEnergyCreditsSnapshot(sessionToken, orgContext) {
 		const result = await callEndpoint({
 			sessionToken,
-			operation: "snapshot"
+			operation: "snapshot",
+			...orgContext?.tenancyMode === "organization" ? {
+				organizationId: orgContext.organizationId,
+				tenancyMode: orgContext.tenancyMode
+			} : {}
 		});
 		if (!result.ok) throw new Error(`[ESA] Falha ao carregar snapshot: ${result.error ?? "erro desconhecido"}`);
-		return result.data ?? {};
+		const raw = result;
+		return {
+			data: raw.data ?? {},
+			dataSource: raw.dataSource ?? "legacy-single-user",
+			migrationRequired: raw.migrationRequired ?? false
+		};
 	}
 	//#endregion
 	//#region bootstrap/persistentUiProvider.ts
@@ -11798,6 +11848,15 @@
 			errors: [{
 				code: "BACKEND_UNAVAILABLE",
 				message: `Falha ao salvar no servidor (${op}). Tente novamente.`
+			}]
+		};
+	}
+	function versionConflictError() {
+		return {
+			ok: false,
+			errors: [{
+				code: "VERSION_CONFLICT",
+				message: "Conflito de versão. Recarregue e tente novamente."
 			}]
 		};
 	}
@@ -11830,7 +11889,8 @@
 		const result = collection === "generatingUnits" ? memoryRepo.getGeneratingUnit(id) : memoryRepo.getBeneficiaryUnit(id);
 		return result?.ok && result.data ? result.data : null;
 	}
-	function createPersistentUiProvider(inner, firebaseRepo, memoryRepo, esa, uid) {
+	function createPersistentUiProvider(inner, firebaseRepo, memoryRepo, esa, uid, orgContext, httpClient) {
+		const isOrgMode = orgContext?.tenancyMode === "organization" && httpClient != null;
 		async function createUnit(collection, innerMethod, saveMethod, targetType, input) {
 			const id = typeof input.id === "string" && input.id ? input.id : crypto.randomUUID();
 			const withId = {
@@ -11846,6 +11906,26 @@
 				}]
 			};
 			const entity = domainResult.data;
+			if (isOrgMode) {
+				const clientRequestId = crypto.randomUUID();
+				const entityPath = `energyCredits/${collection}/${id}`;
+				try {
+					const { version } = await httpClient.setVersioned(entityPath, entity, 0, clientRequestId);
+					const entityWithVersion = {
+						...entity,
+						version
+					};
+					syncStores(collection, entityWithVersion, memoryRepo, esa);
+					writeAuditLog(firebaseRepo, targetType, id, "create", uid, "success");
+					return {
+						ok: true,
+						data: entityWithVersion
+					};
+				} catch (err) {
+					if (err instanceof VersionConflictException) return versionConflictError();
+					return backendError(innerMethod);
+				}
+			}
 			if (!(await firebaseRepo[saveMethod](entity)).ok) return backendError(innerMethod);
 			syncStores(collection, entity, memoryRepo, esa);
 			writeAuditLog(firebaseRepo, targetType, id, "create", uid, "success");
@@ -11869,6 +11949,27 @@
 				id,
 				updatedAt: (/* @__PURE__ */ new Date()).toISOString()
 			};
+			if (isOrgMode) {
+				const existingVersion = typeof existing.version === "number" ? existing.version : 0;
+				const entityPath = `energyCredits/${collection}/${id}`;
+				const clientRequestId = crypto.randomUUID();
+				try {
+					const { version } = await httpClient.setVersioned(entityPath, updated, existingVersion, clientRequestId);
+					const updatedWithVersion = {
+						...updated,
+						version
+					};
+					syncStores(collection, updatedWithVersion, memoryRepo, esa);
+					writeAuditLog(firebaseRepo, targetType, id, "update", uid, "success");
+					return {
+						ok: true,
+						data: updatedWithVersion
+					};
+				} catch (err) {
+					if (err instanceof VersionConflictException) return versionConflictError();
+					return backendError(`update ${collection}`);
+				}
+			}
 			if (!(await firebaseRepo[saveMethod](updated)).ok) return backendError(`update ${collection}`);
 			syncStores(collection, updated, memoryRepo, esa);
 			writeAuditLog(firebaseRepo, targetType, id, "update", uid, "success");
@@ -12000,13 +12101,15 @@
 				console.info("[ESA Standalone] tenancy_mode", orgContext?.tenancyMode ?? "single-user");
 				ESA.initialize();
 				window.ESA_OS = ESA;
-				const httpClient = createHttpFirebaseClient(sessionToken);
-				const snapshot = await loadEnergyCreditsSnapshot(sessionToken);
+				const httpClient = createHttpFirebaseClient(sessionToken, orgContext);
+				const snapshotResult = await loadEnergyCreditsSnapshot(sessionToken, orgContext);
+				const snapshot = snapshotResult.data;
+				console.info("[ESA Standalone] snapshot_source", snapshotResult.dataSource, "migration_required", snapshotResult.migrationRequired);
 				const memoryRepo = ESA.getEnergyCreditsRepository();
 				memoryRepo.hydrateFromSnapshot(snapshot);
 				ESA.hydrateEnergyCreditsReadModel(snapshot, { replace: true });
 				const firebaseRepo = ESA.createEnergyCreditsFirebaseRepository(httpClient);
-				const provider = createPersistentUiProvider(new EnergyCreditsUIProvider(ESA), firebaseRepo, memoryRepo, ESA, uid);
+				const provider = createPersistentUiProvider(new EnergyCreditsUIProvider(ESA), firebaseRepo, memoryRepo, ESA, uid, orgContext, httpClient);
 				window.__ESA_UI_PROVIDER__ = provider;
 				window.__ESA_UI_PROVIDER_STATUS__ = { status: "ready" };
 				window.dispatchEvent(new CustomEvent("esa:ui-provider:ready", { detail: {

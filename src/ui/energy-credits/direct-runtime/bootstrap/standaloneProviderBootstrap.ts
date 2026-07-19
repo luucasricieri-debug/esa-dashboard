@@ -1,12 +1,14 @@
 // ============================================================
-// ESA OS — Standalone Provider Bootstrap — Gate 7 / Gate 8A
+// ESA OS — Standalone Provider Bootstrap — Gate 7 / Gate 8A / Gate 8B
 // IIFE: inicializa ESA Core, conecta ao Firebase (via Netlify Functions),
 // hidrata repositório em memória + read model, expõe PersistentUiProvider
 // via window.__ESA_UI_PROVIDER__ para o bridge.js consumir.
 //
 // Gate 8A: resolve contexto organizacional antes dos repositórios.
 //   - tenancyMode 'single-user' mantém compatibilidade total com Gate 7
-//   - tenancyMode 'organization' prepara contexto (paths não mudam nesta missão)
+//   - tenancyMode 'organization' prepara contexto para Gate 8B
+// Gate 8B: orgContext baked no httpClient; dual-read via loadEnergyCreditsSnapshot;
+//   escritas organizacionais com versionamento via persistentUiProvider.
 //
 // Segurança:
 //   - Sessão validada antes de qualquer acesso ao backend
@@ -99,8 +101,11 @@ function dispatchProviderError(code: string, reason: string): void {
       window.ESA_OS = ESA;
 
       // ── 4. Build HTTP client and load Firebase snapshot ──────────────────────
-      const httpClient = createHttpFirebaseClient(sessionToken);
-      const snapshot = await loadEnergyCreditsSnapshot(sessionToken);
+      // Gate 8B: orgContext baked into client; routing to org vs legacy handled server-side.
+      const httpClient = createHttpFirebaseClient(sessionToken, orgContext);
+      const snapshotResult = await loadEnergyCreditsSnapshot(sessionToken, orgContext);
+      const snapshot = snapshotResult.data;
+      console.info('[ESA Standalone] snapshot_source', snapshotResult.dataSource, 'migration_required', snapshotResult.migrationRequired);
 
       // ── 5. Hydrate memory repository (mutation target) ───────────────────────
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -120,9 +125,10 @@ function dispatchProviderError(code: string, reason: string): void {
       const inner = new UIProviderCtor(ESA) as Record<string, (...args: unknown[]) => unknown>;
 
       // ── 9. Wrap with persistent write-through ────────────────────────────────
+      // Gate 8B: passa orgContext + httpClient para habilitar escritas organizacionais com versionamento.
       const provider = createPersistentUiProvider(inner, firebaseRepo, memoryRepo, ESA as {
         hydrateEnergyCreditsReadModel(s: unknown, o: { replace: boolean }): void
-      }, uid);
+      }, uid, orgContext, httpClient);
 
       // ── 10. Expose and signal readiness ──────────────────────────────────────
       window.__ESA_UI_PROVIDER__ = provider;

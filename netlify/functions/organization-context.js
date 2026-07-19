@@ -126,11 +126,18 @@ exports.handler = async function (event) {
   const role = membership.role;
   const permissions = ROLE_PERMISSIONS[role] || [];
 
-  const availableOrganizations = activeMemberships.map(m => ({
-    id: m.organizationId,
-    name: '',  // nomes carregados em batch no Gate 8B
-    role: m.role,
-  }));
+  // Carrega nomes das organizações disponíveis em paralelo (Gate 8B)
+  const availableOrganizations = await Promise.all(
+    activeMemberships.map(async m => {
+      try {
+        const orgSnap = await db.ref(`organizations/${m.organizationId}`).once('value');
+        const orgData = orgSnap.val();
+        return { id: m.organizationId, name: orgData?.name || '', role: m.role };
+      } catch {
+        return { id: m.organizationId, name: '', role: m.role };
+      }
+    }),
+  );
 
   return {
     statusCode: 200,
