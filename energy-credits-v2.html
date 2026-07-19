@@ -2759,6 +2759,9 @@ class Component extends DCLogic {
     _rtFinAll: null, _rtFinAllLoading: false,
     // GATE 3E — Importações e Alertas
     _rtAlData: null, _rtAlLoading: false,
+    // Hotfix — load dedup keys (prevent componentDidUpdate infinite loop)
+    _rtLastDashKey: null, _rtLastApKey: null, _rtLastRepKey: null, _rtLastFinMonth: null, _rtLastAlMonth: null,
+    _rtLastUgDetailId: null, _rtLastUbDetailId: null,
     // GATE 5B — runtime status gate
     _rtStatus: (function(){ try { return new URLSearchParams(window.location.search).get('runtime') === 'real' ? 'booting' : 'ready'; } catch(e) { return 'ready'; } })(),
     _rtError: null,
@@ -3204,6 +3207,8 @@ class Component extends DCLogic {
 
   // ============================== RENDER ==============================
   renderVals() {
+    // Fatal error gate — prevents repeated crashes from looping after a render failure
+    if (this._renderFatalLogged) return {};
     const S = this.state;
     const view = S.view || this.props.telaInicial || "dashboard";
     const collapsed = S.collapsed !== null ? S.collapsed : (this.props.sidebarRecolhida || false);
@@ -3840,10 +3845,11 @@ class Component extends DCLogic {
         const payeeRT = (_rtUgD && _rtUgD.payee) ? _rtUgD.payee : { name: "", document: "", pixKey: "", pixType: "cpf" };
         const bensRT = (_rtUgD && _rtUgD.bens) ? _rtUgD.bens : [];
         const dashRT = (_rtUgD && _rtUgD.dash) ? _rtUgD.dash : null;
-        const genKwh = dashRT ? dashRT.current.generation : 0;
-        const balKwh = dashRT ? dashRT.current.balance : 0;
-        const compKwh = dashRT ? dashRT.current.compensated : 0;
-        const repasseR = dashRT ? dashRT.current.ownerPayment : 0;
+        const _dashCurr = dashRT ? (dashRT.current || {}) : {};
+        const genKwh = _dashCurr.generation || 0;
+        const balKwh = _dashCurr.balance || 0;
+        const compKwh = _dashCurr.compensated || 0;
+        const repasseR = _dashCurr.ownerPayment || 0;
         const dpill = this.statusPill(ugRT ? ugRT.status : "ativa");
         const tab = S.ugDetailTab;
         ugdVals = {
@@ -5020,11 +5026,11 @@ class Component extends DCLogic {
     const isRtBooting = _reqReal && S._rtStatus === "booting";
     const isRtError = _reqReal && S._rtStatus === "error";
     const isRtOverride = isRtBooting || isRtError;
-    const rtErrorMsg = S._rtError === "provider_unavailable" ? "O provedor de dados não está disponível." : S._rtError === "init_failed" ? "Falha ao inicializar o runtime de créditos." : "Erro desconhecido no runtime.";
-    const rtRetry = () => window.location.reload();
+    const rtErrorMsg = S._rtError === "provider_unavailable" ? "O provedor de dados não está disponível." : S._rtError === "init_failed" ? "Falha ao inicializar o runtime de créditos." : S._rtError === "render_error" ? "Erro ao processar dados do runtime. Tente novamente." : "Erro desconhecido no runtime.";
+    const rtRetry = () => { if (S._rtError === "render_error") { this._renderFatalLogged = false; this.setState({ _rtStatus: "booting", _rtError: null, _rtLastDashKey: null }); setTimeout(() => this._initRealMode(), 0); } else { window.location.reload(); } };
     const rtBack = () => { window.history.length > 1 ? window.history.back() : window.location.assign('/'); };
 
-    return {
+    try { return {
       // shell
       sidebarWidth: collapsed ? 64 : 240, sidebarExpanded: !collapsed,
       logoIcon: this.I("zap", 20, "#ffffff"),
@@ -5119,10 +5125,10 @@ class Component extends DCLogic {
       modeAutoBtn: modeBtn(mode === "auto", "sparkles"), modeManualBtn: modeBtn(mode === "manual", "pencil"),
       setModeAuto: () => this.setState({ mode: "auto" }), setModeManual: () => this.setState({ mode: "manual" }),
       pctInvalid, allocationRows,
-      totGenTxt: kwh(plan.generation),
+      totGenTxt: S._rtMode === "real" ? kwh(S._rtApPlan ? S._rtApPlan.generation : 0) : kwh(plan.generation),
       totPctTxt: (totalDisplayPct * 100).toFixed(2).replace(".", ","), totPctColor: pctInvalid ? "#e11d48" : "#00875a",
       totPlannedTxt: kwh(totPlanned), totReceivedTxt: kwh(totPlanned),
-      totConsTxt: kwh(plan.totalConsumption), totCompTxt: kwh(dispCompensated), totFinalTxt: kwh(dispFinal),
+      totConsTxt: S._rtMode === "real" ? kwh(S._rtApPlan ? S._rtApPlan.totalConsumption : 0) : kwh(plan.totalConsumption), totCompTxt: kwh(dispCompensated), totFinalTxt: kwh(dispFinal),
       standardPriceTxt: apUg ? "R$ " + num(apUg.purchasePrice, 2) + "/kWh" : "—",
       appliedPriceTxt: "R$ " + num(appliedPrice || 0, 2) + "/kWh",
       finSummaryKpis: [
@@ -5559,7 +5565,14 @@ class Component extends DCLogic {
 
       // toast
       toastOpen: !!toast, toastTitle: toast ? toast.title : "", toastDesc: toast ? toast.desc : "", toastHasDesc: !!(toast && toast.desc),
-    };
+    }; } catch (_renderErr) {
+      if (!this._renderFatalLogged) {
+        this._renderFatalLogged = true;
+        console.error('[ESA] renderVals fatal error — transitioning to error state:', _renderErr && _renderErr.message);
+        setTimeout(() => this.setState({ _rtStatus: 'error', _rtError: 'render_error' }), 0);
+      }
+      return {};
+    }
   }
 
   componentDidMount() {
@@ -5587,54 +5600,48 @@ class Component extends DCLogic {
   componentDidUpdate(prevProps, prevState) {
     prevState = prevState || {};
     if (this.state._rtMode !== "real") return;
-    const monthChanged = this.state.dashMonth !== prevState.dashMonth;
-    const ugChanged = this.state.ugFilter !== prevState.ugFilter;
-    if ((monthChanged || ugChanged) && !this.state._rtLoading) {
+    // Hotfix: use load-key dedup instead of prevState (framework never passes prevState)
+    const dashKey = (this.state.dashMonth || '') + '|' + (this.state.ugFilter || 'all');
+    if (dashKey !== this.state._rtLastDashKey && !this.state._rtLoading) {
       this._loadRealDash(this.state.dashMonth, this.state.ugFilter);
     }
-    // Gate 3B — lazy-load UB list on first visit to units screen
-    if (this.state.view === "unidades" && prevState.view !== "unidades" && !this.state._rtUbs && !this.state._rtUbsLoading) {
+    // Gate 3B — lazy-load UB list on first visit to units screen (self-limiting: _rtUbs set once)
+    if (this.state.view === "unidades" && !this.state._rtUbs && !this.state._rtUbsLoading) {
       this._loadRealUbs();
     }
-    // Gate 3B — load UG detail on drawer open
-    if (this.state.ugDetailId && this.state.ugDetailId !== prevState.ugDetailId && !this.state._rtUgDetailLoading) {
+    // Gate 3B — load UG detail on drawer open (dedup by id)
+    if (this.state.ugDetailId && this.state.ugDetailId !== this.state._rtLastUgDetailId && !this.state._rtUgDetailLoading) {
+      this.setState({ _rtLastUgDetailId: this.state.ugDetailId });
       this._loadRealUgDetail(this.state.ugDetailId);
     }
-    // Gate 3B — load UB detail on drawer open
-    if (this.state.ubDetailId && this.state.ubDetailId !== prevState.ubDetailId && !this.state._rtUbDetailLoading) {
+    // Gate 3B — load UB detail on drawer open (dedup by id)
+    if (this.state.ubDetailId && this.state.ubDetailId !== this.state._rtLastUbDetailId && !this.state._rtUbDetailLoading) {
+      this.setState({ _rtLastUbDetailId: this.state.ubDetailId });
       this._loadRealUbDetail(this.state.ubDetailId);
     }
-    // Gate 3C — load allocation plan on apuração view entry or filter change
+    // Gate 3C — load allocation plan on apuração view entry or filter change (key dedup)
     if (this.state.view === "apuracao") {
-      const viewEntered = prevState.view !== "apuracao";
-      const ugMudou = this.state.apUgId !== prevState.apUgId;
-      const mesMudou = this.state.apMonth !== prevState.apMonth;
-      if ((viewEntered || ugMudou || mesMudou) && !this.state._rtApPlanLoading) {
+      const apKey = (this.state.apUgId || '') + '|' + (this.state.apMonth || '');
+      if (apKey !== this.state._rtLastApKey && !this.state._rtApPlanLoading) {
         this._loadRealApPlan(this.state.apUgId, this.state.apMonth);
       }
     }
-    // Gate 3D — load reports on relatorios view entry or filter change
+    // Gate 3D — load reports on relatorios view entry or filter change (key dedup)
     if (this.state.view === "relatorios") {
-      const viewEntered = prevState.view !== "relatorios";
-      const ugMudou = this.state.repUgId !== prevState.repUgId;
-      const mesMudou = this.state.repMonth !== prevState.repMonth;
-      if ((viewEntered || ugMudou || mesMudou) && !this.state._rtRepAllLoading) {
+      const repKey = (this.state.repUgId || '') + '|' + (this.state.repMonth || '');
+      if (repKey !== this.state._rtLastRepKey && !this.state._rtRepAllLoading) {
         this._loadRealReports(this.state.repUgId, this.state.repMonth);
       }
     }
-    // Gate 3D — load financeiro on financeiro view entry or month change
+    // Gate 3D — load financeiro on financeiro view entry or month change (key dedup)
     if (this.state.view === "financeiro") {
-      const viewEntered = prevState.view !== "financeiro";
-      const mesMudou = this.state.finMonth !== prevState.finMonth;
-      if ((viewEntered || mesMudou) && !this.state._rtFinAllLoading) {
+      if (this.state.finMonth !== this.state._rtLastFinMonth && !this.state._rtFinAllLoading) {
         this._loadRealFin(this.state.finMonth);
       }
     }
-    // Gate 3E — load alerts on alertas view entry or month change
-    if (this.state._rtMode === "real" && this.state.view === "alertas") {
-      const viewEntered = prevState.view !== "alertas";
-      const mesMudou = this.state.alMonth !== prevState.alMonth;
-      if ((viewEntered || mesMudou) && !this.state._rtAlLoading) {
+    // Gate 3E — load alerts on alertas view entry or month change (key dedup)
+    if (this.state.view === "alertas") {
+      if (this.state.alMonth !== this.state._rtLastAlMonth && !this.state._rtAlLoading) {
         this._loadRealAlerts(this.state.alMonth);
       }
     }
@@ -5684,7 +5691,8 @@ class Component extends DCLogic {
     const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
     if (!rt || rt.mode !== "real") return;
     const ugId = ugFilter && ugFilter !== "all" ? ugFilter : undefined;
-    this.setState({ _rtLoading: true });
+    const dashKey = (month || '') + '|' + (ugFilter || 'all');
+    this.setState({ _rtLoading: true, _rtLastDashKey: dashKey });
     Promise.all([rt.getDashboardData({ month, ugId }), rt.listAlerts({ month })]).then((result) => {
       this.setState({ _rtDash: result[0], _rtAlerts: result[1], _rtLoading: false });
     }).catch((err) => {
@@ -5746,7 +5754,8 @@ class Component extends DCLogic {
     if (!rt || rt.mode !== "real" || !ugId) return;
     this._apPlanSeq = (this._apPlanSeq || 0) + 1;
     const seq = this._apPlanSeq;
-    this.setState({ _rtApPlanLoading: true, _rtApPlan: null });
+    const apKey = (ugId || '') + '|' + (month || '');
+    this.setState({ _rtApPlanLoading: true, _rtApPlan: null, _rtLastApKey: apKey });
     rt.getAllocationPlan(ugId, month || this.state.apMonth, {}).then((plan) => {
       if (seq !== this._apPlanSeq) return;
       this.setState({ _rtApPlan: plan, _rtApPlanLoading: false });
@@ -5762,7 +5771,8 @@ class Component extends DCLogic {
     if (!rt || rt.mode !== "real" || !ugId) return;
     this._repSeq = (this._repSeq || 0) + 1;
     const seq = this._repSeq;
-    this.setState({ _rtRepAllLoading: true, _rtRepAll: null });
+    const repKey = (ugId || '') + '|' + (month || '');
+    this.setState({ _rtRepAllLoading: true, _rtRepAll: null, _rtLastRepKey: repKey });
     Promise.all([
       rt.getOwnerReport(ugId, month),
       rt.getGeneratingUnit(ugId),
@@ -5807,7 +5817,7 @@ class Component extends DCLogic {
     if (!rt || rt.mode !== "real") return;
     this._finSeq = (this._finSeq || 0) + 1;
     const seq = this._finSeq;
-    this.setState({ _rtFinAllLoading: true, _rtFinAll: null });
+    this.setState({ _rtFinAllLoading: true, _rtFinAll: null, _rtLastFinMonth: month });
     Promise.all([rt.listGeneratingUnits(), rt.listBeneficiaryUnits()]).then((res) => {
       if (seq !== this._finSeq) return;
       const ugs = res[0] || []; const ubs = res[1] || [];
@@ -5840,7 +5850,7 @@ class Component extends DCLogic {
     if (!rt || rt.mode !== "real") return;
     this._alSeq = (this._alSeq || 0) + 1;
     const seq = this._alSeq;
-    this.setState({ _rtAlLoading: true, _rtAlData: null });
+    this.setState({ _rtAlLoading: true, _rtAlData: null, _rtLastAlMonth: month });
     rt.listAlerts({ month }).then((alerts) => {
       if (seq !== this._alSeq) return;
       this.setState({ _rtAlData: alerts || [], _rtAlLoading: false });

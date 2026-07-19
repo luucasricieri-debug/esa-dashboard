@@ -1,5 +1,5 @@
 (function() {
-	//#region src/services/firebase.js
+	//#region ../../../services/firebase.js
 	/**
 	* ESA OS
 	* Firebase Service
@@ -22,7 +22,7 @@
 		}
 	};
 	//#endregion
-	//#region src/core/events/event.js
+	//#region ../../../core/events/event.js
 	/**
 	* Representa um evento interno imutável da plataforma ESA OS.
 	*/
@@ -120,7 +120,7 @@
 		}
 	};
 	//#endregion
-	//#region src/core/events/subscriber.js
+	//#region ../../../core/events/subscriber.js
 	/**
 	* ESA OS — Core / Events
 	* Subscriber
@@ -241,7 +241,7 @@
 		}
 	};
 	//#endregion
-	//#region src/core/events/event-bus.js
+	//#region ../../../core/events/event-bus.js
 	/**
 	* ESA OS — Core / Events
 	* EventBus
@@ -502,7 +502,7 @@
 		}
 	};
 	//#endregion
-	//#region src/core/events/index.js
+	//#region ../../../core/events/index.js
 	/**
 	* Instância singleton do EventBus da plataforma ESA OS.
 	*
@@ -514,7 +514,7 @@
 	*/
 	var eventBus = new EventBus();
 	//#endregion
-	//#region src/core/audit/audit-action.js
+	//#region ../../../core/audit/audit-action.js
 	/**
 	* ESA OS — Core / Audit
 	* AuditAction
@@ -554,7 +554,7 @@
 	};
 	AUDIT_ACTION.CREATE, AUDIT_ACTION.READ, AUDIT_ACTION.UPDATE, AUDIT_ACTION.DELETE, AUDIT_ACTION.LOGIN, AUDIT_ACTION.LOGOUT, AUDIT_ACTION.ACCESS, AUDIT_ACTION.EXPORT, AUDIT_ACTION.IMPORT, AUDIT_ACTION.MOVE, AUDIT_ACTION.APPROVE, AUDIT_ACTION.REJECT, AUDIT_ACTION.EXECUTE;
 	//#endregion
-	//#region src/core/audit/audit-context.js
+	//#region ../../../core/audit/audit-context.js
 	/**
 	* ESA OS — Core / Audit
 	* AuditContext
@@ -647,7 +647,7 @@
 		}
 	};
 	//#endregion
-	//#region src/core/audit/audit-entry.js
+	//#region ../../../core/audit/audit-entry.js
 	/**
 	* ESA OS — Core / Audit
 	* AuditEntry
@@ -805,7 +805,7 @@
 		}
 	};
 	//#endregion
-	//#region src/core/audit/audit.js
+	//#region ../../../core/audit/audit.js
 	/**
 	* ESA OS — Core / Audit
 	* Audit (Facade)
@@ -1008,7 +1008,7 @@
 		}
 	};
 	//#endregion
-	//#region src/core/audit/index.js
+	//#region ../../../core/audit/index.js
 	/**
 	* Singleton do módulo de auditoria.
 	* Use este objeto em todos os módulos do ESA OS.
@@ -1017,7 +1017,7 @@
 	*/
 	var audit = new Audit();
 	//#endregion
-	//#region src/core/logger/log-level.js
+	//#region ../../../core/logger/log-level.js
 	/**
 	* ESA OS — Core / Logger
 	* LogLevel
@@ -1100,7 +1100,7 @@
 		return LOG_LEVEL_RANK[level] >= LOG_LEVEL_RANK[threshold];
 	}
 	//#endregion
-	//#region src/core/logger/log-entry.js
+	//#region ../../../core/logger/log-entry.js
 	/**
 	* ESA OS — Core / Logger
 	* LogEntry
@@ -1219,7 +1219,7 @@
 		}
 	};
 	//#endregion
-	//#region src/core/logger/formatter.js
+	//#region ../../../core/logger/formatter.js
 	/** Chaves cujos valores devem ser substituídos por [REDACTED] (case-insensitive). */
 	var SENSITIVE_KEYS = [
 		"password",
@@ -1378,7 +1378,7 @@
 		}
 	};
 	//#endregion
-	//#region src/core/logger/logger.js
+	//#region ../../../core/logger/logger.js
 	/**
 	* ESA OS — Core / Logger
 	* Logger
@@ -1415,7 +1415,7 @@
 		CRITICAL: "error"
 	};
 	//#endregion
-	//#region src/core/logger/index.js
+	//#region ../../../core/logger/index.js
 	/**
 	* Instância singleton do Logger da plataforma ESA OS.
 	*
@@ -1623,7 +1623,7 @@
 		}
 	}("ESA OS", LOG_LEVEL.DEBUG);
 	//#endregion
-	//#region src/integrations/crm-event-mapper.js
+	//#region ../../../integrations/crm-event-mapper.js
 	/**
 	* ESA OS — Integrations
 	* CRMEventMapper
@@ -1782,7 +1782,7 @@
 		}
 	};
 	//#endregion
-	//#region src/integrations/crm-audit-integration.js
+	//#region ../../../integrations/crm-audit-integration.js
 	/**
 	* ESA OS — Integrations
 	* CRMAuditIntegration
@@ -1942,7 +1942,7 @@
 		}
 	};
 	//#endregion
-	//#region src/integrations/integration-registry.js
+	//#region ../../../integrations/integration-registry.js
 	/**
 	* ESA OS — Integrations
 	* IntegrationRegistry
@@ -2097,7 +2097,7 @@
 		}
 	};
 	//#endregion
-	//#region src/integrations/index.js
+	//#region ../../../integrations/index.js
 	/**
 	* Singleton do registro de integrações da plataforma ESA OS.
 	* Use este objeto para registrar e controlar integrações em toda a plataforma.
@@ -2109,7 +2109,7 @@
 	*/
 	var integrationRegistry = new IntegrationRegistry();
 	//#endregion
-	//#region src/legacy/crm-event-bridge.js
+	//#region ../../../legacy/crm-event-bridge.js
 	/**
 	* ESA OS — Legacy Bridge
 	* CRMLegacyEventBridge
@@ -2389,7 +2389,7 @@
 		}
 	};
 	//#endregion
-	//#region src/legacy/crm-read-model-hydrator.js
+	//#region ../../../legacy/crm-read-model-hydrator.js
 	/**
 	* ESA OS — Legacy
 	* CRMLegacyReadModelHydrator
@@ -2451,7 +2451,7 @@
 		}
 	};
 	//#endregion
-	//#region src/read-models/crm/crm-read-model.js
+	//#region ../../../read-models/crm/crm-read-model.js
 	/**
 	* Projeção em memória dos Deals CRM derivada de eventos.
 	*/
@@ -2707,7 +2707,7 @@
 		}
 	};
 	//#endregion
-	//#region src/read-models/crm/crm-read-model-integration.js
+	//#region ../../../read-models/crm/crm-read-model-integration.js
 	/**
 	* ESA OS — Read Models / CRM
 	* CRMReadModelIntegration
@@ -2826,7 +2826,7 @@
 		}
 	};
 	//#endregion
-	//#region src/read-models/crm/crm-metrics.js
+	//#region ../../../read-models/crm/crm-metrics.js
 	/**
 	* ESA OS — Read Models / CRM
 	* CRMMetrics
@@ -2976,7 +2976,7 @@
 		}
 	};
 	//#endregion
-	//#region src/read-models/crm/index.js
+	//#region ../../../read-models/crm/index.js
 	/**
 	* Singleton do Read Model CRM da plataforma ESA OS.
 	* @type {CRMReadModel}
@@ -2988,7 +2988,7 @@
 	*/
 	var crmMetrics = new CRMMetrics(crmReadModel);
 	//#endregion
-	//#region src/queries/crm/crm-query-result.js
+	//#region ../../../queries/crm/crm-query-result.js
 	/**
 	* ESA OS — Queries / CRM
 	* CRMQueryResult
@@ -3030,7 +3030,7 @@
 		}
 	};
 	//#endregion
-	//#region src/queries/crm/crm-pipeline-analyzer.js
+	//#region ../../../queries/crm/crm-pipeline-analyzer.js
 	/**
 	* ESA OS — Queries / CRM
 	* CRMPipelineAnalyzer
@@ -3295,7 +3295,7 @@
 		}
 	};
 	//#endregion
-	//#region src/queries/crm/crm-risk-signal-analyzer.js
+	//#region ../../../queries/crm/crm-risk-signal-analyzer.js
 	/**
 	* ESA OS — Queries / CRM
 	* CRMRiskSignalAnalyzer
@@ -3674,7 +3674,7 @@
 		}
 	};
 	//#endregion
-	//#region src/queries/crm/crm-action-priority-analyzer.js
+	//#region ../../../queries/crm/crm-action-priority-analyzer.js
 	/**
 	* ESA OS — Queries / CRM
 	* CRMActionPriorityAnalyzer
@@ -4004,7 +4004,7 @@
 		}
 	};
 	//#endregion
-	//#region src/queries/crm/crm-management-brief-builder.js
+	//#region ../../../queries/crm/crm-management-brief-builder.js
 	/**
 	* ESA OS — Queries / CRM
 	* CRMManagementBriefBuilder
@@ -4302,7 +4302,7 @@
 		}).format(value);
 	}
 	//#endregion
-	//#region src/queries/crm/crm-query-service.js
+	//#region ../../../queries/crm/crm-query-service.js
 	/**
 	* ESA OS — Queries / CRM
 	* CRMQueryService
@@ -4629,7 +4629,7 @@
 		}
 	};
 	//#endregion
-	//#region src/queries/crm/index.js
+	//#region ../../../queries/crm/index.js
 	/**
 	* Singleton do CRM Query Service da plataforma ESA OS.
 	* Usa os singletons crmReadModel e crmMetrics como fonte.
@@ -4882,7 +4882,7 @@
 		return v;
 	}
 	//#endregion
-	//#region src/domains/energy/credits/constants.js
+	//#region ../../../domains/energy/credits/constants.js
 	/**
 	* ESA OS — Energy Domain / Credits
 	* Constants
@@ -4924,7 +4924,7 @@
 		CANCELLED: "cancelled"
 	});
 	//#endregion
-	//#region src/domains/energy/credits/alert.js
+	//#region ../../../domains/energy/credits/alert.js
 	/**
 	* ESA OS — Energy Domain / Credits
 	* Alerts
@@ -4976,7 +4976,7 @@
 		};
 	}
 	//#endregion
-	//#region src/domains/energy/credits/rounding.js
+	//#region ../../../domains/energy/credits/rounding.js
 	/**
 	* ESA OS — Energy Domain / Credits
 	* Rounding Helpers
@@ -4996,7 +4996,7 @@
 		return Math.round(value * 100) / 100;
 	}
 	//#endregion
-	//#region src/domains/energy/credits/result.js
+	//#region ../../../domains/energy/credits/result.js
 	/**
 	* ESA OS — Energy Domain / Credits
 	* EnergyCreditsResult
@@ -5078,7 +5078,7 @@
 		}
 	};
 	//#endregion
-	//#region src/domains/energy/credits/calculator.js
+	//#region ../../../domains/energy/credits/calculator.js
 	/**
 	* ESA OS — Energy Domain / Credits
 	* EnergyCreditsCalculator
@@ -5150,7 +5150,7 @@
 		}
 	};
 	//#endregion
-	//#region src/domains/energy/credits/validator.js
+	//#region ../../../domains/energy/credits/validator.js
 	/**
 	* ESA OS — Energy Domain / Credits
 	* EnergyCreditsValidator
@@ -5241,7 +5241,7 @@
 		}
 	};
 	//#endregion
-	//#region src/domains/energy/credits/service.js
+	//#region ../../../domains/energy/credits/service.js
 	/**
 	* ESA OS — Energy Domain / Credits
 	* EnergyCreditsService
@@ -5601,7 +5601,7 @@
 		}
 	};
 	//#endregion
-	//#region src/domains/energy/credits/allocation/credit-allocation-result.js
+	//#region ../../../domains/energy/credits/allocation/credit-allocation-result.js
 	/**
 	* ESA OS — Energy Domain / Credits / Allocation
 	* CreditAllocationResult
@@ -5646,7 +5646,7 @@
 		}
 	};
 	//#endregion
-	//#region src/domains/energy/credits/allocation/allocation-alert.js
+	//#region ../../../domains/energy/credits/allocation/allocation-alert.js
 	/**
 	* ESA OS — Energy Domain / Credits / Allocation
 	* Alertas e limiares da camada de rateio e saldo.
@@ -5671,7 +5671,7 @@
 		MANUAL_ALLOCATION_TOLERANCE_PP: .01
 	});
 	//#endregion
-	//#region src/domains/energy/credits/allocation/consumption-average-calculator.js
+	//#region ../../../domains/energy/credits/allocation/consumption-average-calculator.js
 	/**
 	* ESA OS — Energy Domain / Credits / Allocation
 	* BeneficiaryConsumptionAverageCalculator
@@ -5727,7 +5727,7 @@
 		}
 	};
 	//#endregion
-	//#region src/domains/energy/credits/allocation/credit-allocation-planner.js
+	//#region ../../../domains/energy/credits/allocation/credit-allocation-planner.js
 	/**
 	* ESA OS — Energy Domain / Credits / Allocation
 	* CreditAllocationPlanner
@@ -5854,7 +5854,7 @@
 		}
 	};
 	//#endregion
-	//#region src/domains/energy/credits/allocation/beneficiary-credit-balance-calculator.js
+	//#region ../../../domains/energy/credits/allocation/beneficiary-credit-balance-calculator.js
 	/**
 	* ESA OS — Energy Domain / Credits / Allocation
 	* BeneficiaryCreditBalanceCalculator
@@ -5974,12 +5974,12 @@
 		}
 	};
 	//#endregion
-	//#region src/domains/energy/credits/allocation/index.js
+	//#region ../../../domains/energy/credits/allocation/index.js
 	var consumptionAverageCalculator = new BeneficiaryConsumptionAverageCalculator();
 	var creditAllocationPlanner = new CreditAllocationPlanner();
 	var beneficiaryCreditBalanceCalculator = new BeneficiaryCreditBalanceCalculator();
 	//#endregion
-	//#region src/read-models/energy-credits/energy-credits-read-model.js
+	//#region ../../../read-models/energy-credits/energy-credits-read-model.js
 	/**
 	* ESA OS — Energy Domain / Credits
 	* EnergyCreditsReadModel
@@ -6440,10 +6440,10 @@
 		}
 	};
 	//#endregion
-	//#region src/read-models/energy-credits/index.js
+	//#region ../../../read-models/energy-credits/index.js
 	var energyCreditsReadModel = new EnergyCreditsReadModel();
 	//#endregion
-	//#region src/queries/energy-credits/energy-credits-query-result.js
+	//#region ../../../queries/energy-credits/energy-credits-query-result.js
 	/**
 	* ESA OS — Energy Domain / Credits
 	* EnergyCreditsQueryResult
@@ -6470,7 +6470,7 @@
 		}
 	};
 	//#endregion
-	//#region src/queries/energy-credits/energy-credits-query-service.js
+	//#region ../../../queries/energy-credits/energy-credits-query-service.js
 	/**
 	* ESA OS — Energy Domain / Credits
 	* EnergyCreditsQueryService
@@ -6830,10 +6830,10 @@
 		}
 	};
 	//#endregion
-	//#region src/queries/energy-credits/index.js
+	//#region ../../../queries/energy-credits/index.js
 	var energyCreditsQueryService = new EnergyCreditsQueryService(energyCreditsReadModel);
 	//#endregion
-	//#region src/reports/energy-credits/report-types.js
+	//#region ../../../reports/energy-credits/report-types.js
 	/** Tipos de relatório estáveis — usados em reportType do contrato. */
 	var REPORT_TYPE = Object.freeze({
 		OWNER_MONTHLY: "owner-monthly",
@@ -6853,7 +6853,7 @@
 		manualDelivery: true
 	});
 	//#endregion
-	//#region src/reports/energy-credits/energy-credits-report-service.js
+	//#region ../../../reports/energy-credits/energy-credits-report-service.js
 	/**
 	* ESA OS — Reports / Energy Credits
 	* EnergyCreditsReportService
@@ -7515,10 +7515,10 @@
 		}
 	};
 	//#endregion
-	//#region src/reports/energy-credits/index.js
+	//#region ../../../reports/energy-credits/index.js
 	var energyCreditsReportService = new EnergyCreditsReportService(energyCreditsQueryService);
 	//#endregion
-	//#region src/repositories/energy-credits/energy-credits-paths.js
+	//#region ../../../repositories/energy-credits/energy-credits-paths.js
 	/**
 	* ESA OS — Repositories / Energy Credits
 	* Constantes de paths lógicos e builder de path.
@@ -7581,7 +7581,7 @@
 		return `${EC_ROOT}/${collection}/${id}`;
 	}
 	//#endregion
-	//#region src/repositories/energy-credits/energy-credits-repository-result.js
+	//#region ../../../repositories/energy-credits/energy-credits-repository-result.js
 	/**
 	* ESA OS — Repositories / Energy Credits
 	* Contrato de resultado para operações de repositório.
@@ -7641,7 +7641,7 @@
 		}
 	};
 	//#endregion
-	//#region src/repositories/energy-credits/energy-credits-memory-repository.js
+	//#region ../../../repositories/energy-credits/energy-credits-memory-repository.js
 	/**
 	* ESA OS — Repositories / Energy Credits
 	* Implementação em memória do repositório de créditos.
@@ -7944,7 +7944,7 @@
 		}
 	};
 	//#endregion
-	//#region src/repositories/energy-credits/energy-credits-firebase-repository.js
+	//#region ../../../repositories/energy-credits/energy-credits-firebase-repository.js
 	/**
 	* ESA OS — Repositories / Energy Credits
 	* Firebase Adapter — implementação real com firebaseClient injetado.
@@ -8285,7 +8285,7 @@
 		}
 	};
 	//#endregion
-	//#region src/repositories/energy-credits/energy-credits-repository-hydrator.js
+	//#region ../../../repositories/energy-credits/energy-credits-repository-hydrator.js
 	/**
 	* ESA OS — Repositories / Energy Credits
 	* Adapter: Repository → Read Model
@@ -8311,11 +8311,11 @@
 		}
 	};
 	//#endregion
-	//#region src/repositories/energy-credits/index.js
+	//#region ../../../repositories/energy-credits/index.js
 	var energyCreditsRepository = new EnergyCreditsMemoryRepository();
 	var energyCreditsRepositoryHydrator = new EnergyCreditsRepositoryHydrator(energyCreditsRepository, energyCreditsReadModel);
 	//#endregion
-	//#region src/importers/energy-credits/import-types.js
+	//#region ../../../importers/energy-credits/import-types.js
 	/**
 	* ESA OS — Importers / Energy Credits
 	* Constantes de tipos de importação suportados.
@@ -8328,7 +8328,7 @@
 	});
 	var EC_IMPORT_TYPES = Object.freeze(Object.values(ENERGY_CREDITS_IMPORT_TYPE));
 	//#endregion
-	//#region src/importers/energy-credits/energy-credits-import-result.js
+	//#region ../../../importers/energy-credits/energy-credits-import-result.js
 	/**
 	* ESA OS — Importers / Energy Credits
 	* Contrato de resultado para operações de importação.
@@ -8377,7 +8377,7 @@
 		}
 	};
 	//#endregion
-	//#region src/importers/energy-credits/csv-parser.js
+	//#region ../../../importers/energy-credits/csv-parser.js
 	/**
 	* ESA OS — Importers / Energy Credits
 	* Parser CSV determinístico, sem dependências externas.
@@ -8465,7 +8465,7 @@
 		});
 	}
 	//#endregion
-	//#region src/importers/energy-credits/energy-credits-import-mapper.js
+	//#region ../../../importers/energy-credits/energy-credits-import-mapper.js
 	/**
 	* ESA OS — Importers / Energy Credits
 	* Mapper: linhas tabulares → entidades internas.
@@ -8713,7 +8713,7 @@
 		}
 	};
 	//#endregion
-	//#region src/importers/energy-credits/energy-credits-import-validator.js
+	//#region ../../../importers/energy-credits/energy-credits-import-validator.js
 	/**
 	* ESA OS — Importers / Energy Credits
 	* Validator: verifica entidades mapeadas antes da persistência.
@@ -8823,7 +8823,7 @@
 		}
 	};
 	//#endregion
-	//#region src/importers/energy-credits/energy-credits-import-service.js
+	//#region ../../../importers/energy-credits/energy-credits-import-service.js
 	/**
 	* ESA OS — Importers / Energy Credits
 	* ImportService: orquestra parse → map → validate → persist → hydrate.
@@ -8950,10 +8950,10 @@
 		}
 	};
 	//#endregion
-	//#region src/importers/energy-credits/index.js
+	//#region ../../../importers/energy-credits/index.js
 	var energyCreditsImportService = new EnergyCreditsImportService();
 	//#endregion
-	//#region src/engines/energy-billing/currency-parser.js
+	//#region ../../../engines/energy-billing/currency-parser.js
 	/**
 	* ESA OS — Engines / Energy Billing
 	* Currency Parser — pt-BR e US.
@@ -8985,7 +8985,7 @@
 		return isNaN(num) ? null : num;
 	}
 	//#endregion
-	//#region src/engines/energy-billing/energy-billing-result.js
+	//#region ../../../engines/energy-billing/energy-billing-result.js
 	/**
 	* ESA OS — Engines / Energy Billing
 	* Contrato de resultado do Billing Engine.
@@ -9123,7 +9123,7 @@
 		};
 	}
 	//#endregion
-	//#region src/engines/energy-billing/legacy-copel-calculation-adapter.js
+	//#region ../../../engines/energy-billing/legacy-copel-calculation-adapter.js
 	/**
 	* ESA OS — Engines / Energy Billing
 	* Legacy COPEL Calculation Adapter
@@ -9283,7 +9283,7 @@
 		};
 	}
 	//#endregion
-	//#region src/engines/energy-billing/energy-billing-engine.js
+	//#region ../../../engines/energy-billing/energy-billing-engine.js
 	/**
 	* ESA OS — Engines / Energy Billing
 	* Billing Engine — orquestra cálculo, snapshot e resultado.
@@ -9392,10 +9392,10 @@
 		}
 	};
 	//#endregion
-	//#region src/engines/energy-billing/index.js
+	//#region ../../../engines/energy-billing/index.js
 	var energyBillingEngine = new EnergyBillingEngine();
 	//#endregion
-	//#region src/importers/energy-utility-bills/utility-bill-types.js
+	//#region ../../../importers/energy-utility-bills/utility-bill-types.js
 	/**
 	* ESA OS — Importers / Energy Utility Bills
 	* Constantes estáveis de status, fonte, confiança e matching.
@@ -9442,7 +9442,7 @@
 		UTILITY_BILL_DUPLICATE_WITHOUT_DECISION: "UTILITY_BILL_DUPLICATE_WITHOUT_DECISION"
 	});
 	//#endregion
-	//#region src/importers/energy-utility-bills/utility-bill-result.js
+	//#region ../../../importers/energy-utility-bills/utility-bill-result.js
 	/**
 	* ESA OS — Importers / Energy Utility Bills
 	* Contrato de resultado para todas as operações de importação de faturas.
@@ -9486,7 +9486,7 @@
 		}
 	};
 	//#endregion
-	//#region src/importers/energy-utility-bills/utility-bill-extraction-normalizer.js
+	//#region ../../../importers/energy-utility-bills/utility-bill-extraction-normalizer.js
 	/**
 	* ESA OS — Importers / Energy Utility Bills
 	* UtilityBillExtractionNormalizer
@@ -9627,7 +9627,7 @@
 		}
 	};
 	//#endregion
-	//#region src/importers/energy-utility-bills/utility-bill-validator.js
+	//#region ../../../importers/energy-utility-bills/utility-bill-validator.js
 	/**
 	* ESA OS — Importers / Energy Utility Bills
 	* UtilityBillValidator
@@ -9698,7 +9698,7 @@
 		}
 	};
 	//#endregion
-	//#region src/importers/energy-utility-bills/utility-bill-matcher.js
+	//#region ../../../importers/energy-utility-bills/utility-bill-matcher.js
 	/**
 	* ESA OS — Importers / Energy Utility Bills
 	* UtilityBillMatcher
@@ -9771,7 +9771,7 @@
 		}
 	};
 	//#endregion
-	//#region src/importers/energy-utility-bills/utility-bill-duplicate-detector.js
+	//#region ../../../importers/energy-utility-bills/utility-bill-duplicate-detector.js
 	/**
 	* ESA OS — Importers / Energy Utility Bills
 	* UtilityBillDuplicateDetector
@@ -9832,7 +9832,7 @@
 		}
 	};
 	//#endregion
-	//#region src/importers/energy-utility-bills/utility-bill-billing-input-adapter.js
+	//#region ../../../importers/energy-utility-bills/utility-bill-billing-input-adapter.js
 	/**
 	* ESA OS — Importers / Energy Utility Bills
 	* buildBillingInputFromUtilityBillMonthlyRecord
@@ -9906,7 +9906,7 @@
 		return UtilityBillResult.ok(_buildInput(monthlyRecord, tariffs, operational));
 	}
 	//#endregion
-	//#region src/importers/energy-utility-bills/utility-bill-import-service.js
+	//#region ../../../importers/energy-utility-bills/utility-bill-import-service.js
 	/**
 	* ESA OS — Importers / Energy Utility Bills
 	* UtilityBillImportService
@@ -10172,7 +10172,7 @@
 		}
 	};
 	//#endregion
-	//#region src/queries/energy-utility-bills/utility-bill-query-service.js
+	//#region ../../../queries/energy-utility-bills/utility-bill-query-service.js
 	/**
 	* ESA OS — Queries / Energy Utility Bills
 	* UtilityBillQueryService
@@ -10260,7 +10260,7 @@
 		}
 	};
 	//#endregion
-	//#region src/importers/energy-credits/csv-template-service.js
+	//#region ../../../importers/energy-credits/csv-template-service.js
 	/**
 	* ESA OS — Importers / Energy Credits
 	* EnergyCreditsCsvTemplateService
@@ -10570,7 +10570,7 @@
 	};
 	var energyCreditsCsvTemplateService = new EnergyCreditsCsvTemplateService();
 	//#endregion
-	//#region src/ui/energy-credits/energy-credits-ui-result.js
+	//#region ../energy-credits-ui-result.js
 	/**
 	* ESA OS — UI / Energy Credits
 	* UIResult
@@ -10638,7 +10638,7 @@
 		}
 	};
 	//#endregion
-	//#region src/ui/energy-credits/energy-credits-ui-normalizer.js
+	//#region ../energy-credits-ui-normalizer.js
 	/**
 	* ESA OS — UI / Energy Credits
 	* EnergyCreditsUINormalizer
@@ -10685,7 +10685,7 @@
 		}
 	};
 	//#endregion
-	//#region src/ui/energy-credits/energy-credits-ui-contract.js
+	//#region ../energy-credits-ui-contract.js
 	/**
 	* ESA OS — UI / Energy Credits
 	* Contrato de capacidades da UI de Créditos ESA Energia.
@@ -10746,7 +10746,7 @@
 	});
 	var ENERGY_CREDITS_UI_VERSION = "1.0.0";
 	//#endregion
-	//#region src/ui/energy-credits/energy-credits-ui-provider.js
+	//#region ../energy-credits-ui-provider.js
 	/**
 	* ESA OS — UI / Energy Credits
 	* EnergyCreditsUIProvider
@@ -10956,7 +10956,7 @@
 		}
 	};
 	//#endregion
-	//#region src/core/app.js
+	//#region ../../../core/app.js
 	/**
 	* ESA OS
 	* Core Bootstrap
@@ -11653,7 +11653,7 @@
 	};
 	var ESA = new ESAApplication();
 	//#endregion
-	//#region src/ui/energy-credits/direct-runtime/bootstrap/sessionResolver.ts
+	//#region bootstrap/sessionResolver.ts
 	function parseSession(raw) {
 		if (!raw) return null;
 		try {
@@ -11674,7 +11674,7 @@
 		}
 	}
 	//#endregion
-	//#region src/ui/energy-credits/direct-runtime/bootstrap/httpFirebaseClient.ts
+	//#region bootstrap/httpFirebaseClient.ts
 	var ENDPOINT = "/.netlify/functions/energy-credits-data";
 	async function callEndpoint(body) {
 		let response;
@@ -11723,7 +11723,7 @@
 		return result.data ?? {};
 	}
 	//#endregion
-	//#region src/ui/energy-credits/direct-runtime/bootstrap/persistentUiProvider.ts
+	//#region bootstrap/persistentUiProvider.ts
 	function backendError(op) {
 		return {
 			ok: false,
@@ -11822,7 +11822,7 @@
 		} });
 	}
 	//#endregion
-	//#region src/ui/energy-credits/direct-runtime/bootstrap/standaloneProviderBootstrap.ts
+	//#region bootstrap/standaloneProviderBootstrap.ts
 	function decodeUidFromToken(token) {
 		try {
 			const lastDot = token.lastIndexOf(".");

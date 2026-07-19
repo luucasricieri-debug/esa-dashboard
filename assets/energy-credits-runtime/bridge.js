@@ -19,7 +19,7 @@
 		return target;
 	};
 	//#endregion
-	//#region src/ui/energy-credits/direct-runtime/providers/demoRuntimeProvider.ts
+	//#region providers/demoRuntimeProvider.ts
 	var UGS = [
 		{
 			id: "UG-001",
@@ -1055,7 +1055,7 @@
 		}
 	};
 	//#endregion
-	//#region src/ui/energy-credits/direct-runtime/providers/esaRuntimeProvider.ts
+	//#region providers/esaRuntimeProvider.ts
 	var esaRuntimeProvider_exports = /* @__PURE__ */ __exportAll({ createEsaRuntimeProvider: () => createEsaRuntimeProvider });
 	function unwrap(result) {
 		const r = result;
@@ -1531,7 +1531,7 @@
 		};
 	}));
 	//#endregion
-	//#region src/ui/energy-credits/direct-runtime/bridge/runtimeBridge.ts
+	//#region bridge/runtimeBridge.ts
 	function resolveMode() {
 		try {
 			if (new URLSearchParams(window.location.search).get("runtime") === "real") return "real";

@@ -498,12 +498,10 @@ assert('CD1 guard prevState = prevState || {} está no HTML', (() => {
   return src.includes('prevState = prevState || {}');
 })());
 
-assert('CD2 monthChanged usa prevState após guard', (() => {
+assert('CD2 dashKey dedup substitui prevState.dashMonth (prevenção de loop)', (() => {
   const src = fs.readFileSync(HTML, 'utf8');
   const cdIdx = src.indexOf('componentDidUpdate(prevProps, prevState)');
-  const guardIdx = src.indexOf('prevState = prevState || {}', cdIdx);
-  const monthIdx = src.indexOf('this.state.dashMonth !== prevState.dashMonth', cdIdx);
-  return guardIdx > cdIdx && monthIdx > guardIdx;
+  return cdIdx > 0 && src.includes('dashKey !== this.state._rtLastDashKey', cdIdx);
 })());
 
 assert('CD3 guard é a primeira linha de componentDidUpdate', (() => {
