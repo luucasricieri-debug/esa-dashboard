@@ -23,6 +23,14 @@ function buildRequestBody(activeOrgId: string | null): string {
   return activeOrgId ? JSON.stringify({ organizationId: activeOrgId }) : '{}';
 }
 
+export function clearActiveOrganization(): void {
+  try {
+    sessionStorage.removeItem(ACTIVE_ORG_KEY);
+  } catch {
+    // sessionStorage may be unavailable in non-browser environments
+  }
+}
+
 async function fetchContext(sessionToken: string, body: string): Promise<Response> {
   return fetch('/.netlify/functions/organization-context', {
     method: 'POST',

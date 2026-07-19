@@ -19,7 +19,7 @@ const {
   MAX_PAYLOAD_BYTES,
   FORBIDDEN_KEYS,
 } = require('../_shared/energy-credits-validators');
-const { _createHandler } = require('../energy-credits-data');
+const { _createHandler, _hasMigrationMarker, _hasOrgData } = require('../energy-credits-data');
 
 let passed = 0;
 let failed = 0;
@@ -756,6 +756,180 @@ async function suiteErrorSafety() {
   assert('ES5 400 tem mensagem de erro', typeof err400.json.error === 'string' && err400.json.error.length > 0);
 }
 
+// ── OrgMockDb helper ─────────────────────────────────────────────────────────
+
+const ORG_TEST_ID = 'org-test-id';
+const VERIFIED_MARKER = { gate: '8D', status: 'verified', version: 1, completedAt: '2026-01-01T00:00:00.000Z', completedBy: 'migration' };
+
+function makeOrgMockDb({ membership, orgEcData, legacyEcData } = {}) {
+  const store = {};
+  if (membership !== undefined) store[`users/${UID_A}/memberships/${ORG_TEST_ID}`] = membership;
+  if (orgEcData !== undefined) store[`organizations/${ORG_TEST_ID}/energyCredits`] = orgEcData;
+  if (legacyEcData !== undefined) store[`users/${UID_A}/energyCredits`] = legacyEcData;
+
+  return {
+    store,
+    ref(path) {
+      const val = store[path] ?? null;
+      return {
+        async once() { return { val: () => val, exists: () => val !== null }; },
+        async set(value) { store[path] = value; },
+        async transaction(fn) {
+          const current = store[path] ?? null;
+          const result = fn(current);
+          if (result === undefined) return { committed: false };
+          store[path] = result;
+          return { committed: true };
+        },
+      };
+    },
+  };
+}
+
+// ============================================================
+// Gate 8E: Ativação do modo organizacional
+// ============================================================
+async function suiteGate8E() {
+  console.log('\n=== Gate 8E. Modo organizacional — hasMigrationMarker + dual-read ===');
+
+  // ── Testes unitários de hasMigrationMarker ────────────────────────────────
+  assert('OA01 hasMigrationMarker(null) → false', _hasMigrationMarker(null) === false);
+  assert('OA02 hasMigrationMarker({}) → false', _hasMigrationMarker({}) === false);
+  assert('OA03 hasMigrationMarker({_migration:{status:"pending"}}) → false',
+    _hasMigrationMarker({ _migration: { status: 'pending' } }) === false);
+  assert('OA04 hasMigrationMarker({_migration:{status:"verified"}}) → true',
+    _hasMigrationMarker({ _migration: { status: 'verified' } }) === true);
+  assert('OA05 hasMigrationMarker ignora collections operacionais', _hasMigrationMarker({ generatingUnits: {} }) === false);
+
+  // ── hasOrgData backward compat ────────────────────────────────────────────
+  assert('OA06 hasOrgData({}) → false', _hasOrgData({}) === false);
+  assert('OA07 hasOrgData com generatingUnits não vazio → true',
+    _hasOrgData({ generatingUnits: { id1: { id: 'id1' } } }) === true);
+  assert('OA08 hasOrgData com apenas _migration → false',
+    _hasOrgData({ _migration: VERIFIED_MARKER }) === false);
+
+  // ── Snapshot: marker presente sem dados operacionais → organization ────────
+  const dbMarkerOnly = makeOrgMockDb({
+    membership: { status: 'active', role: 'owner', organizationId: ORG_TEST_ID },
+    orgEcData: { _migration: VERIFIED_MARKER },
+    legacyEcData: { generatingUnits: { u1: { id: 'u1', name: 'Legacy UG' } } },
+  });
+  const resMarkerOnly = await callWith(dbMarkerOnly, {
+    sessionToken: validToken(),
+    operation: 'snapshot',
+    organizationId: ORG_TEST_ID,
+  });
+  assert('OA09 snapshot org com só marker → 200', resMarkerOnly.statusCode === 200);
+  assert('OA10 snapshot org com só marker → dataSource:organization', resMarkerOnly.json.data?.dataSource === 'organization' || resMarkerOnly.json.dataSource === 'organization');
+  assert('OA11 snapshot org com só marker → migrationRequired:false', resMarkerOnly.json.migrationRequired === false || resMarkerOnly.json.data?.migrationRequired === false);
+
+  // ── Snapshot: sem marker e sem dados → fallback legacy ────────────────────
+  const dbNoMarker = makeOrgMockDb({
+    membership: { status: 'active', role: 'owner', organizationId: ORG_TEST_ID },
+    orgEcData: {},
+    legacyEcData: { generatingUnits: { u2: { id: 'u2', name: 'Legacy' } } },
+  });
+  const resNoMarker = await callWith(dbNoMarker, {
+    sessionToken: validToken(),
+    operation: 'snapshot',
+    organizationId: ORG_TEST_ID,
+  });
+  assert('OA12 snapshot org sem marker → dataSource:legacy-single-user',
+    resNoMarker.json.dataSource === 'legacy-single-user' || resNoMarker.json.migrationRequired === true);
+
+  // ── Membership: null → organization_invalid ────────────────────────────────
+  const dbNoMembership = makeOrgMockDb({
+    membership: undefined,
+    orgEcData: { _migration: VERIFIED_MARKER },
+  });
+  const resNoMembership = await callWith(dbNoMembership, {
+    sessionToken: validToken(),
+    operation: 'snapshot',
+    organizationId: ORG_TEST_ID,
+  });
+  assert('OA13 membership ausente → 403', resNoMembership.statusCode === 403);
+  assert('OA14 membership ausente → code:organization_invalid', resNoMembership.json.code === 'organization_invalid');
+
+  // ── Membership: status='inactive' → membership_inactive ──────────────────
+  const dbInactiveMembership = makeOrgMockDb({
+    membership: { status: 'inactive', role: 'owner', organizationId: ORG_TEST_ID },
+    orgEcData: { _migration: VERIFIED_MARKER },
+  });
+  const resInactive = await callWith(dbInactiveMembership, {
+    sessionToken: validToken(),
+    operation: 'snapshot',
+    organizationId: ORG_TEST_ID,
+  });
+  assert('OA15 membership inativa → 403', resInactive.statusCode === 403);
+  assert('OA16 membership inativa → code:membership_inactive', resInactive.json.code === 'membership_inactive');
+
+  // ── Membership: status='pending' → membership_inactive ───────────────────
+  const dbPendingMembership = makeOrgMockDb({
+    membership: { status: 'pending', role: 'viewer', organizationId: ORG_TEST_ID },
+    orgEcData: { _migration: VERIFIED_MARKER },
+  });
+  const resPending = await callWith(dbPendingMembership, {
+    sessionToken: validToken(),
+    operation: 'snapshot',
+    organizationId: ORG_TEST_ID,
+  });
+  assert('OA17 membership pending → code:membership_inactive', resPending.json.code === 'membership_inactive');
+
+  // ── Snapshot: dados operacionais presentes (path principal) ──────────────
+  const dbWithOpsData = makeOrgMockDb({
+    membership: { status: 'active', role: 'owner', organizationId: ORG_TEST_ID },
+    orgEcData: { generatingUnits: { ug1: { id: 'ug1', name: 'UG Real' } }, _migration: VERIFIED_MARKER },
+  });
+  const resWithOps = await callWith(dbWithOpsData, {
+    sessionToken: validToken(),
+    operation: 'snapshot',
+    organizationId: ORG_TEST_ID,
+  });
+  assert('OA18 snapshot org com dados operacionais → 200', resWithOps.statusCode === 200);
+  assert('OA19 snapshot org com dados operacionais → dataSource:organization',
+    resWithOps.json.dataSource === 'organization');
+
+  // ── Verificar error codes no código-fonte ─────────────────────────────────
+  const ecDataSrc = require('fs').readFileSync(
+    require('path').join(__dirname, '../energy-credits-data.js'), 'utf8'
+  );
+  assert('OA20 energy-credits-data.js contém hasMigrationMarker', ecDataSrc.includes('hasMigrationMarker'));
+  assert('OA21 energy-credits-data.js contém code:membership_inactive', ecDataSrc.includes("'membership_inactive'"));
+  assert('OA22 energy-credits-data.js contém code:organization_invalid', ecDataSrc.includes("'organization_invalid'"));
+
+  const orgCtxSrc = require('fs').readFileSync(
+    require('path').join(__dirname, '../organization-context.js'), 'utf8'
+  );
+  assert('OA23 organization-context.js contém code:organization_inactive', orgCtxSrc.includes("'organization_inactive'"));
+  assert('OA24 organization-context.js contém code:organization_context_failed', orgCtxSrc.includes("'organization_context_failed'"));
+
+  const bootstrapSrc = require('fs').readFileSync(
+    require('path').join(__dirname, '../../../src/ui/energy-credits/direct-runtime/bootstrap/standaloneProviderBootstrap.ts'), 'utf8'
+  );
+  assert('OA25 bootstrap contém ORG_CONTEXT_MESSAGES', bootstrapSrc.includes('ORG_CONTEXT_MESSAGES'));
+  assert('OA26 bootstrap contém organization_inactive em ORG_CONTEXT_MESSAGES', bootstrapSrc.includes('organization_inactive'));
+  assert('OA27 bootstrap contém membership_inactive em ORG_CONTEXT_MESSAGES', bootstrapSrc.includes('membership_inactive'));
+
+  const resolverSrc = require('fs').readFileSync(
+    require('path').join(__dirname, '../../../src/ui/energy-credits/direct-runtime/multitenancy/organizationContextResolver.ts'), 'utf8'
+  );
+  assert('OA28 resolver exporta clearActiveOrganization', resolverSrc.includes('export function clearActiveOrganization'));
+
+  const htmlSrc = require('fs').readFileSync(
+    require('path').join(__dirname, '../../../energy-credits-v2.html'), 'utf8'
+  );
+  assert('OA29 HTML contém mensagem para organization_inactive', htmlSrc.includes('"organization_inactive"'));
+  assert('OA30 HTML contém mensagem para membership_inactive', htmlSrc.includes('"membership_inactive"'));
+  assert('OA31 HTML contém mensagem para organization_context_failed', htmlSrc.includes('"organization_context_failed"'));
+
+  const markerSrc = require('fs').readFileSync(
+    require('path').join(__dirname, '../../../scripts/gate8e-write-migration-marker.js'), 'utf8'
+  );
+  assert('OA32 gate8e-write-migration-marker.js exporta buildMarker', markerSrc.includes('buildMarker'));
+  assert('OA33 gate8e-write-migration-marker.js exporta maskUid', markerSrc.includes('maskUid'));
+  assert('OA34 gate8e-write-migration-marker.js verifica marker existente (idempotente)', markerSrc.includes("existing.status === 'verified'"));
+}
+
 // ============================================================
 // Relatório final
 // ============================================================
@@ -777,9 +951,10 @@ async function suiteErrorSafety() {
   await suiteAuditLog();
   await suiteConcurrency();
   await suiteErrorSafety();
+  await suiteGate8E();
 
   console.log('\n' + '='.repeat(60));
-  console.log(`Gate 7.1 Results: ${passed} passed, ${failed} failed`);
+  console.log(`Gate 7.1 + Gate 8E Results: ${passed} passed, ${failed} failed`);
   console.log('='.repeat(60));
   if (failed > 0) process.exit(1);
 })();

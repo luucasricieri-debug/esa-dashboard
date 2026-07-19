@@ -60,6 +60,15 @@ function dispatchProviderError(code: string, reason: string): void {
   window.dispatchEvent(new CustomEvent('esa:ui-provider:error', { detail: { code } }));
 }
 
+const ORG_CONTEXT_MESSAGES: Record<string, string> = {
+  organization_invalid:       'Organização inválida ou acesso não autorizado.',
+  organization_inactive:      'Organização inativa. Contacte o administrador.',
+  membership_inactive:        'Sua associação a esta organização está inativa.',
+  no_permission:              'Sem permissão para acessar esta organização.',
+  organization_context_failed:'Não foi possível carregar o contexto organizacional.',
+  forbidden:                  'Acesso negado a esta organização.',
+};
+
 (function bootstrapStandaloneProvider(): void {
 
   (async (): Promise<void> => {
@@ -92,8 +101,12 @@ function dispatchProviderError(code: string, reason: string): void {
       // ── 2. Resolve organization context (Gate 8A) ───────────────────────────
       // Non-blocking: falha retorna null e tenancyMode='single-user' continua.
       // Nenhum path de dados muda nesta missão; contexto exposto para Gate 8B.
-      const { context: orgContext } = await resolveOrganizationContext(sessionToken);
+      const { context: orgContext, code: orgCode } = await resolveOrganizationContext(sessionToken);
       window.__ESA_ORG_CONTEXT__ = orgContext;
+      if (orgCode) {
+        const orgMsg = ORG_CONTEXT_MESSAGES[orgCode] ?? 'Não foi possível carregar o contexto organizacional.';
+        console.warn('[ESA Standalone] org_context_code', orgCode, orgMsg);
+      }
       console.info('[ESA Standalone] tenancy_mode', orgContext?.tenancyMode ?? 'single-user');
 
       // ── 3. Initialize ESA Core ───────────────────────────────────────────────

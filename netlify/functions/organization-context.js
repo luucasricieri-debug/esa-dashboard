@@ -108,18 +108,21 @@ exports.handler = async function (event) {
     : activeMemberships[0];
 
   if (!membership) {
-    return { statusCode: 403, body: JSON.stringify({ error: 'Organização não autorizada para este usuário' }) };
+    return { statusCode: 403, body: JSON.stringify({ error: 'Organização não autorizada para este usuário', code: 'organization_invalid' }) };
   }
 
   let org;
   try {
     org = await loadOrganization(db, membership.organizationId);
   } catch {
-    return { statusCode: 500, body: JSON.stringify({ error: 'Erro ao acessar organização' }) };
+    return { statusCode: 500, body: JSON.stringify({ error: 'Erro ao acessar organização', code: 'organization_context_failed' }) };
   }
 
-  if (!org || org.status !== 'active') {
-    return { statusCode: 403, body: JSON.stringify({ error: 'Organização inativa ou inválida' }) };
+  if (!org) {
+    return { statusCode: 403, body: JSON.stringify({ error: 'Organização não encontrada', code: 'organization_invalid' }) };
+  }
+  if (org.status !== 'active') {
+    return { statusCode: 403, body: JSON.stringify({ error: 'Organização inativa. Contacte o administrador.', code: 'organization_inactive' }) };
   }
 
   // Permissões calculadas pelo backend a partir da role — nunca do browser

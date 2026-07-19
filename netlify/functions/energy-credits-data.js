@@ -74,6 +74,11 @@ function hasOrgData(raw) {
   });
 }
 
+// Organização inicializada via migração (zero ou mais registros): marker presente e verificado.
+function hasMigrationMarker(raw) {
+  return raw != null && raw._migration != null && raw._migration.status === 'verified';
+}
+
 // ── Handler factory (aceita deps injetadas para testabilidade) ─────────────────
 
 function _createHandler(deps) {
@@ -169,8 +174,11 @@ function _createHandler(deps) {
       try {
         const membershipSnap = await db.ref(`users/${uid}/memberships/${organizationId}`).once('value');
         const membership = membershipSnap.val();
-        if (!membership || membership.status !== 'active') {
-          return { statusCode: 403, headers, body: JSON.stringify({ error: 'Acesso negado a esta organização', code: 'organization_invalid' }) };
+        if (!membership) {
+          return { statusCode: 403, headers, body: JSON.stringify({ error: 'Organização não autorizada para este usuário', code: 'organization_invalid' }) };
+        }
+        if (membership.status !== 'active') {
+          return { statusCode: 403, headers, body: JSON.stringify({ error: 'Associação a esta organização está inativa', code: 'membership_inactive' }) };
         }
         orgRole = membership.role;
       } catch (_err) {
@@ -199,7 +207,7 @@ function _createHandler(deps) {
           const orgSnap = await db.ref(`organizations/${organizationId}/energyCredits`).once('value');
           const orgRaw = orgSnap.val() || {};
 
-          if (hasOrgData(orgRaw)) {
+          if (hasOrgData(orgRaw) || hasMigrationMarker(orgRaw)) {
             return {
               statusCode: 200, headers,
               body: JSON.stringify({ ok: true, data: formatSnapshot(orgRaw), dataSource: 'organization', migrationRequired: false, requestId }),
@@ -354,3 +362,5 @@ exports.handler = _createHandler({ getDatabase, verifyToken });
 // ── Testing exports ───────────────────────────────────────────────────────────
 
 exports._createHandler = _createHandler;
+exports._hasMigrationMarker = hasMigrationMarker;
+exports._hasOrgData = hasOrgData;
