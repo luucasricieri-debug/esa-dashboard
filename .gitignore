@@ -1,2 +1,6 @@
 index.html.bak
 src/ui/energy-credits/react-app/node_modules/
+node_modules/
+package-lock.json
+# Gate 8D — backups não devem ser versionados (contêm PII operacional)
+backups/

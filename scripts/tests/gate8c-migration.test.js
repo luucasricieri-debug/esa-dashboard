@@ -342,8 +342,8 @@ assert('EC06 creditAllocations presente', EC_MIGRATION_COLLECTIONS.includes('cre
 // ══════════════════════════════════════════════════════════════════════════════
 console.log('\n=== Suite 11 — Segurança: zero escritas em dry-run ===');
 
-assert('SE01 guard dry-run no código (aborta sem --dry-run)',
-  migrScriptSrc.includes('ESCRITA REAL BLOQUEADA') || migrScriptSrc.includes('--dry-run é obrigatório'));
+assert('SE01 guard dry-run: sem --dry-run → chama mainCopy com preflight obrigatório (Gate 8D)',
+  migrScriptSrc.includes('mainCopy') && migrScriptSrc.includes('validateCredentials'));
 assert('SE02 nenhuma chamada .set() em dry-run path (sem args.dryRun check antes de set)',
   (() => {
     // O script não chama db.ref().set() no dry-run — verificar que não há set() após a inicialização no fluxo principal
@@ -363,8 +363,10 @@ assert('SE06 FIREBASE_SERVICE_ACCOUNT_JSON lida do env',
   migrScriptSrc.includes('FIREBASE_SERVICE_ACCOUNT_JSON'));
 assert('SE07 fs.mkdirSync cria reports/ se não existe',
   migrScriptSrc.includes('fs.mkdirSync') && migrScriptSrc.includes('recursive: true'));
-assert('SE08 loadEnergyCreditsFromPath somente lê (once)',
-  migrScriptSrc.includes('.once(') && !migrScriptSrc.match(/await db\.ref[^;]*\.set\(/));
+assert('SE08 loadEnergyCreditsFromPath somente lê (once) — função de leitura usa only .once()',
+  migrScriptSrc.includes('.once(') &&
+  /function loadEnergyCreditsFromPath[\s\S]{0,500}\.once\(/.test(migrScriptSrc) &&
+  !/function loadEnergyCreditsFromPath[\s\S]{0,500}\.set\(/.test(migrScriptSrc));
 assert('SE09 colisão detectada: destino não vazio classifica como BLOCKED',
   migrScriptSrc.includes('MIGRATION_DESTINATION_NOT_EMPTY') || migrScriptSrc.includes('hasOperationalData'));
 assert('SE10 admin.app().delete() ao final (sem conexões abertas)',

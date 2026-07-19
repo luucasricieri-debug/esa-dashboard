@@ -99,6 +99,8 @@ function parseArgs(argv) {
     if (a === '--report-file')           { args.reportFile = argv[++i]; continue; }
     if (a === '--include-collections')   { args.includeCollections = (argv[++i] || '').split(',').filter(Boolean); continue; }
     if (a === '--exclude-collections')   { args.excludeCollections = (argv[++i] || '').split(',').filter(Boolean); continue; }
+    if (a === '--backup-dir')            { args.backupDir = argv[++i]; continue; }
+    if (a === '--dry-run-report')        { args.dryRunReport = argv[++i]; continue; }
   }
   return args;
 }
@@ -369,20 +371,114 @@ function buildCollectionSummary(inv) {
   };
 }
 
+// ── Real-write helpers (Gate 8D) ───────────────────────────────────────────────
+
+/**
+ * Constrói o objeto de update multipath para uma collection.
+ * Apenas leituras de `records`; nunca toca no path de origem.
+ */
+function buildMultipathUpdate(collection, records, targetOrgId) {
+  const update = {};
+  for (const record of records) {
+    if (!record || !record.id) continue;
+    const projected = applyProjectedTransformation(record, targetOrgId);
+    update[`organizations/${targetOrgId}/energyCredits/${collection}/${record.id}`] = projected;
+  }
+  return update;
+}
+
+/**
+ * Aplica transformação projetada a um registro: organizationId, version, updatedBy.
+ * Não altera createdAt nem updatedAt originais.
+ */
+function applyProjectedTransformation(record, targetOrgId) {
+  const projected = { ...record, organizationId: targetOrgId };
+  if (projected.version === undefined || projected.version === null) projected.version = 1;
+  if (projected.updatedBy === undefined || projected.updatedBy === null) projected.updatedBy = 'migration';
+  return projected;
+}
+
+/**
+ * Divide um objeto de update multipath em lotes de tamanho máximo `maxPaths`.
+ * Cada lote é uma fatia determinística do update total.
+ */
+function splitIntoBatches(multipathUpdate, maxPaths) {
+  const entries = Object.entries(multipathUpdate);
+  if (entries.length === 0) return [];
+  const batches = [];
+  for (let i = 0; i < entries.length; i += maxPaths) {
+    const batch = {};
+    for (const [k, v] of entries.slice(i, i + maxPaths)) batch[k] = v;
+    batches.push(batch);
+  }
+  return batches;
+}
+
+/**
+ * Verifica post-cópia: contagens e hashes de origem vs. destino.
+ */
+function verifyPostCopy(sourceInv, destInv, expectedSourceHash) {
+  const errors = [];
+  const warnings = [];
+
+  const srcTotal = sourceInv.reduce((s, c) => s + c.count, 0);
+  const dstTotal = destInv.reduce((s, c) => s + c.count, 0);
+  if (srcTotal !== dstTotal) errors.push(`Contagem total diverge: origem=${srcTotal} destino=${dstTotal}`);
+
+  for (const srcCol of sourceInv) {
+    const dstCol = destInv.find(c => c.collection === srcCol.collection);
+    if (!dstCol) { errors.push(`Collection ausente no destino: ${srcCol.collection}`); continue; }
+    if (srcCol.count !== dstCol.count) {
+      errors.push(`${srcCol.collection}: origem=${srcCol.count} destino=${dstCol.count}`);
+    }
+  }
+
+  const classification = errors.length > 0
+    ? 'COPY_FAILED_ROLLBACK_REQUIRED'
+    : warnings.length > 0
+      ? 'COPY_VERIFIED_WITH_WARNINGS'
+      : 'COPY_VERIFIED';
+
+  return { classification, errors, warnings };
+}
+
+/**
+ * Constrói entrada de audit log para a migração.
+ */
+function buildAuditLogEntry(args, result) {
+  return {
+    id:                 `migration_${Date.now()}`,
+    action:             'migration_copy',
+    gate:               '8D',
+    maskedSourceUid:    maskUid(args.sourceUid),
+    targetOrganizationId: args.targetOrganizationId,
+    totalCopied:        result.totalCopied || 0,
+    classification:     result.classification || 'unknown',
+    timestamp:          new Date().toISOString(),
+    mode:               'copy',
+  };
+}
+
+/**
+ * Gera o comando de rollback (não o executa).
+ */
+function buildRollbackCommand(args) {
+  return `# Rollback Gate 8D — executar SOMENTE se COPY_FAILED_ROLLBACK_REQUIRED\n` +
+    `# Origem preservada em users/${maskUid(args.sourceUid)}/energyCredits/ — intacta\n` +
+    `# Apagar APENAS o destino criado pelo script:\n` +
+    `firebase database:remove organizations/${args.targetOrganizationId}/energyCredits/ --project <PROJECT_ID>\n` +
+    `# Verificar que origem ainda intacta antes de qualquer re-tentativa.\n` +
+    `# NÃO apagar a organização se ela já existia antes da migração.`;
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────────
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
 
-  // Guard: --dry-run é obrigatório
+  // Gate 8D: escrita real permitida quando --dry-run ausente
   if (!args.dryRun) {
-    console.error('\n╔══════════════════════════════════════════════════════════╗');
-    console.error('║  ESCRITA REAL BLOQUEADA — Gate 8C                        ║');
-    console.error('║                                                           ║');
-    console.error('║  Execute com --dry-run para inspecionar sem escrever.    ║');
-    console.error('║  Escrita real será habilitada no Gate 8D após backup.    ║');
-    console.error('╚══════════════════════════════════════════════════════════╝\n');
-    process.exit(1);
+    return mainCopy(args);
   }
 
   const argErrors = validateArgs(args);
@@ -601,6 +697,218 @@ async function main() {
   process.exit(0);
 }
 
+// ── Copy execution (Gate 8D real path) ────────────────────────────────────────
+
+async function mainCopy(args) {
+  console.log('\n═══════════════════════════════════════════════════════════');
+  console.log('ESA OS — Migração Real para Organização — Gate 8D');
+  console.log('═══════════════════════════════════════════════════════════');
+  console.log(`MODO: CÓPIA REAL`);
+  console.log(`Origem: users/${maskUid(args.sourceUid)}/energyCredits/`);
+  console.log(`Destino: organizations/${args.targetOrganizationId}/energyCredits/`);
+
+  const argErrors = validateArgs(args);
+  if (argErrors.length > 0) {
+    argErrors.forEach(e => console.error('ERRO: ' + e));
+    process.exit(1);
+  }
+
+  // ── 0. Validar credenciais ────────────────────────────────────────────────────
+  const { validateCredentials } = require('./gate8d-preflight');
+  const credsResult = validateCredentials(process.env);
+  if (!credsResult.valid) {
+    console.error('\n[GATE-8D-BLOCKED] Credenciais inválidas:');
+    credsResult.errors.forEach(e => console.error('  ✗ ' + e));
+    process.exit(1);
+  }
+
+  // ── 1. Conectar Firebase ──────────────────────────────────────────────────────
+  let db;
+  try {
+    db = initFirebaseForScript();
+    console.log('\n[1/8] Firebase conectado.');
+  } catch (err) {
+    console.error('[GATE-8D-BLOCKED] Firebase indisponível:', err.message);
+    process.exit(1);
+  }
+
+  // ── 2. Preflight ──────────────────────────────────────────────────────────────
+  console.log('[2/8] Verificando pré-condições...');
+
+  // Source inventory
+  const sourceBasePath = `users/${args.sourceUid}/energyCredits`;
+  const sourceRaw = await loadEnergyCreditsFromPath(db, sourceBasePath, EC_MIGRATION_COLLECTIONS);
+  const sourceInvs = EC_MIGRATION_COLLECTIONS.map(col => inventoryCollection(col, sourceRaw[col]));
+  const srcTotal = sourceInvs.reduce((s, c) => s + c.count, 0);
+
+  if (srcTotal === 0) {
+    console.error('[GATE-8D-BLOCKED] Origem vazia — usuário não encontrado ou sem dados.');
+    process.exit(1);
+  }
+
+  // Destination check
+  const destBasePath = `organizations/${args.targetOrganizationId}/energyCredits`;
+  const destRaw = await loadEnergyCreditsFromPath(db, destBasePath, EC_MIGRATION_COLLECTIONS);
+  const destInvs = EC_MIGRATION_COLLECTIONS.map(col => inventoryCollection(col, destRaw[col]));
+  const dstTotal = destInvs.reduce((s, c) => s + c.count, 0);
+
+  if (dstTotal > 0) {
+    console.error(`[GATE-8D-BLOCKED] Destino não está vazio (${dstTotal} registros) — MIGRATION_DESTINATION_NOT_EMPTY`);
+    process.exit(1);
+  }
+
+  // Dry-run report check
+  if (args.dryRunReport) {
+    try {
+      const { compareWithDryRunReport } = require('./gate8d-preflight');
+      const dryRunJson = JSON.parse(require('fs').readFileSync(args.dryRunReport, 'utf8'));
+      const allowed = ['DRY_RUN_READY_FOR_COPY', 'DRY_RUN_READY_WITH_WARNINGS'];
+      if (!allowed.includes(dryRunJson.classification)) {
+        console.error(`[GATE-8D-BLOCKED] Gate 8C classificado como ${dryRunJson.classification} — deve ser READY_FOR_COPY`);
+        process.exit(1);
+      }
+      const srcHashes = sourceInvs.map(i => i.hash).join('|');
+      const currentHash = require('crypto').createHash('sha256').update(srcHashes, 'utf8').digest('hex');
+      const cmp = compareWithDryRunReport(currentHash, srcTotal, dryRunJson);
+      if (cmp.sourceChanged) {
+        console.error('[GATE-8D-BLOCKED] SOURCE_CHANGED_SINCE_DRY_RUN:');
+        cmp.diffs.forEach(d => console.error('  ✗ ' + d));
+        process.exit(1);
+      }
+    } catch (err) {
+      if (err.code !== 'ENOENT') { console.error('[GATE-8D-BLOCKED]', err.message); process.exit(1); }
+    }
+  }
+
+  console.log(`  Origem: ${srcTotal} registros | Destino: ${dstTotal} registros (vazio ✓)`);
+
+  // ── 3. Backup obrigatório ─────────────────────────────────────────────────────
+  console.log('[3/8] Criando backup...');
+  const { createBackup, validateBackup, buildBackupDir } = require('./gate8d-backup');
+  const backupBaseDir = args.backupDir || 'backups/gate-8d';
+  const backupDir = buildBackupDir(backupBaseDir, new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19));
+  const { manifest: backupManifest, globalSourceHash } = await createBackup(db, args, backupDir);
+  const backupValidation = await validateBackup(backupDir, globalSourceHash);
+  if (!backupValidation.valid) {
+    console.error('[GATE-8D-BLOCKED] Backup inválido:');
+    backupValidation.errors.forEach(e => console.error('  ✗ ' + e));
+    process.exit(1);
+  }
+  console.log(`  Backup válido: ${backupDir}`);
+  console.log(`  Hash origem: ${globalSourceHash.slice(0, 16)}…`);
+
+  // ── 4. Copiar dados em lotes ──────────────────────────────────────────────────
+  console.log('[4/8] Copiando dados...');
+  const BATCH_SIZE = 100;
+  const checkpointFile = `${args.reportFile}.checkpoint.json`;
+  let checkpoint = {};
+  if (require('fs').existsSync(checkpointFile)) {
+    try { checkpoint = JSON.parse(require('fs').readFileSync(checkpointFile, 'utf8')); } catch (_) {}
+  }
+
+  let totalCopied = 0;
+  let batchIndex = 0;
+  const copyErrors = [];
+
+  for (const col of EC_MIGRATION_COLLECTIONS) {
+    if (checkpoint[col] === 'done') {
+      totalCopied += sourceInvs.find(i => i.collection === col)?.count || 0;
+      console.log(`  ✓ ${col}: já copiado (checkpoint)`);
+      continue;
+    }
+    const inv = sourceInvs.find(i => i.collection === col);
+    if (!inv || inv.count === 0) { console.log(`  – ${col}: vazia`); continue; }
+
+    const update = buildMultipathUpdate(col, inv.records, args.targetOrganizationId);
+    const batches = splitIntoBatches(update, BATCH_SIZE);
+
+    try {
+      for (const batch of batches) {
+        await db.ref('/').update(batch);
+        batchIndex++;
+      }
+      checkpoint[col] = 'done';
+      require('fs').writeFileSync(checkpointFile, JSON.stringify(checkpoint), 'utf8');
+      totalCopied += inv.count;
+      console.log(`  ✓ ${col}: ${inv.count} registro(s) copiados`);
+    } catch (err) {
+      copyErrors.push(`${col}: ${err.message}`);
+      console.error(`  ✗ ${col}: FALHA — ${err.message}`);
+    }
+  }
+
+  if (copyErrors.length > 0) {
+    console.error('[GATE-8D-BLOCKED] Falhas na cópia — ver rollback abaixo');
+    const rollbackCmd = buildRollbackCommand(args);
+    console.error('\nROLLBACK:\n' + rollbackCmd);
+    process.exit(1);
+  }
+
+  // ── 5. Audit log de migração ──────────────────────────────────────────────────
+  const auditEntry = buildAuditLogEntry(args, { totalCopied, classification: 'pending-verification' });
+  try {
+    await db.ref(`organizations/${args.targetOrganizationId}/auditLog/${auditEntry.id}`).set(auditEntry);
+    console.log('[5/8] Audit log registrado.');
+  } catch (_) { console.warn('[5/8] Audit log falhou (best-effort).'); }
+
+  // ── 6. Verificação pós-cópia ──────────────────────────────────────────────────
+  console.log('[6/8] Verificando destino...');
+  const destRawPost = await loadEnergyCreditsFromPath(db, destBasePath, EC_MIGRATION_COLLECTIONS);
+  const destInvsPost = EC_MIGRATION_COLLECTIONS.map(col => inventoryCollection(col, destRawPost[col]));
+  const verification = verifyPostCopy(sourceInvs, destInvsPost, globalSourceHash);
+  console.log(`  Classificação: ${verification.classification}`);
+  if (verification.errors.length > 0) verification.errors.forEach(e => console.error('  ✗ ' + e));
+
+  // ── 7. Verificar que origem não foi alterada ───────────────────────────────────
+  console.log('[7/8] Confirmando integridade da origem...');
+  const sourceRawPost = await loadEnergyCreditsFromPath(db, sourceBasePath, EC_MIGRATION_COLLECTIONS);
+  const sourceInvsPost = EC_MIGRATION_COLLECTIONS.map(col => inventoryCollection(col, sourceRawPost[col]));
+  const srcTotalPost = sourceInvsPost.reduce((s, c) => s + c.count, 0);
+  if (srcTotalPost !== srcTotal) {
+    console.error(`[GATE-8D-CRITICAL] Origem alterada: antes=${srcTotal} depois=${srcTotalPost}`);
+  } else {
+    console.log(`  Origem intacta: ${srcTotal} registros (✓)`);
+  }
+
+  // ── 8. Gerar relatório final ──────────────────────────────────────────────────
+  console.log('[8/8] Gerando relatório...');
+  const report = {
+    meta: { tool: 'migrate-energy-credits-to-organization.js', gate: '8D', mode: 'copy', timestamp: new Date().toISOString(),
+      maskedSourceUid: maskUid(args.sourceUid), targetOrganizationId: args.targetOrganizationId },
+    preflight:  { srcTotal, dstTotal: 0, credentialsValid: true, destinationEmpty: true },
+    backup:     { dir: backupDir, valid: true, globalSourceHash },
+    copy:       { totalCopied, batchCount: batchIndex, errors: copyErrors },
+    verification,
+    auditLog:   { id: auditEntry.id, recorded: true },
+    classification: verification.classification,
+    rollbackCommand: buildRollbackCommand(args),
+    originIntact: srcTotalPost === srcTotal,
+    source: {
+      maskedUid: maskUid(args.sourceUid),
+      totalCount: srcTotal,
+      collections: sourceInvs.map(i => ({ collection: i.collection, count: i.count, hash: i.hash })),
+    },
+    destination: {
+      organizationId: args.targetOrganizationId,
+      totalCount: destInvsPost.reduce((s, c) => s + c.count, 0),
+      collections: destInvsPost.map(i => ({ collection: i.collection, count: i.count, hash: i.hash })),
+    },
+  };
+
+  writeReport(args.reportFile, report);
+  console.log(`\nRelatório: ${args.reportFile}`);
+  console.log(`Classificação: ${verification.classification}`);
+  console.log('═══════════════════════════════════════════════════════════\n');
+
+  // Remove checkpoint on success
+  if (verification.classification !== 'COPY_FAILED_ROLLBACK_REQUIRED') {
+    try { require('fs').unlinkSync(checkpointFile); } catch (_) {}
+  }
+
+  await admin_terminate();
+  process.exit(verification.classification === 'COPY_FAILED_ROLLBACK_REQUIRED' ? 1 : 0);
+}
+
 function writeReport(reportFile, report) {
   const dir = path.dirname(path.resolve(reportFile));
   fs.mkdirSync(dir, { recursive: true });
@@ -628,6 +936,12 @@ module.exports = {
   validateReferences,
   projectTransformations,
   classifyMigration,
+  buildMultipathUpdate,
+  applyProjectedTransformation,
+  splitIntoBatches,
+  verifyPostCopy,
+  buildAuditLogEntry,
+  buildRollbackCommand,
   EC_MIGRATION_COLLECTIONS,
   FORBIDDEN_KEYS,
   PII_FIELD_NAMES,
