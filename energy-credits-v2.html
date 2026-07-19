@@ -71,7 +71,22 @@
           {{ searchIcon }}
           <input placeholder="Buscar UG, UB ou fatura..." style="background:transparent; font-size:14px; outline:none; border:none; flex:1; color:#1e293b; padding:0;">
         </div>
-        <div style="height:36px; width:36px; border-radius:999px; background:linear-gradient(135deg, #00bd78, #006644); display:grid; place-items:center; color:#ffffff; font-size:11px; font-weight:600; box-shadow:0 1px 2px rgba(0,168,107,.3); flex-shrink:0;">ESA</div>
+        <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+          <sc-if value="{{ orgHasMultiple }}" hint-placeholder-val="{{ false }}">
+            <select value="{{ orgCurrentId }}" onChange="{{ onOrgSwitch }}" title="Trocar organização" style="height:36px; border:1px solid #a9e4cb; border-radius:8px; padding:0 10px; font-size:13px; font-weight:500; color:#062e20; background:#eaf8f1; outline:none; cursor:pointer; max-width:200px;">
+              <sc-for list="{{ orgSelectorOrgs }}" as="o" hint-placeholder-count="2"><option value="{{ o.id }}">{{ o.name }}</option></sc-for>
+            </select>
+          </sc-if>
+          <sc-if value="{{ !orgHasMultiple }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex; align-items:center; gap:6px; height:36px; padding:0 10px; border-radius:8px; background:#eaf8f1; border:1px solid #a9e4cb; max-width:200px; overflow:hidden;">
+              {{ orgSelectorIcon }}
+              <span style="font-size:13px; font-weight:500; color:#062e20; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ orgDisplayName }}</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{ orgRoleBadge.show }}" hint-placeholder-val="{{ false }}">
+            <span style="display:inline-flex; padding:3px 8px; border-radius:999px; font-size:10px; font-weight:700; letter-spacing:.05em; background:{{ orgRoleBadge.bg }}; color:{{ orgRoleBadge.color }}; white-space:nowrap;">{{ orgRoleBadge.text }}</span>
+          </sc-if>
+        </div>
       </div>
     </header>
 
@@ -1801,6 +1816,140 @@
       </sc-if>
 
       <!-- ==================== DEMAIS TELAS (placeholder) ==================== -->
+      <!-- ==================== MEMBROS E ACESSOS ==================== -->
+      <sc-if value="{{ isMembros }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Organização" style="display:flex; flex-direction:column; gap:16px;">
+          <!-- header org -->
+          <div style="border-radius:12px; border:1px solid #e2e8f0; background:#ffffff; box-shadow:0 1px 2px rgba(15,23,42,.04); padding:16px 20px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <div style="height:44px; width:44px; border-radius:12px; background:linear-gradient(135deg, #00bd78, #006644); display:grid; place-items:center; flex-shrink:0;">{{ orgBannerIcon }}</div>
+              <div>
+                <div style="font-size:16px; font-weight:600; color:#062e20;">{{ orgBannerName }}</div>
+                <div style="font-size:12px; color:#64748b; margin-top:1px;">{{ orgBannerSub }}</div>
+              </div>
+            </div>
+            <span style="display:inline-flex; padding:4px 10px; border-radius:999px; font-size:11px; font-weight:700; letter-spacing:.05em; background:{{ orgBannerBadge.bg }}; color:{{ orgBannerBadge.color }};">{{ orgBannerBadge.text }}</span>
+          </div>
+
+          <!-- sem permissão de leitura -->
+          <sc-if value="{{ !membersCan.read }}" hint-placeholder-val="{{ false }}">
+            <div style="border-radius:12px; border:1px solid #fde68a; background:rgba(255,251,235,.7); padding:20px; text-align:center;">
+              <div style="font-size:14px; font-weight:600; color:#92400e; margin-bottom:4px;">Sem permissão de acesso</div>
+              <div style="font-size:13px; color:#a16207;">Apenas membros com papel manager ou superior podem visualizar os acessos desta organização.</div>
+            </div>
+          </sc-if>
+
+          <!-- lista de membros -->
+          <sc-if value="{{ membersCan.read }}" hint-placeholder-val="{{ true }}">
+            <div style="border-radius:12px; border:1px solid #e2e8f0; background:#ffffff; box-shadow:0 1px 2px rgba(15,23,42,.04);">
+              <div style="padding:14px 16px 10px; border-bottom:1px solid #f1f5f9; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  {{ membersHeaderIcon }}
+                  <h3 style="font-size:14px; font-weight:600; color:#062e20; margin:0;">Membros e acessos</h3>
+                  <span style="font-size:11px; color:#64748b;">({{ membersCount }})</span>
+                </div>
+                <sc-if value="{{ membersCan.manage }}" hint-placeholder-val="{{ false }}">
+                  <button onClick="{{ onMemberAddToggle }}" style="display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 12px; border-radius:8px; border:none; background:#00a86b; color:#ffffff; font-size:12px; font-weight:600; cursor:pointer;" style-hover="background:#00915d;">{{ memberAddBtnIcon }} Adicionar membro</button>
+                </sc-if>
+              </div>
+
+              <!-- form adicionar membro -->
+              <sc-if value="{{ memberAddFormOpen }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:14px 16px; border-bottom:1px solid #f1f5f9; background:#f8fafc; display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end;">
+                  <div style="display:flex; flex-direction:column; gap:4px; flex:1; min-width:180px;">
+                    <label style="font-size:11px; color:#64748b; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Login ou UID</label>
+                    <input value="{{ memberAddLogin }}" onChange="{{ onMemberAddLoginChange }}" placeholder="login exato do usuário" style="height:34px; border:1px solid #cbd5e1; border-radius:8px; padding:0 10px; font-size:13px; color:#1e293b; background:#ffffff; outline:none;" style-focus="border-color:#00a86b;">
+                  </div>
+                  <div style="display:flex; flex-direction:column; gap:4px; min-width:140px;">
+                    <label style="font-size:11px; color:#64748b; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Papel</label>
+                    <select value="{{ memberAddRole }}" onChange="{{ onMemberAddRoleChange }}" style="height:34px; border:1px solid #cbd5e1; border-radius:8px; padding:0 10px; font-size:13px; color:#1e293b; background:#ffffff; outline:none; cursor:pointer;">
+                      <sc-for list="{{ memberRoleOptions }}" as="ro" hint-placeholder-count="5"><option value="{{ ro.value }}">{{ ro.label }}</option></sc-for>
+                    </select>
+                  </div>
+                  <button onClick="{{ onMemberAddSubmit }}" style="display:inline-flex; align-items:center; gap:6px; height:34px; padding:0 14px; border-radius:8px; border:none; background:#062e20; color:#ffffff; font-size:13px; font-weight:600; cursor:{{ memberAddBtnCursor }}; flex-shrink:0;" style-hover="background:#00875a;">{{ memberAddSubmitLabel }}</button>
+                  <button onClick="{{ onMemberAddToggle }}" style="display:inline-flex; align-items:center; height:34px; padding:0 10px; border-radius:8px; border:1px solid #e2e8f0; background:#ffffff; color:#64748b; font-size:13px; cursor:pointer; flex-shrink:0;" style-hover="background:#f1f5f9;">Cancelar</button>
+                </div>
+                <sc-if value="{{ memberAddError }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:8px 16px; font-size:12px; color:#e11d48; background:#fef2f2; border-bottom:1px solid #fecaca;">{{ memberAddError }}</div>
+                </sc-if>
+                <sc-if value="{{ memberAddSuccess }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:8px 16px; font-size:12px; color:#00875a; background:#d3f1e3; border-bottom:1px solid #a9e4cb;">{{ memberAddSuccess }}</div>
+                </sc-if>
+              </sc-if>
+
+              <!-- carregando -->
+              <sc-if value="{{ membersLoading }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:32px; text-align:center;">
+                  <div style="width:28px; height:28px; border-radius:50%; border:2px solid #e2e8f0; border-top-color:#00a86b; animation:esaPulse 1s linear infinite; margin:0 auto 8px;"></div>
+                  <div style="font-size:13px; color:#64748b;">Carregando membros…</div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ membersError }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:20px 16px; text-align:center; font-size:13px; color:#e11d48;">{{ membersError }}</div>
+              </sc-if>
+
+              <!-- tabela -->
+              <sc-if value="{{ !membersLoading && !membersError }}" hint-placeholder-val="{{ true }}">
+                <div style="overflow-x:auto;">
+                  <table style="width:100%; border-collapse:collapse; font-size:13px; min-width:600px;">
+                    <thead>
+                      <tr style="background:#f8fafc;">
+                        <th style="padding:10px 16px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:#64748b; font-weight:600; border-bottom:1px solid #e2e8f0;">Usuário</th>
+                        <th style="padding:10px 12px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:#64748b; font-weight:600; border-bottom:1px solid #e2e8f0;">Papel</th>
+                        <th style="padding:10px 12px; text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:#64748b; font-weight:600; border-bottom:1px solid #e2e8f0;">Status</th>
+                        <sc-if value="{{ membersCan.manage }}" hint-placeholder-val="{{ false }}">
+                          <th style="padding:10px 16px; text-align:right; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:#64748b; font-weight:600; border-bottom:1px solid #e2e8f0;">Ações</th>
+                        </sc-if>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <sc-for list="{{ memberRows }}" as="m" hint-placeholder-count="2">
+                        <tr style="background:transparent; border-bottom:1px solid #f1f5f9;" style-hover="background:#f8fafc;">
+                          <td style="padding:12px 16px;">
+                            <div style="font-weight:500; color:#0f172a;">{{ m.displayName }}</div>
+                            <div style="font-size:11px; color:#94a3b8; margin-top:2px; font-family:monospace;">{{ m.login }}</div>
+                          </td>
+                          <td style="padding:12px;">
+                            <span style="display:inline-flex; padding:3px 8px; border-radius:999px; font-size:10px; font-weight:700; letter-spacing:.05em; background:{{ m.roleBadge.bg }}; color:{{ m.roleBadge.color }};">{{ m.roleBadge.text }}</span>
+                          </td>
+                          <td style="padding:12px;">
+                            <span style="display:inline-flex; padding:3px 8px; border-radius:999px; font-size:10px; font-weight:700; letter-spacing:.05em; background:{{ m.statusBadge.bg }}; color:{{ m.statusBadge.color }};">{{ m.statusBadge.text }}</span>
+                          </td>
+                          <sc-if value="{{ membersCan.manage }}" hint-placeholder-val="{{ false }}">
+                            <td style="padding:12px 16px; text-align:right;">
+                              <div style="display:inline-flex; gap:6px; align-items:center;">
+                                <sc-if value="{{ m.canUpdateRole }}" hint-placeholder-val="{{ false }}">
+                                  <select onChange="{{ m.onRoleChange }}" title="Alterar papel" style="height:28px; border:1px solid #e2e8f0; border-radius:6px; padding:0 6px; font-size:11px; color:#475569; background:#ffffff; outline:none; cursor:pointer;">
+                                    <option value="">— papel —</option>
+                                    <sc-for list="{{ memberRoleOptions }}" as="ro" hint-placeholder-count="5"><option value="{{ ro.value }}">{{ ro.label }}</option></sc-for>
+                                  </select>
+                                </sc-if>
+                                <sc-if value="{{ m.canSuspend }}" hint-placeholder-val="{{ false }}">
+                                  <button onClick="{{ m.onSuspend }}" title="Suspender acesso" style="height:28px; padding:0 10px; border-radius:6px; border:1px solid #fecaca; background:#fef2f2; color:#e11d48; font-size:11px; font-weight:600; cursor:pointer;" style-hover="background:#fee2e2;">Suspender</button>
+                                </sc-if>
+                                <sc-if value="{{ m.canReactivate }}" hint-placeholder-val="{{ false }}">
+                                  <button onClick="{{ m.onReactivate }}" title="Reativar acesso" style="height:28px; padding:0 10px; border-radius:6px; border:1px solid #a9e4cb; background:#d3f1e3; color:#00875a; font-size:11px; font-weight:600; cursor:pointer;" style-hover="background:#bbf7d0;">Reativar</button>
+                                </sc-if>
+                                <sc-if value="{{ m.isOwner }}" hint-placeholder-val="{{ false }}">
+                                  <span style="font-size:11px; color:#94a3b8; font-style:italic;">protegido</span>
+                                </sc-if>
+                              </div>
+                            </td>
+                          </sc-if>
+                        </tr>
+                      </sc-for>
+                      <sc-if value="{{ membersEmpty }}" hint-placeholder-val="{{ false }}">
+                        <tr><td colspan="4" style="padding:32px; text-align:center; font-size:13px; color:#94a3b8;">Nenhum membro encontrado nesta organização.</td></tr>
+                      </sc-if>
+                    </tbody>
+                  </table>
+                </div>
+              </sc-if>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
       <sc-if value="{{ isOther }}" hint-placeholder-val="{{ false }}">
         <div data-screen-label="{{ viewTitle }}" style="border-radius:12px; border:1px solid #e2e8f0; background:#ffffff; box-shadow:0 1px 2px rgba(15,23,42,.04); padding:40px; text-align:center;">
           <div style="height:44px; width:44px; border-radius:12px; background:#eaf8f1; display:grid; place-items:center; margin:0 auto 12px;">{{ otherIcon }}</div>
@@ -2765,6 +2914,11 @@ class Component extends DCLogic {
     // GATE 5B — runtime status gate
     _rtStatus: (function(){ try { return new URLSearchParams(window.location.search).get('runtime') === 'real' ? 'booting' : 'ready'; } catch(e) { return 'ready'; } })(),
     _rtError: null,
+    // GATE 8F — organização e membros
+    _rtOrgContext: null,
+    _rtMembers: null, _rtMembersLoading: false, _rtMembersError: null,
+    _rtMemberAddLogin: "", _rtMemberAddRole: "viewer", _rtMemberAddLoading: false, _rtMemberAddError: null, _rtMemberAddSuccess: null, _rtMemberAddFormOpen: false,
+    _rtMemberActionLoading: null,
   };
 
   // ============================== DADOS (porta fiel do mockData/provider do Lovable) ==============================
@@ -2848,6 +3002,7 @@ class Component extends DCLogic {
     fatura: { title: "Fatura ESA — Beneficiário", sub: "Fatura de energia do beneficiário" },
     financeiro: { title: "Financeiro", sub: "Receita, repasses e inadimplência" },
     alertas: { title: "Alertas", sub: "Central operacional de riscos" },
+    membros: { title: "Organização", sub: "Membros e acessos da organização" },
   };
 
   // ============================== FORMAT ==============================
@@ -2892,6 +3047,12 @@ class Component extends DCLogic {
       sparkles: [P.path("M9.9 14.2 12 21l2.1-6.8L21 12l-6.9-2.2L12 3 9.9 9.8 3 12Z")],
       info: [P.circle(12, 12, 10), P.path("M12 16v-4"), P.line(12, 8, 12, 8.01)],
       filter: [P.polygon("22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3")],
+      users: [P.path("M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"), P.circle(9, 7, 4), P.path("M22 21v-2a4 4 0 0 0-3-3.87"), P.path("M16 3.13a4 4 0 0 1 0 7.75")],
+      userPlus: [P.path("M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"), P.circle(9, 7, 4), P.line(19, 8, 19, 14), P.line(22, 11, 16, 11)],
+      userX: [P.path("M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"), P.circle(9, 7, 4), P.line(17, 10, 23, 16), P.line(23, 10, 17, 16)],
+      shieldCheck: [P.path("M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1Z"), P.path("m9 12 2 2 4-4")],
+      globe: [P.circle(12, 12, 10), P.path("M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"), P.path("M2 12h20")],
+      chevronUpDown: [P.path("m7 15 5 5 5-5"), P.path("m7 9 5-5 5 5")],
     };
     return e("svg", { width: sz, height: sz, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", style: { flexShrink: 0 } }, defs[name]);
   }
@@ -3226,6 +3387,7 @@ class Component extends DCLogic {
       { key: "relatorios", label: "Relatórios", icon: "filetext" },
       { key: "financeiro", label: "Financeiro", icon: "wallet" },
       { key: "alertas", label: "Alertas", icon: "bell", hint: String(S._rtMode === "real" ? (S._rtAlData || []).filter((a) => ["ativo", "em_analise"].includes(a.status)).length : this.ALERTS.filter((a) => ["ativo", "em_analise"].includes(this.alertState(a.id).status)).length) },
+      { key: "membros", label: "Organização", icon: "users" },
     ];
     const navItems = navDefs.map((n) => {
       const active = view === n.key;
@@ -5042,7 +5204,8 @@ class Component extends DCLogic {
       isRtBooting, isRtError, rtErrorMsg, rtRetry, rtBack,
       isDashboard: view === "dashboard" && !isRtOverride, isApuracao: view === "apuracao" && !isRtOverride,
       isFatura: view === "fatura" && !isRtOverride,
-      isOther: !isRtOverride && view !== "dashboard" && view !== "apuracao" && view !== "fatura" && view !== "csv" && view !== "ug" && view !== "ub" && view !== "financeiro" && view !== "relatorios" && view !== "alertas",
+      isMembros: view === "membros" && !isRtOverride,
+      isOther: !isRtOverride && view !== "dashboard" && view !== "apuracao" && view !== "fatura" && view !== "csv" && view !== "ug" && view !== "ub" && view !== "financeiro" && view !== "relatorios" && view !== "alertas" && view !== "membros",
       isAlertas: view === "alertas" && !isRtOverride,
       isUgList: view === "ug" && !isRtOverride, isUbList: view === "ub" && !isRtOverride,
       isFinanceiro: view === "financeiro" && !isRtOverride, isRelatorios: view === "relatorios" && !isRtOverride,
@@ -5564,6 +5727,83 @@ class Component extends DCLogic {
       rfStatusOpts: [{ value: "all", label: "Todos os pagamentos" }, { value: "pago", label: "Pagas" }, { value: "aberto", label: "Em aberto" }, { value: "vencido", label: "Vencidas" }],
       rfRevChart: finRevChart, rfSpreadChart: finSpreadChart,
 
+      // Gate 8F — org selector + members view
+      ...((() => {
+        const orgCtx = S._rtOrgContext;
+        const isOrgMode = !!(orgCtx && orgCtx.tenancyMode === 'organization');
+        const orgDisplayName = isOrgMode ? (orgCtx.organizationName || 'Organização') : 'Espaço pessoal';
+        const orgCurrentId = isOrgMode ? (orgCtx.organizationId || '') : '';
+        const orgHasMultiple = isOrgMode && Array.isArray(orgCtx.availableOrganizations) && orgCtx.availableOrganizations.length > 1;
+        const orgSelectorOrgs = isOrgMode ? (orgCtx.availableOrganizations || []) : [];
+        const ROLE_BADGE_MAP = {
+          owner:     { bg: '#d3f1e3', color: '#006644', text: 'owner' },
+          admin:     { bg: '#dbeafe', color: '#1d4ed8', text: 'admin' },
+          manager:   { bg: '#ede9fe', color: '#6d28d9', text: 'manager' },
+          operator:  { bg: '#ffedd5', color: '#c2410c', text: 'operator' },
+          financial: { bg: '#cffafe', color: '#0e7490', text: 'financial' },
+          viewer:    { bg: '#f1f5f9', color: '#475569', text: 'viewer' },
+        };
+        const orgRoleBadge = isOrgMode
+          ? { show: true, ...(ROLE_BADGE_MAP[orgCtx.role] || { bg: '#f1f5f9', color: '#64748b', text: orgCtx.role || '' }) }
+          : { show: false, bg: '', color: '', text: '' };
+        const onOrgSwitch = (e) => {
+          const nid = e.target.value;
+          if (!nid || nid === orgCurrentId) return;
+          try { sessionStorage.setItem('esa_active_organization', nid); } catch (_ex) {}
+          window.location.reload();
+        };
+        const orgSelectorIcon = this.I('globe', 15, '#00875a');
+        const membersCan = {
+          read:   isOrgMode && Array.isArray(orgCtx.permissions) && orgCtx.permissions.includes('organization.members.read'),
+          manage: isOrgMode && Array.isArray(orgCtx.permissions) && orgCtx.permissions.includes('organization.members.manage'),
+        };
+        const memberRows = (S._rtMembers || []).map((m) => ({
+          ...m,
+          displayName: m.displayName || ((m.uid || '').slice(0, 8) + '…'),
+          login:  m.login  || '—',
+          roleBadge:   ROLE_BADGE_MAP[m.role] || { bg: '#f1f5f9', color: '#64748b', text: m.role },
+          statusBadge: m.status === 'active'
+            ? { bg: '#d3f1e3', color: '#006644', text: 'Ativo'    }
+            : m.status === 'suspended'
+            ? { bg: '#fef2f2', color: '#e11d48', text: 'Suspenso' }
+            : { bg: '#fef3c7', color: '#92400e', text: m.status   },
+          isOwner:       m.role === 'owner',
+          isSelf:        m.uid === (orgCtx && orgCtx.uid),
+          canUpdateRole: membersCan.manage && m.role !== 'owner' && m.uid !== (orgCtx && orgCtx.uid),
+          canSuspend:    membersCan.manage && m.role !== 'owner' && m.uid !== (orgCtx && orgCtx.uid) && m.status !== 'suspended',
+          canReactivate: membersCan.manage && m.uid !== (orgCtx && orgCtx.uid) && m.status === 'suspended',
+          onRoleChange:  (e) => { if (e.target.value) this._updateMemberRole(m.uid, m.version, e.target.value); },
+          onSuspend:     () => { if (confirm('Suspender acesso de ' + (m.displayName || m.uid) + '?')) this._suspendMember(m.uid, m.version); },
+          onReactivate:  () => this._reactivateMember(m.uid, m.version),
+        }));
+        const ALLOWED_ROLES = ['admin', 'manager', 'operator', 'financial', 'viewer'];
+        return {
+          orgDisplayName, orgCurrentId, orgHasMultiple, orgSelectorOrgs, orgRoleBadge, onOrgSwitch, orgSelectorIcon,
+          orgBannerName: isOrgMode ? (orgCtx.organizationName || 'Organização') : '',
+          orgBannerIcon: this.I('globe', 18, '#00875a'),
+          orgBannerRole: isOrgMode ? (orgCtx.role || '') : '',
+          orgBannerRoleBadge: orgRoleBadge,
+          membersCan, memberRows,
+          membersLoading: S._rtMembersLoading,
+          membersError:   S._rtMembersError,
+          membersCount:   (S._rtMembers || []).length,
+          membersEmpty:   !S._rtMembersLoading && !S._rtMembersError && (S._rtMembers || []).length === 0,
+          memberRoleOptions: ALLOWED_ROLES.map((r) => ({ value: r, label: r, ...ROLE_BADGE_MAP[r] })),
+          memberAddFormOpen:  S._rtMemberAddFormOpen || false,
+          memberAddLogin:     S._rtMemberAddLogin,
+          memberAddRole:      S._rtMemberAddRole,
+          memberAddLoading:   S._rtMemberAddLoading,
+          memberAddError:     S._rtMemberAddError,
+          memberAddSuccess:   S._rtMemberAddSuccess,
+          onMemberAddToggle:  () => this.setState({ _rtMemberAddFormOpen: !S._rtMemberAddFormOpen, _rtMemberAddError: null, _rtMemberAddSuccess: null }),
+          onMemberAddLogin:   (e) => this.setState({ _rtMemberAddLogin: e.target.value, _rtMemberAddError: null }),
+          onMemberAddRole:    (e) => this.setState({ _rtMemberAddRole: e.target.value }),
+          onMemberAddSubmit:  () => this._addMember(S._rtMemberAddLogin, S._rtMemberAddRole),
+          memberActionLoading: S._rtMemberActionLoading,
+          membersRefresh:      () => this._loadMembers(),
+        };
+      })()),
+
       // toast
       toastOpen: !!toast, toastTitle: toast ? toast.title : "", toastDesc: toast ? toast.desc : "", toastHasDesc: !!(toast && toast.desc),
     }; } catch (_renderErr) {
@@ -5646,6 +5886,10 @@ class Component extends DCLogic {
         this._loadRealAlerts(this.state.alMonth);
       }
     }
+    // Gate 8F — load members on first visit to membros view
+    if (this.state.view === "membros" && !this.state._rtMembers && !this.state._rtMembersLoading) {
+      this._loadMembers();
+    }
   }
 
   _initRealMode() {
@@ -5679,12 +5923,132 @@ class Component extends DCLogic {
       const months = result[0]; const ugs = result[1];
       const initMonth = (months[0] || {}).value || this.state.dashMonth;
       const firstUgId = (ugs[0] || {}).value || (ugs[0] || {}).id || this.state.apUgId;
-      this.setState({ _rtStatus: "ready", _rtMode: "real", _rtMonths: months, _rtUgs: ugs, dashMonth: initMonth, finMonth: initMonth, repMonth: initMonth, apMonth: initMonth, alMonth: initMonth, repUgId: firstUgId });
+      this.setState({ _rtStatus: "ready", _rtMode: "real", _rtMonths: months, _rtUgs: ugs, dashMonth: initMonth, finMonth: initMonth, repMonth: initMonth, apMonth: initMonth, alMonth: initMonth, repUgId: firstUgId, _rtOrgContext: window.__ESA_ORG_CONTEXT__ || null });
       this._loadRealDash(initMonth, "all");
     }).catch((err) => {
       console.error("[ESA] Real mode init error", err);
       console.info('[ESA Gate4] init_failure', { error: err && err.message });
       this.setState({ _rtStatus: "error", _rtError: "init_failed" });
+    });
+  }
+
+  _getSessionToken() {
+    try {
+      const sess = sessionStorage.getItem('esa_session');
+      if (sess) { const p = JSON.parse(sess); if (p && p.sessionToken) return p.sessionToken; }
+    } catch (_e) {}
+    try {
+      const rem = localStorage.getItem('esa_remember');
+      if (rem) { const p = JSON.parse(rem); if (p && p.sessionToken) return p.sessionToken; }
+    } catch (_e) {}
+    return null;
+  }
+
+  _loadMembers() {
+    const orgCtx = this.state._rtOrgContext;
+    if (!orgCtx || orgCtx.tenancyMode !== 'organization') return;
+    const token = this._getSessionToken();
+    if (!token) { this.setState({ _rtMembersError: 'Sessão expirada. Faça login novamente.' }); return; }
+    this.setState({ _rtMembersLoading: true, _rtMembersError: null });
+    fetch('/.netlify/functions/organization-members', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ action: 'list', organizationId: orgCtx.organizationId }),
+    }).then((r) => r.json()).then((data) => {
+      if (!data.ok) { this.setState({ _rtMembersLoading: false, _rtMembersError: data.error || 'Erro ao carregar membros.' }); return; }
+      this.setState({ _rtMembersLoading: false, _rtMembers: data.data || [] });
+    }).catch(() => {
+      this.setState({ _rtMembersLoading: false, _rtMembersError: 'Falha de rede ao carregar membros.' });
+    });
+  }
+
+  _addMember(login, role) {
+    const orgCtx = this.state._rtOrgContext;
+    if (!orgCtx || orgCtx.tenancyMode !== 'organization') return;
+    const token = this._getSessionToken();
+    if (!token) { this.setState({ _rtMemberAddError: 'Sessão expirada.' }); return; }
+    if (!login || !login.trim()) { this.setState({ _rtMemberAddError: 'Informe o login do usuário.' }); return; }
+    this.setState({ _rtMemberAddLoading: true, _rtMemberAddError: null, _rtMemberAddSuccess: null });
+    const clientRequestId = 'add-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+    fetch('/.netlify/functions/organization-members', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ action: 'add', organizationId: orgCtx.organizationId, login: login.trim(), role: role || 'viewer', clientRequestId }),
+    }).then((r) => r.json()).then((data) => {
+      if (!data.ok) { this.setState({ _rtMemberAddLoading: false, _rtMemberAddError: data.error || 'Erro ao adicionar membro.' }); return; }
+      this.setState({ _rtMemberAddLoading: false, _rtMemberAddSuccess: 'Membro adicionado com sucesso.', _rtMemberAddLogin: '', _rtMemberAddFormOpen: false, _rtMembers: null });
+      this._loadMembers();
+    }).catch(() => {
+      this.setState({ _rtMemberAddLoading: false, _rtMemberAddError: 'Falha de rede.' });
+    });
+  }
+
+  _updateMemberRole(targetUid, expectedVersion, newRole) {
+    const orgCtx = this.state._rtOrgContext;
+    if (!orgCtx || orgCtx.tenancyMode !== 'organization') return;
+    const token = this._getSessionToken();
+    if (!token) return;
+    this.setState({ _rtMemberActionLoading: targetUid });
+    const clientRequestId = 'role-' + targetUid + '-' + Date.now();
+    fetch('/.netlify/functions/organization-members', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ action: 'update-role', organizationId: orgCtx.organizationId, targetUid, newRole, expectedVersion, clientRequestId }),
+    }).then((r) => r.json()).then((data) => {
+      this.setState({ _rtMemberActionLoading: null });
+      if (!data.ok) { this.showToast('Erro', data.error || 'Falha ao alterar papel.'); return; }
+      this.showToast('Papel alterado', 'Papel do membro atualizado com sucesso.');
+      this.setState({ _rtMembers: null });
+      this._loadMembers();
+    }).catch(() => {
+      this.setState({ _rtMemberActionLoading: null });
+      this.showToast('Erro de rede', 'Falha ao alterar papel do membro.');
+    });
+  }
+
+  _suspendMember(targetUid, expectedVersion) {
+    const orgCtx = this.state._rtOrgContext;
+    if (!orgCtx || orgCtx.tenancyMode !== 'organization') return;
+    const token = this._getSessionToken();
+    if (!token) return;
+    this.setState({ _rtMemberActionLoading: targetUid });
+    const clientRequestId = 'suspend-' + targetUid + '-' + Date.now();
+    fetch('/.netlify/functions/organization-members', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ action: 'suspend', organizationId: orgCtx.organizationId, targetUid, expectedVersion, clientRequestId }),
+    }).then((r) => r.json()).then((data) => {
+      this.setState({ _rtMemberActionLoading: null });
+      if (!data.ok) { this.showToast('Erro', data.error || 'Falha ao suspender.'); return; }
+      this.showToast('Membro suspenso', 'Acesso suspenso com sucesso.');
+      this.setState({ _rtMembers: null });
+      this._loadMembers();
+    }).catch(() => {
+      this.setState({ _rtMemberActionLoading: null });
+      this.showToast('Erro de rede', 'Falha ao suspender membro.');
+    });
+  }
+
+  _reactivateMember(targetUid, expectedVersion) {
+    const orgCtx = this.state._rtOrgContext;
+    if (!orgCtx || orgCtx.tenancyMode !== 'organization') return;
+    const token = this._getSessionToken();
+    if (!token) return;
+    this.setState({ _rtMemberActionLoading: targetUid });
+    const clientRequestId = 'reactivate-' + targetUid + '-' + Date.now();
+    fetch('/.netlify/functions/organization-members', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ action: 'reactivate', organizationId: orgCtx.organizationId, targetUid, expectedVersion, clientRequestId }),
+    }).then((r) => r.json()).then((data) => {
+      this.setState({ _rtMemberActionLoading: null });
+      if (!data.ok) { this.showToast('Erro', data.error || 'Falha ao reativar.'); return; }
+      this.showToast('Membro reativado', 'Acesso reativado com sucesso.');
+      this.setState({ _rtMembers: null });
+      this._loadMembers();
+    }).catch(() => {
+      this.setState({ _rtMemberActionLoading: null });
+      this.showToast('Erro de rede', 'Falha ao reativar membro.');
     });
   }
 

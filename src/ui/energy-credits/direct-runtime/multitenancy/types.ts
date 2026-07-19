@@ -89,6 +89,18 @@ export interface VersionConflictError {
   currentVersion: number;
 }
 
+// ── Members API response — Gate 8F ───────────────────────────────────────────
+export interface MemberRecord {
+  uid: string;
+  displayName: string;
+  login: string;
+  role: OrganizationRole;
+  status: 'active' | 'suspended';
+  createdAt: number | null;
+  updatedAt: number | null;
+  version: number;
+}
+
 // ── Dual-read — Gate 8B ───────────────────────────────────────────────────────
 export type DataSource = 'organization' | 'legacy-single-user';
 
