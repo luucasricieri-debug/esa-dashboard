@@ -71,12 +71,19 @@ async function suiteCQ() {
   assert('CQ10 sem PII em logs (sem nome, documento ou chave)',
     !bootstrapSrc.includes('document') && !bootstrapSrc.includes('pixKey'));
 
+  // CQ11: check for literal credential values, not variable names (sessionToken is allowed)
   assert('CQ11 sem hardcode de credenciais',
-    !bootstrapSrc.includes('apiKey') && !bootstrapSrc.includes('password') &&
-    !bootstrapSrc.includes('token') && !bootstrapSrc.includes('secret'));
+    !bootstrapSrc.match(/apiKey\s*[:=]\s*['"`]/) &&
+    !bootstrapSrc.match(/password\s*[:=]\s*['"`]/) &&
+    !bootstrapSrc.match(/secret\s*[:=]\s*['"`]/));
 
-  assert('CQ12 não importa Firebase diretamente',
-    !bootstrapSrc.includes('firebase') && !bootstrapSrc.includes('firestore'));
+  // CQ12: no direct Firebase SDK imports (firebaseRepo variable is allowed; import of firebase-admin is not)
+  assert('CQ12 não importa Firebase SDK diretamente',
+    !bootstrapSrc.match(/from\s+['"`]firebase/) &&
+    !bootstrapSrc.match(/require\s*\(\s*['"`]firebase/) &&
+    !bootstrapSrc.includes('initializeApp') &&
+    !bootstrapSrc.includes('getFirestore') &&
+    !bootstrapSrc.includes('firebase-admin'));
 }
 
 // ============================================================

@@ -172,10 +172,15 @@ export function createEsaRuntimeProvider(uiProvider: UIProvider): EnergyCreditsR
       return list.find((u) => u.id === id) ?? null;
     },
     async createGeneratingUnit(input) {
-      return (unwrap(uiProvider.createGeneratingUnit(input)) as MutationResult | null) ?? ok();
+      // Domain requires id; persistent wrapper adds crypto.randomUUID() if absent.
+      const result = await uiProvider.createGeneratingUnit({ ...input, id: crypto.randomUUID() });
+      if (result && typeof result === 'object' && result.ok === false) return result as MutationResult;
+      return (unwrap(result) as MutationResult | null) ?? ok();
     },
     async updateGeneratingUnit(id, input) {
-      return (unwrap(uiProvider.updateGeneratingUnit(id, input)) as MutationResult | null) ?? ok();
+      const result = await uiProvider.updateGeneratingUnit(id, input);
+      if (result && typeof result === 'object' && result.ok === false) return result as MutationResult;
+      return (unwrap(result) as MutationResult | null) ?? ok();
     },
     async getGeneratingUnitPayee(ugId: string): Promise<Payee | null> {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -205,10 +210,14 @@ export function createEsaRuntimeProvider(uiProvider: UIProvider): EnergyCreditsR
       return list.find((u) => u.id === id) ?? null;
     },
     async createBeneficiaryUnit(input) {
-      return (unwrap(uiProvider.createBeneficiaryUnit(input)) as MutationResult | null) ?? ok();
+      const result = await uiProvider.createBeneficiaryUnit({ ...input, id: crypto.randomUUID() });
+      if (result && typeof result === 'object' && result.ok === false) return result as MutationResult;
+      return (unwrap(result) as MutationResult | null) ?? ok();
     },
     async updateBeneficiaryUnit(id, input) {
-      return (unwrap(uiProvider.updateBeneficiaryUnit(id, input)) as MutationResult | null) ?? ok();
+      const result = await uiProvider.updateBeneficiaryUnit(id, input);
+      if (result && typeof result === 'object' && result.ok === false) return result as MutationResult;
+      return (unwrap(result) as MutationResult | null) ?? ok();
     },
     async getBeneficiaryConsumptionAverage(id: string): Promise<ConsumptionAverage | null> {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

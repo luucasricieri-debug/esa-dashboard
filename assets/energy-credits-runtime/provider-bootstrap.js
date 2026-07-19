@@ -11653,29 +11653,235 @@
 	};
 	var ESA = new ESAApplication();
 	//#endregion
-	//#region bootstrap/standaloneProviderBootstrap.ts
-	(function bootstrapStandaloneProvider() {
+	//#region bootstrap/sessionResolver.ts
+	function parseSession(raw) {
+		if (!raw) return null;
 		try {
-			ESA.initialize();
-			const provider = new EnergyCreditsUIProvider(ESA);
-			window.__ESA_UI_PROVIDER__ = provider;
-			window.ESA_OS = ESA;
-			window.__ESA_UI_PROVIDER_STATUS__ = { status: "ready" };
-			window.dispatchEvent(new CustomEvent("esa:ui-provider:ready", { detail: { source: "standalone-bootstrap" } }));
-			console.info("[ESA Standalone] provider_initialized");
-		} catch (err) {
-			const msg = err instanceof Error ? err.message.slice(0, 200) : "unknown";
-			window.__ESA_UI_PROVIDER_STATUS__ = {
-				status: "error",
-				reason: "bootstrap_failed"
-			};
-			window.__ESA_UI_PROVIDER_ERROR__ = {
-				code: "bootstrap_failed",
-				message: msg
-			};
-			window.dispatchEvent(new CustomEvent("esa:ui-provider:error", { detail: { code: "bootstrap_failed" } }));
-			console.error("[ESA Standalone] bootstrap_failed");
+			const token = JSON.parse(raw)?.sessionToken;
+			if (!token || typeof token !== "string") return null;
+			return token;
+		} catch {
+			return null;
 		}
+	}
+	function resolveSessionToken() {
+		try {
+			const ss = parseSession(sessionStorage.getItem("esa_session"));
+			if (ss) return ss;
+			return parseSession(localStorage.getItem("esa_remember"));
+		} catch {
+			return null;
+		}
+	}
+	//#endregion
+	//#region bootstrap/httpFirebaseClient.ts
+	var ENDPOINT = "/.netlify/functions/energy-credits-data";
+	async function callEndpoint(body) {
+		let response;
+		try {
+			response = await fetch(ENDPOINT, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(body)
+			});
+		} catch (networkErr) {
+			throw new Error(`[ESA] Sem conexão com o servidor: ${networkErr.message}`);
+		}
+		const json = await response.json().catch(() => ({
+			ok: false,
+			error: `HTTP ${response.status}`
+		}));
+		if (!response.ok) throw new Error(`[ESA] Erro do servidor (${response.status}): ${json.error ?? "erro desconhecido"}`);
+		return json;
+	}
+	function createHttpFirebaseClient(sessionToken) {
+		return {
+			async get(path) {
+				return (await callEndpoint({
+					sessionToken,
+					operation: "get",
+					path
+				})).data ?? null;
+			},
+			async set(path, value) {
+				const result = await callEndpoint({
+					sessionToken,
+					operation: "set",
+					path,
+					value
+				});
+				if (!result.ok) throw new Error(`[ESA] Falha na escrita (${path}): ${result.error ?? "erro desconhecido"}`);
+			}
+		};
+	}
+	async function loadEnergyCreditsSnapshot(sessionToken) {
+		const result = await callEndpoint({
+			sessionToken,
+			operation: "snapshot"
+		});
+		if (!result.ok) throw new Error(`[ESA] Falha ao carregar snapshot: ${result.error ?? "erro desconhecido"}`);
+		return result.data ?? {};
+	}
+	//#endregion
+	//#region bootstrap/persistentUiProvider.ts
+	function backendError(op) {
+		return {
+			ok: false,
+			errors: [{
+				code: "BACKEND_UNAVAILABLE",
+				message: `Falha ao salvar no servidor (${op}). Tente novamente.`
+			}]
+		};
+	}
+	function syncStores(collection, entity, memoryRepo, esa) {
+		if (collection === "generatingUnits") {
+			memoryRepo.saveGeneratingUnit(entity);
+			esa.hydrateEnergyCreditsReadModel({ generatingUnits: [entity] }, { replace: false });
+		} else {
+			memoryRepo.saveBeneficiaryUnit(entity);
+			esa.hydrateEnergyCreditsReadModel({ beneficiaryUnits: [entity] }, { replace: false });
+		}
+	}
+	function writeAuditLog(firebaseRepo, targetType, targetId, action, uid) {
+		const createdAt = (/* @__PURE__ */ new Date()).toISOString();
+		const id = `${targetType}::${targetId}::${action}::${createdAt}`;
+		firebaseRepo.appendCreditAuditLog({
+			id,
+			targetType,
+			targetId,
+			action,
+			userId: uid,
+			organizationId: uid,
+			createdAt
+		}).catch(() => {});
+	}
+	function loadFromMemory(memoryRepo, collection, id) {
+		const result = collection === "generatingUnits" ? memoryRepo.getGeneratingUnit(id) : memoryRepo.getBeneficiaryUnit(id);
+		return result?.ok && result.data ? result.data : null;
+	}
+	function createPersistentUiProvider(inner, firebaseRepo, memoryRepo, esa, uid) {
+		async function createUnit(collection, innerMethod, saveMethod, targetType, input) {
+			const id = typeof input.id === "string" && input.id ? input.id : crypto.randomUUID();
+			const withId = {
+				...input,
+				id
+			};
+			const domainResult = inner[innerMethod](withId);
+			if (!domainResult?.ok) return domainResult ?? {
+				ok: false,
+				errors: [{
+					code: "DOMAIN_VALIDATION",
+					message: "Validação de domínio falhou"
+				}]
+			};
+			const entity = domainResult.data;
+			if (!(await firebaseRepo[saveMethod](entity)).ok) return backendError(innerMethod);
+			syncStores(collection, entity, memoryRepo, esa);
+			writeAuditLog(firebaseRepo, targetType, id, "create", uid);
+			return {
+				ok: true,
+				data: entity
+			};
+		}
+		async function updateUnit(collection, saveMethod, targetType, id, patch) {
+			const existing = loadFromMemory(memoryRepo, collection, id);
+			if (!existing) return {
+				ok: false,
+				errors: [{
+					code: collection === "generatingUnits" ? "GU_NOT_FOUND" : "UB_NOT_FOUND",
+					message: `${collection === "generatingUnits" ? "UG" : "UB"} ${id} não encontrada`
+				}]
+			};
+			const updated = {
+				...existing,
+				...patch,
+				id,
+				updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+			};
+			if (!(await firebaseRepo[saveMethod](updated)).ok) return backendError(`update ${collection}`);
+			syncStores(collection, updated, memoryRepo, esa);
+			writeAuditLog(firebaseRepo, targetType, id, "update", uid);
+			return {
+				ok: true,
+				data: updated
+			};
+		}
+		const WRITE_METHODS = {
+			createGeneratingUnit: (input) => createUnit("generatingUnits", "createGeneratingUnit", "saveGeneratingUnit", "generatingUnit", input),
+			updateGeneratingUnit: (id, patch) => updateUnit("generatingUnits", "saveGeneratingUnit", "generatingUnit", id, patch),
+			createBeneficiaryUnit: (input) => createUnit("beneficiaryUnits", "createBeneficiaryUnit", "saveBeneficiaryUnit", "beneficiaryUnit", input),
+			updateBeneficiaryUnit: (id, patch) => updateUnit("beneficiaryUnits", "saveBeneficiaryUnit", "beneficiaryUnit", id, patch)
+		};
+		return new Proxy({}, { get(_t, prop) {
+			if (Object.prototype.hasOwnProperty.call(WRITE_METHODS, prop)) return WRITE_METHODS[prop];
+			const val = inner[prop];
+			return typeof val === "function" ? val.bind(inner) : val;
+		} });
+	}
+	//#endregion
+	//#region bootstrap/standaloneProviderBootstrap.ts
+	function decodeUidFromToken(token) {
+		try {
+			const lastDot = token.lastIndexOf(".");
+			if (lastDot <= 0) return null;
+			const body = token.slice(0, lastDot);
+			const padded = body + "==".slice(0, (4 - body.length % 4) % 4);
+			const json = atob(padded.replace(/-/g, "+").replace(/_/g, "/"));
+			const payload = JSON.parse(json);
+			if (typeof payload.uid !== "string" || !payload.uid) return null;
+			if (payload.exp && Math.floor(Date.now() / 1e3) > payload.exp) return null;
+			return payload.uid;
+		} catch {
+			return null;
+		}
+	}
+	function dispatchProviderError(code, reason) {
+		window.__ESA_UI_PROVIDER_STATUS__ = {
+			status: "error",
+			reason: code
+		};
+		window.__ESA_UI_PROVIDER_ERROR__ = {
+			code,
+			message: reason
+		};
+		window.dispatchEvent(new CustomEvent("esa:ui-provider:error", { detail: { code } }));
+	}
+	(function bootstrapStandaloneProvider() {
+		(async () => {
+			try {
+				const sessionToken = resolveSessionToken();
+				if (!sessionToken) {
+					dispatchProviderError("no_session", "Sessão não encontrada. Faça login para acessar o painel.");
+					console.warn("[ESA Standalone] no_session");
+					return;
+				}
+				const uid = decodeUidFromToken(sessionToken);
+				if (!uid) {
+					dispatchProviderError("invalid_session", "Token de sessão inválido ou expirado.");
+					console.warn("[ESA Standalone] invalid_session");
+					return;
+				}
+				ESA.initialize();
+				window.ESA_OS = ESA;
+				const httpClient = createHttpFirebaseClient(sessionToken);
+				const snapshot = await loadEnergyCreditsSnapshot(sessionToken);
+				const memoryRepo = ESA.getEnergyCreditsRepository();
+				memoryRepo.hydrateFromSnapshot(snapshot);
+				ESA.hydrateEnergyCreditsReadModel(snapshot, { replace: true });
+				const firebaseRepo = ESA.createEnergyCreditsFirebaseRepository(httpClient);
+				const provider = createPersistentUiProvider(new EnergyCreditsUIProvider(ESA), firebaseRepo, memoryRepo, ESA, uid);
+				window.__ESA_UI_PROVIDER__ = provider;
+				window.__ESA_UI_PROVIDER_STATUS__ = { status: "ready" };
+				window.dispatchEvent(new CustomEvent("esa:ui-provider:ready", { detail: {
+					source: "standalone-bootstrap",
+					uid
+				} }));
+				console.info("[ESA Standalone] provider_initialized");
+			} catch (err) {
+				dispatchProviderError("bootstrap_failed", err instanceof Error ? err.message.slice(0, 200) : "unknown");
+				console.error("[ESA Standalone] bootstrap_failed");
+			}
+		})();
 	})();
 	//#endregion
 })();

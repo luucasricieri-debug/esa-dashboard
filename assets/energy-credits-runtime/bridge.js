@@ -1169,10 +1169,17 @@
 				return (await this.listGeneratingUnits()).find((u) => u.id === id) ?? null;
 			},
 			async createGeneratingUnit(input) {
-				return unwrap(uiProvider.createGeneratingUnit(input)) ?? ok();
+				const result = await uiProvider.createGeneratingUnit({
+					...input,
+					id: crypto.randomUUID()
+				});
+				if (result && typeof result === "object" && result.ok === false) return result;
+				return unwrap(result) ?? ok();
 			},
 			async updateGeneratingUnit(id, input) {
-				return unwrap(uiProvider.updateGeneratingUnit(id, input)) ?? ok();
+				const result = await uiProvider.updateGeneratingUnit(id, input);
+				if (result && typeof result === "object" && result.ok === false) return result;
+				return unwrap(result) ?? ok();
 			},
 			async getGeneratingUnitPayee(ugId) {
 				const d = unwrap(uiProvider.getSettlementRecipient(ugId));
@@ -1206,10 +1213,17 @@
 				return (await this.listBeneficiaryUnits()).find((u) => u.id === id) ?? null;
 			},
 			async createBeneficiaryUnit(input) {
-				return unwrap(uiProvider.createBeneficiaryUnit(input)) ?? ok();
+				const result = await uiProvider.createBeneficiaryUnit({
+					...input,
+					id: crypto.randomUUID()
+				});
+				if (result && typeof result === "object" && result.ok === false) return result;
+				return unwrap(result) ?? ok();
 			},
 			async updateBeneficiaryUnit(id, input) {
-				return unwrap(uiProvider.updateBeneficiaryUnit(id, input)) ?? ok();
+				const result = await uiProvider.updateBeneficiaryUnit(id, input);
+				if (result && typeof result === "object" && result.ok === false) return result;
+				return unwrap(result) ?? ok();
 			},
 			async getBeneficiaryConsumptionAverage(id) {
 				const d = safeCall(() => uiProvider.getBeneficiaryConsumptionAverage(id, {}));
