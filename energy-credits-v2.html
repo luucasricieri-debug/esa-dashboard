@@ -1831,8 +1831,15 @@
             <span style="display:inline-flex; padding:4px 10px; border-radius:999px; font-size:11px; font-weight:700; letter-spacing:.05em; background:{{ orgBannerBadge.bg }}; color:{{ orgBannerBadge.color }};">{{ orgBannerBadge.text }}</span>
           </div>
 
-          <!-- sem permissão de leitura -->
-          <sc-if value="{{ !membersCan.read }}" hint-placeholder-val="{{ false }}">
+          <!-- contexto de org carregando (real mode + _rtOrgContext ainda null) -->
+          <sc-if value="{{ orgContextLoading }}" hint-placeholder-val="{{ false }}">
+            <div style="border-radius:12px; border:1px solid #e2e8f0; background:#ffffff; padding:32px; text-align:center;">
+              <div style="font-size:13px; color:#64748b;">Carregando contexto organizacional…</div>
+            </div>
+          </sc-if>
+
+          <!-- sem permissão de leitura (só mostra quando contexto já chegou) -->
+          <sc-if value="{{ !orgContextLoading && !membersCan.read }}" hint-placeholder-val="{{ false }}">
             <div style="border-radius:12px; border:1px solid #fde68a; background:rgba(255,251,235,.7); padding:20px; text-align:center;">
               <div style="font-size:14px; font-weight:600; color:#92400e; margin-bottom:4px;">Sem permissão de acesso</div>
               <div style="font-size:13px; color:#a16207;">Apenas membros com papel manager ou superior podem visualizar os acessos desta organização.</div>
@@ -1840,7 +1847,7 @@
           </sc-if>
 
           <!-- lista de membros -->
-          <sc-if value="{{ membersCan.read }}" hint-placeholder-val="{{ true }}">
+          <sc-if value="{{ !orgContextLoading && membersCan.read }}" hint-placeholder-val="{{ true }}">
             <div style="border-radius:12px; border:1px solid #e2e8f0; background:#ffffff; box-shadow:0 1px 2px rgba(15,23,42,.04);">
               <div style="padding:14px 16px 10px; border-bottom:1px solid #f1f5f9; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
                 <div style="display:flex; align-items:center; gap:8px;">
@@ -5731,6 +5738,9 @@ class Component extends DCLogic {
       ...((() => {
         const orgCtx = S._rtOrgContext;
         const isOrgMode = !!(orgCtx && orgCtx.tenancyMode === 'organization');
+        // Show loading when real mode is active but org context hasn't arrived yet.
+        // Prevents false "Sem permissão" during bootstrap.
+        const orgContextLoading = S._rtMode === 'real' && !S._rtOrgContext;
         const orgDisplayName = isOrgMode ? (orgCtx.organizationName || 'Organização') : 'Espaço pessoal';
         const orgCurrentId = isOrgMode ? (orgCtx.organizationId || '') : '';
         const orgHasMultiple = isOrgMode && Array.isArray(orgCtx.availableOrganizations) && orgCtx.availableOrganizations.length > 1;
@@ -5777,28 +5787,40 @@ class Component extends DCLogic {
           onReactivate:  () => this._reactivateMember(m.uid, m.version),
         }));
         const ALLOWED_ROLES = ['admin', 'manager', 'operator', 'financial', 'viewer'];
+        const addLoading = S._rtMemberAddLoading;
         return {
+          orgContextLoading,
           orgDisplayName, orgCurrentId, orgHasMultiple, orgSelectorOrgs, orgRoleBadge, onOrgSwitch, orgSelectorIcon,
           orgBannerName: isOrgMode ? (orgCtx.organizationName || 'Organização') : '',
+          orgBannerSub:  isOrgMode ? (orgCtx.organizationId || '') : '',
           orgBannerIcon: this.I('globe', 18, '#00875a'),
           orgBannerRole: isOrgMode ? (orgCtx.role || '') : '',
+          // orgBannerBadge is used by the HTML template (must match template name exactly)
+          orgBannerBadge: orgRoleBadge,
           orgBannerRoleBadge: orgRoleBadge,
           membersCan, memberRows,
           membersLoading: S._rtMembersLoading,
           membersError:   S._rtMembersError,
           membersCount:   (S._rtMembers || []).length,
           membersEmpty:   !S._rtMembersLoading && !S._rtMembersError && (S._rtMembers || []).length === 0,
+          membersHeaderIcon: this.I('users', 14, '#475569'),
           memberRoleOptions: ALLOWED_ROLES.map((r) => ({ value: r, label: r, ...ROLE_BADGE_MAP[r] })),
           memberAddFormOpen:  S._rtMemberAddFormOpen || false,
           memberAddLogin:     S._rtMemberAddLogin,
           memberAddRole:      S._rtMemberAddRole,
-          memberAddLoading:   S._rtMemberAddLoading,
+          memberAddLoading:   addLoading,
           memberAddError:     S._rtMemberAddError,
           memberAddSuccess:   S._rtMemberAddSuccess,
-          onMemberAddToggle:  () => this.setState({ _rtMemberAddFormOpen: !S._rtMemberAddFormOpen, _rtMemberAddError: null, _rtMemberAddSuccess: null }),
-          onMemberAddLogin:   (e) => this.setState({ _rtMemberAddLogin: e.target.value, _rtMemberAddError: null }),
-          onMemberAddRole:    (e) => this.setState({ _rtMemberAddRole: e.target.value }),
-          onMemberAddSubmit:  () => this._addMember(S._rtMemberAddLogin, S._rtMemberAddRole),
+          memberAddBtnIcon:   this.I('userPlus', 13, '#ffffff'),
+          memberAddBtnCursor: addLoading ? 'not-allowed' : 'pointer',
+          memberAddSubmitLabel: addLoading ? 'Adicionando…' : 'Adicionar',
+          onMemberAddToggle:       () => this.setState({ _rtMemberAddFormOpen: !S._rtMemberAddFormOpen, _rtMemberAddError: null, _rtMemberAddSuccess: null }),
+          // HTML template references onMemberAddLoginChange and onMemberAddRoleChange
+          onMemberAddLoginChange:  (e) => this.setState({ _rtMemberAddLogin: e.target.value, _rtMemberAddError: null }),
+          onMemberAddRoleChange:   (e) => this.setState({ _rtMemberAddRole: e.target.value }),
+          onMemberAddLogin:        (e) => this.setState({ _rtMemberAddLogin: e.target.value, _rtMemberAddError: null }),
+          onMemberAddRole:         (e) => this.setState({ _rtMemberAddRole: e.target.value }),
+          onMemberAddSubmit:       () => this._addMember(S._rtMemberAddLogin, S._rtMemberAddRole),
           memberActionLoading: S._rtMemberActionLoading,
           membersRefresh:      () => this._loadMembers(),
         };

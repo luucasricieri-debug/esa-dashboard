@@ -12000,6 +12000,11 @@
 			return null;
 		}
 	}
+	function writeActiveOrgId(orgId) {
+		try {
+			sessionStorage.setItem(ACTIVE_ORG_KEY, orgId);
+		} catch {}
+	}
 	function buildRequestBody(activeOrgId) {
 		return activeOrgId ? JSON.stringify({ organizationId: activeOrgId }) : "{}";
 	}
@@ -12013,10 +12018,9 @@
 			body
 		});
 	}
-	async function resolveOrganizationContext(sessionToken) {
-		const activeOrgId = readActiveOrgId();
+	async function _fetchAndParse(sessionToken, body) {
 		try {
-			const res = await fetchContext(sessionToken, buildRequestBody(activeOrgId));
+			const res = await fetchContext(sessionToken, body);
 			if (res.status === 401) return {
 				context: null,
 				code: "unauthorized"
@@ -12044,6 +12048,19 @@
 				code: "backend_unavailable"
 			};
 		}
+	}
+	async function resolveOrganizationContext(sessionToken) {
+		const activeOrgId = readActiveOrgId();
+		const first = await _fetchAndParse(sessionToken, buildRequestBody(activeOrgId));
+		if (!activeOrgId && first.context) {
+			const avail = first.context.availableOrganizations;
+			if (Array.isArray(avail) && avail.length === 1 && avail[0].id) {
+				writeActiveOrgId(avail[0].id);
+				const confirmed = await _fetchAndParse(sessionToken, JSON.stringify({ organizationId: avail[0].id }));
+				if (confirmed.context) return confirmed;
+			}
+		}
+		return first;
 	}
 	//#endregion
 	//#region bootstrap/standaloneProviderBootstrap.ts
@@ -12073,6 +12090,14 @@
 		};
 		window.dispatchEvent(new CustomEvent("esa:ui-provider:error", { detail: { code } }));
 	}
+	var ORG_CONTEXT_MESSAGES = {
+		organization_invalid: "Organização inválida ou acesso não autorizado.",
+		organization_inactive: "Organização inativa. Contacte o administrador.",
+		membership_inactive: "Sua associação a esta organização está inativa.",
+		no_permission: "Sem permissão para acessar esta organização.",
+		organization_context_failed: "Não foi possível carregar o contexto organizacional.",
+		forbidden: "Acesso negado a esta organização."
+	};
 	(function bootstrapStandaloneProvider() {
 		(async () => {
 			try {
@@ -12096,8 +12121,12 @@
 					console.warn("[ESA Standalone] invalid_session");
 					return;
 				}
-				const { context: orgContext } = await resolveOrganizationContext(sessionToken);
+				const { context: orgContext, code: orgCode } = await resolveOrganizationContext(sessionToken);
 				window.__ESA_ORG_CONTEXT__ = orgContext;
+				if (orgCode) {
+					const orgMsg = ORG_CONTEXT_MESSAGES[orgCode] ?? "Não foi possível carregar o contexto organizacional.";
+					console.warn("[ESA Standalone] org_context_code", orgCode, orgMsg);
+				}
 				console.info("[ESA Standalone] tenancy_mode", orgContext?.tenancyMode ?? "single-user");
 				ESA.initialize();
 				window.ESA_OS = ESA;

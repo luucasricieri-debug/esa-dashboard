@@ -46,7 +46,11 @@ function buildSingleUserContext(uid) {
 async function loadMemberships(db, uid) {
   const snap = await db.ref(`users/${uid}/memberships`).once('value');
   const raw = snap.val() || {};
-  return Object.values(raw).filter(m => m && m.status === 'active' && m.organizationId);
+  // Use the Firebase key as fallback for organizationId in case the field
+  // was not written into the record value (e.g. records created before Gate 8F).
+  return Object.entries(raw)
+    .map(([key, m]) => (m && typeof m === 'object' ? { ...m, organizationId: m.organizationId || key } : null))
+    .filter(m => m && m.status === 'active' && m.organizationId);
 }
 
 async function loadOrganization(db, orgId) {

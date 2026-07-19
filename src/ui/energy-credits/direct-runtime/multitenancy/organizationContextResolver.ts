@@ -19,6 +19,14 @@ function readActiveOrgId(): string | null {
   }
 }
 
+function writeActiveOrgId(orgId: string): void {
+  try {
+    sessionStorage.setItem(ACTIVE_ORG_KEY, orgId);
+  } catch {
+    // sessionStorage may be unavailable in non-browser environments
+  }
+}
+
 function buildRequestBody(activeOrgId: string | null): string {
   return activeOrgId ? JSON.stringify({ organizationId: activeOrgId }) : '{}';
 }
@@ -42,12 +50,12 @@ async function fetchContext(sessionToken: string, body: string): Promise<Respons
   });
 }
 
-export async function resolveOrganizationContext(
+async function _fetchAndParse(
   sessionToken: string,
+  body: string,
 ): Promise<OrgContextResolution> {
-  const activeOrgId = readActiveOrgId();
   try {
-    const res = await fetchContext(sessionToken, buildRequestBody(activeOrgId));
+    const res = await fetchContext(sessionToken, body);
     if (res.status === 401) return { context: null, code: 'unauthorized' };
     if (res.status === 403) return { context: null, code: 'forbidden' };
     if (!res.ok) return { context: null, code: 'context_unavailable' };
@@ -57,4 +65,29 @@ export async function resolveOrganizationContext(
   } catch {
     return { context: null, code: 'backend_unavailable' };
   }
+}
+
+export async function resolveOrganizationContext(
+  sessionToken: string,
+): Promise<OrgContextResolution> {
+  const activeOrgId = readActiveOrgId();
+  const first = await _fetchAndParse(sessionToken, buildRequestBody(activeOrgId));
+
+  // Auto-select the single available organization when no explicit selection exists.
+  // Covers: fresh sessions, new tabs, Ctrl+Shift+R, logout+login, renamed browsers.
+  if (!activeOrgId && first.context) {
+    const avail = first.context.availableOrganizations;
+    if (Array.isArray(avail) && avail.length === 1 && avail[0].id) {
+      writeActiveOrgId(avail[0].id);
+      // Re-resolve with explicit org ID to confirm on the server side.
+      const confirmed = await _fetchAndParse(
+        sessionToken,
+        JSON.stringify({ organizationId: avail[0].id }),
+      );
+      if (confirmed.context) return confirmed;
+      // If re-resolve fails, fall back to the already-correct first result.
+    }
+  }
+
+  return first;
 }
