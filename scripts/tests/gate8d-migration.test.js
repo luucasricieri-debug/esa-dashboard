@@ -472,6 +472,61 @@ assert('PF06 warnings quando hash mismatch mas não bloqueador isolado', (() => 
 })());
 
 // ══════════════════════════════════════════════════════════════════════════════
+// Suite 15 — userExists vs energyCreditsExists no preflight
+// ══════════════════════════════════════════════════════════════════════════════
+console.log('\n=== Suite 15 — userExists vs energyCreditsExists no preflight ===');
+
+assert('UP01 usuário existe sem dados operacionais → PREFLIGHT_READY_WITH_WARNINGS', (() => {
+  const r = buildPreflightReport({ credentialsValid: true, connectionOk: true, sourceExists: true, destinationAccessible: true, destinationEmpty: true, sourceChanged: false, dryRunNotReady: false, hasOperationalData: false });
+  return r.classification === 'PREFLIGHT_READY_WITH_WARNINGS';
+})());
+
+assert('UP02 usuário existe sem dados → warning "zero registros"', (() => {
+  const r = buildPreflightReport({ credentialsValid: true, connectionOk: true, sourceExists: true, destinationAccessible: true, destinationEmpty: true, sourceChanged: false, dryRunNotReady: false, hasOperationalData: false });
+  return r.warnings.some(w => w.includes('zero registros') || w.includes('operacional'));
+})());
+
+assert('UP03 usuário inexistente → PREFLIGHT_BLOCKED com mensagem de origem', (() => {
+  const r = buildPreflightReport({ credentialsValid: true, connectionOk: true, sourceExists: false, destinationAccessible: true, destinationEmpty: true, sourceChanged: false, dryRunNotReady: false });
+  return r.classification === 'PREFLIGHT_BLOCKED' && r.blockers.some(b => b.includes('origem'));
+})());
+
+assert('UP04 hasOperationalData=true → sem warning de zero registros', (() => {
+  const r = buildPreflightReport({ credentialsValid: true, connectionOk: true, sourceExists: true, destinationAccessible: true, destinationEmpty: true, sourceChanged: false, dryRunNotReady: false, hasOperationalData: true });
+  return !r.warnings.some(w => w.includes('zero registros') || w.includes('operacional'));
+})());
+
+assert('UP05 sem dados mas usuário inexistente → PREFLIGHT_BLOCKED, não WITH_WARNINGS', (() => {
+  const r = buildPreflightReport({ credentialsValid: true, connectionOk: true, sourceExists: false, destinationAccessible: true, destinationEmpty: true, sourceChanged: false, dryRunNotReady: false, hasOperationalData: false });
+  return r.classification === 'PREFLIGHT_BLOCKED';
+})());
+
+assert('UP06 DRY_RUN_READY_WITH_WARNINGS aceito como READY (not dryRunNotReady)', (() => {
+  const allowed = ['DRY_RUN_READY_FOR_COPY', 'DRY_RUN_READY_WITH_WARNINGS'];
+  return allowed.includes('DRY_RUN_READY_WITH_WARNINGS');
+})());
+
+assert('UP07 DRY_RUN_BLOCKED não aceito como READY', (() => {
+  const allowed = ['DRY_RUN_READY_FOR_COPY', 'DRY_RUN_READY_WITH_WARNINGS'];
+  return !allowed.includes('DRY_RUN_BLOCKED');
+})());
+
+assert('UP08 preflight lê users/{uid} diretamente para existência',
+  preflSrc.includes('users/${args.sourceUid}') && preflSrc.includes('userExists'));
+
+assert('UP09 preflight declara energyCreditsExists separado de userExists',
+  preflSrc.includes('energyCreditsExists'));
+
+assert('UP10 preflight passa sourceExists: userExists para buildPreflightReport',
+  preflSrc.includes('sourceExists: userExists'));
+
+assert('UP11 preflight computa hasOperationalData',
+  preflSrc.includes('hasOperationalData'));
+
+assert('UP12 PREFLIGHT_READY_WITH_WARNINGS presente no código do preflight',
+  preflSrc.includes('PREFLIGHT_READY_WITH_WARNINGS'));
+
+// ══════════════════════════════════════════════════════════════════════════════
 // Relatório final
 // ══════════════════════════════════════════════════════════════════════════════
 

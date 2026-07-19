@@ -121,8 +121,12 @@ function buildPreflightReport(checks) {
   if (checks.hashMismatch)   warnings.push('Hash diverge — re-executar dry-run antes de prosseguir');
   if (checks.countMismatch)  warnings.push('Contagem diverge — dados foram alterados desde o dry-run');
   if (checks.hasOrphanRefs)  warnings.push('Referências órfãs detectadas no dry-run — revisar antes da cópia');
+  if (checks.sourceExists && checks.hasOperationalData === false)
+    warnings.push('Origem não possui dados operacionais; a migração copiará zero registros.');
 
-  const classification = blockers.length > 0 ? 'PREFLIGHT_BLOCKED' : 'PREFLIGHT_READY';
+  const classification = blockers.length > 0
+    ? 'PREFLIGHT_BLOCKED'
+    : warnings.length > 0 ? 'PREFLIGHT_READY_WITH_WARNINGS' : 'PREFLIGHT_READY';
   return { classification, blockers, warnings };
 }
 
@@ -149,8 +153,15 @@ async function runPreflight(args) {
   const { inventoryCollection, computeCollectionHash, computeObjectHash, EC_MIGRATION_COLLECTIONS } = require('./migrate-energy-credits-to-organization');
   const crypto2 = require('crypto');
 
-  // Load source
-  let sourceExists = false;
+  // Check user existence via users/{uid} — independent of energyCredits data
+  let userExists = false;
+  try {
+    const userSnap = await db.ref(`users/${args.sourceUid}`).once('value');
+    userExists = userSnap.exists();
+  } catch (_) {}
+
+  // Load source energyCredits collections
+  let energyCreditsExists = false;
   let currentHash = '';
   let currentTotalCount = 0;
   try {
@@ -159,7 +170,7 @@ async function runPreflight(args) {
       const snap = await db.ref(`${sourcePath}/${col}`).once('value');
       const inv = inventoryCollection(col, snap.val());
       currentTotalCount += inv.count;
-      if (inv.exists) sourceExists = true;
+      if (inv.exists) energyCreditsExists = true;
     }
     // Compute overall hash
     const colHashes = [];
@@ -169,7 +180,9 @@ async function runPreflight(args) {
       colHashes.push(inv.hash);
     }
     currentHash = crypto2.createHash('sha256').update(colHashes.join('|'), 'utf8').digest('hex');
-  } catch (_) { /* leave sourceExists false */ }
+  } catch (_) {}
+
+  const hasOperationalData = currentTotalCount > 0;
 
   // Load destination
   let destinationAccessible = false;
@@ -204,15 +217,15 @@ async function runPreflight(args) {
   }
 
   const report = buildPreflightReport({
-    credentialsValid: true, connectionOk: true, sourceExists,
+    credentialsValid: true, connectionOk: true, sourceExists: userExists,
     destinationAccessible, destinationEmpty, sourceChanged, dryRunNotReady,
-    hashMismatch, countMismatch,
+    hashMismatch, countMismatch, hasOperationalData,
   });
 
   // Cleanup
   try { await require('firebase-admin').app().delete(); } catch (_) {}
 
-  return { ...report, currentHash, currentTotalCount, destInvs };
+  return { ...report, currentHash, currentTotalCount, userExists, energyCreditsExists, hasOperationalData, destInvs };
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
@@ -236,7 +249,7 @@ if (require.main === module) {
     console.log('PREFLIGHT:', report.classification);
     if (report.blockers.length > 0) report.blockers.forEach(b => console.error('  ✗ ' + b));
     if (report.warnings.length > 0) report.warnings.forEach(w => console.warn('  ⚠ ' + w));
-    process.exit(report.classification === 'PREFLIGHT_READY' ? 0 : 1);
+    process.exit(['PREFLIGHT_READY', 'PREFLIGHT_READY_WITH_WARNINGS'].includes(report.classification) ? 0 : 1);
   }).catch(err => {
     console.error('FATAL:', err.message);
     process.exit(1);
