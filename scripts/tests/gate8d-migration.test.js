@@ -24,6 +24,7 @@ const {
   validateReferences,
   maskUid,
   parseArgs,
+  checkUserExists,
   EC_MIGRATION_COLLECTIONS,
 } = require('../migrate-energy-credits-to-organization');
 
@@ -470,6 +471,62 @@ assert('PF06 warnings quando hash mismatch mas não bloqueador isolado', (() => 
   const r = buildPreflightReport({ credentialsValid: true, connectionOk: true, sourceExists: true, destinationAccessible: true, destinationEmpty: true, sourceChanged: false, dryRunNotReady: false, hashMismatch: true, countMismatch: false });
   return r.warnings.some(w => w.includes('Hash') || w.includes('dry-run'));
 })());
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Suite 16 — cópia de zero registros (origem vazia válida)
+// ══════════════════════════════════════════════════════════════════════════════
+console.log('\n=== Suite 16 — cópia de zero registros (origem vazia válida) ===');
+
+const emptySourceInvs = EC_MIGRATION_COLLECTIONS.map(col => ({ collection: col, count: 0, hash: 'h0' }));
+const emptyDestInvs   = EC_MIGRATION_COLLECTIONS.map(col => ({ collection: col, count: 0, hash: 'h0' }));
+
+assert('ZR01 verifyPostCopy com hasOperationalData=false → COPY_VERIFIED_WITH_WARNINGS', (() => {
+  const r = verifyPostCopy(emptySourceInvs, emptyDestInvs, 'hash', { hasOperationalData: false });
+  return r.classification === 'COPY_VERIFIED_WITH_WARNINGS';
+})());
+
+assert('ZR02 verifyPostCopy com hasOperationalData=false → warning "zero registros"', (() => {
+  const r = verifyPostCopy(emptySourceInvs, emptyDestInvs, 'hash', { hasOperationalData: false });
+  return r.warnings.some(w => w.includes('zero registros') || w.includes('operacional'));
+})());
+
+assert('ZR03 verifyPostCopy sem options + invs vazias → COPY_VERIFIED (retrocompatível)', (() => {
+  const r = verifyPostCopy(emptySourceInvs, emptyDestInvs, 'hash');
+  return r.classification === 'COPY_VERIFIED';
+})());
+
+assert('ZR04 buildMultipathUpdate com records vazio retorna {}', (() => {
+  const upd = buildMultipathUpdate('generatingUnits', [], 'org-test');
+  return typeof upd === 'object' && Object.keys(upd).length === 0;
+})());
+
+assert('ZR05 buildMultipathUpdate com records vazio não lança exceção', (() => {
+  try { buildMultipathUpdate('generatingUnits', [], 'org-test'); return true; } catch { return false; }
+})());
+
+assert('ZR06 mainCopy chama checkUserExists para verificar usuário',
+  migrSrc.includes('checkUserExists') && migrSrc.includes('userExists'));
+
+assert('ZR07 mainCopy bloqueia com "Usuário origem não encontrado" quando userExists=false',
+  migrSrc.includes('Usuário origem não encontrado'));
+
+assert('ZR08 mensagem antiga "usuário não encontrado ou sem dados" removida do fluxo real',
+  !migrSrc.includes('usuário não encontrado ou sem dados'));
+
+assert('ZR09 mainCopy passa hasOperationalData para verifyPostCopy', (() => {
+  const hasPass = migrSrc.includes('{ hasOperationalData }') || migrSrc.includes('hasOperationalData }');
+  const hasCall = migrSrc.includes('verifyPostCopy');
+  return hasPass && hasCall;
+})());
+
+assert('ZR10 mainCopy valida backupManifest.targetOrganizationId contra args',
+  migrSrc.includes('backupManifest.targetOrganizationId'));
+
+assert('ZR11 mainCopy bloqueia quando backup.targetOrganizationId diverge',
+  migrSrc.includes('Backup associado a organizationId diferente'));
+
+assert('ZR12 checkUserExists exportado do script de migração',
+  typeof checkUserExists === 'function');
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Suite 15 — userExists vs energyCreditsExists no preflight

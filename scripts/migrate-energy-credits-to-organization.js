@@ -431,7 +431,7 @@ function splitIntoBatches(multipathUpdate, maxPaths) {
 /**
  * Verifica post-cópia: contagens e hashes de origem vs. destino.
  */
-function verifyPostCopy(sourceInv, destInv, expectedSourceHash) {
+function verifyPostCopy(sourceInv, destInv, expectedSourceHash, options) {
   const errors = [];
   const warnings = [];
 
@@ -445,6 +445,10 @@ function verifyPostCopy(sourceInv, destInv, expectedSourceHash) {
     if (srcCol.count !== dstCol.count) {
       errors.push(`${srcCol.collection}: origem=${srcCol.count} destino=${dstCol.count}`);
     }
+  }
+
+  if (options && options.hasOperationalData === false) {
+    warnings.push('Origem não possui dados operacionais; zero registros foram copiados.');
   }
 
   const classification = errors.length > 0
@@ -764,9 +768,16 @@ async function mainCopy(args) {
   const sourceInvs = EC_MIGRATION_COLLECTIONS.map(col => inventoryCollection(col, sourceRaw[col]));
   const srcTotal = sourceInvs.reduce((s, c) => s + c.count, 0);
 
-  if (srcTotal === 0) {
-    console.error('[GATE-8D-BLOCKED] Origem vazia — usuário não encontrado ou sem dados.');
+  // Verificar existência do usuário via users/{uid} — independente de energyCredits
+  const userExists = await checkUserExists(db, args.sourceUid);
+  if (!userExists) {
+    console.error('[GATE-8D-BLOCKED] Usuário origem não encontrado no RTDB.');
     process.exit(1);
+  }
+  const hasOperationalData = srcTotal > 0;
+  if (!hasOperationalData) {
+    console.log('  ⚠ Origem sem dados operacionais — usuário existe mas energyCredits está vazio.');
+    console.log('  Cópia de zero registros será executada e classificada como COPY_VERIFIED_WITH_WARNINGS.');
   }
 
   // Destination check
@@ -803,7 +814,7 @@ async function mainCopy(args) {
     }
   }
 
-  console.log(`  Origem: ${srcTotal} registros | Destino: ${dstTotal} registros (vazio ✓)`);
+  console.log(`  Origem: ${srcTotal} registros${!hasOperationalData ? ' (usuário existe, zero dados operacionais)' : ''} | Destino: ${dstTotal} registros (vazio ✓)`);
 
   // ── 3. Backup obrigatório ─────────────────────────────────────────────────────
   console.log('[3/8] Criando backup...');
@@ -815,6 +826,10 @@ async function mainCopy(args) {
   if (!backupValidation.valid) {
     console.error('[GATE-8D-BLOCKED] Backup inválido:');
     backupValidation.errors.forEach(e => console.error('  ✗ ' + e));
+    process.exit(1);
+  }
+  if (backupManifest && backupManifest.targetOrganizationId !== args.targetOrganizationId) {
+    console.error(`[GATE-8D-BLOCKED] Backup associado a organizationId diferente: ${backupManifest.targetOrganizationId}`);
     process.exit(1);
   }
   console.log(`  Backup válido: ${backupDir}`);
@@ -878,7 +893,7 @@ async function mainCopy(args) {
   console.log('[6/8] Verificando destino...');
   const destRawPost = await loadEnergyCreditsFromPath(db, destBasePath, EC_MIGRATION_COLLECTIONS);
   const destInvsPost = EC_MIGRATION_COLLECTIONS.map(col => inventoryCollection(col, destRawPost[col]));
-  const verification = verifyPostCopy(sourceInvs, destInvsPost, globalSourceHash);
+  const verification = verifyPostCopy(sourceInvs, destInvsPost, globalSourceHash, { hasOperationalData });
   console.log(`  Classificação: ${verification.classification}`);
   if (verification.errors.length > 0) verification.errors.forEach(e => console.error('  ✗ ' + e));
 
@@ -965,6 +980,7 @@ module.exports = {
   verifyPostCopy,
   buildAuditLogEntry,
   buildRollbackCommand,
+  checkUserExists,
   EC_MIGRATION_COLLECTIONS,
   FORBIDDEN_KEYS,
   PII_FIELD_NAMES,
