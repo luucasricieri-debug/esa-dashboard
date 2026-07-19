@@ -11742,17 +11742,20 @@
 			esa.hydrateEnergyCreditsReadModel({ beneficiaryUnits: [entity] }, { replace: false });
 		}
 	}
-	function writeAuditLog(firebaseRepo, targetType, targetId, action, uid) {
+	function writeAuditLog(firebaseRepo, targetType, targetId, action, uid, result) {
 		const createdAt = (/* @__PURE__ */ new Date()).toISOString();
+		const requestId = crypto.randomUUID();
 		const id = `${targetType}::${targetId}::${action}::${createdAt}`;
 		firebaseRepo.appendCreditAuditLog({
 			id,
+			requestId,
 			targetType,
 			targetId,
 			action,
 			userId: uid,
 			organizationId: uid,
-			createdAt
+			createdAt,
+			result
 		}).catch(() => {});
 	}
 	function loadFromMemory(memoryRepo, collection, id) {
@@ -11777,7 +11780,7 @@
 			const entity = domainResult.data;
 			if (!(await firebaseRepo[saveMethod](entity)).ok) return backendError(innerMethod);
 			syncStores(collection, entity, memoryRepo, esa);
-			writeAuditLog(firebaseRepo, targetType, id, "create", uid);
+			writeAuditLog(firebaseRepo, targetType, id, "create", uid, "success");
 			return {
 				ok: true,
 				data: entity
@@ -11800,7 +11803,7 @@
 			};
 			if (!(await firebaseRepo[saveMethod](updated)).ok) return backendError(`update ${collection}`);
 			syncStores(collection, updated, memoryRepo, esa);
-			writeAuditLog(firebaseRepo, targetType, id, "update", uid);
+			writeAuditLog(firebaseRepo, targetType, id, "update", uid, "success");
 			return {
 				ok: true,
 				data: updated

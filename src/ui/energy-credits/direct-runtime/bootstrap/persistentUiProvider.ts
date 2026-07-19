@@ -41,11 +41,16 @@ function writeAuditLog(
   targetId: string,
   action: string,
   uid: string,
+  result: 'success' | 'error',
 ): void {
   const createdAt = new Date().toISOString();
+  const requestId = crypto.randomUUID();
   const id = `${targetType}::${targetId}::${action}::${createdAt}`;
   firebaseRepo
-    .appendCreditAuditLog({ id, targetType, targetId, action, userId: uid, organizationId: uid, createdAt })
+    .appendCreditAuditLog({
+      id, requestId, targetType, targetId, action,
+      userId: uid, organizationId: uid, createdAt, result,
+    })
     .catch(() => {}); // best-effort — audit log never blocks the user
 }
 
@@ -87,7 +92,7 @@ export function createPersistentUiProvider(
     const fbResult: AnyResult = await firebaseRepo[saveMethod](entity);
     if (!fbResult.ok) return backendError(innerMethod);
     syncStores(collection, entity, memoryRepo, esa);
-    writeAuditLog(firebaseRepo, targetType, id, 'create', uid);
+    writeAuditLog(firebaseRepo, targetType, id, 'create', uid, 'success');
     return { ok: true, data: entity };
   }
 
@@ -107,7 +112,7 @@ export function createPersistentUiProvider(
     const fbResult: AnyResult = await firebaseRepo[saveMethod](updated);
     if (!fbResult.ok) return backendError(`update ${collection}`);
     syncStores(collection, updated, memoryRepo, esa);
-    writeAuditLog(firebaseRepo, targetType, id, 'update', uid);
+    writeAuditLog(firebaseRepo, targetType, id, 'update', uid, 'success');
     return { ok: true, data: updated };
   }
 
