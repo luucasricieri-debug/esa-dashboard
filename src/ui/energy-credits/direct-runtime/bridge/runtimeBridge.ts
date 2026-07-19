@@ -10,10 +10,13 @@ import { demoRuntimeProvider } from '../providers/demoRuntimeProvider';
 declare global {
   interface Window {
     ESA_ENERGY_CREDITS_RUNTIME: EnergyCreditsRuntimeContract;
-    // Set by the legacy bridge when real mode is requested
+    // Set by standalone-bootstrap.js (Gate 6) or legacy-bridge.js before this script runs
     __ESA_UI_PROVIDER__?: unknown;
-    // Written before each event so componentDidMount can read the result even if the event fired first
+    // Written before each event so componentDidMount can read outcome if event fired first
     __ESA_RUNTIME_STATUS__?: { status: 'ready' | 'error'; reason?: string };
+    // Written by standalone-bootstrap.js before dispatching esa:ui-provider:ready/error
+    __ESA_UI_PROVIDER_STATUS__?: { status: 'ready' | 'error'; reason?: string };
+    __ESA_UI_PROVIDER_ERROR__?: { code: string; message: string };
   }
 }
 
@@ -67,14 +70,42 @@ async function initBridge(): Promise<void> {
 
 // Run immediately — synchronous assignment for demo, async for real.
 // Demo path is guaranteed synchronous so the DC Component can call methods on first render.
+// Real path: provider-bootstrap.js (IIFE) runs before this script and sets __ESA_UI_PROVIDER__.
+// Async fallback via esa:ui-provider:ready covers module-script bootstrap scenarios.
 if (resolveMode() === 'demo') {
   window.__ESA_RUNTIME_STATUS__ = { status: 'ready' };
   window.ESA_ENERGY_CREDITS_RUNTIME = demoRuntimeProvider;
   window.dispatchEvent(new CustomEvent('esa:runtime:ready', { detail: { mode: 'demo' } }));
 } else {
-  initBridge().catch((err) => {
+  const handleFatalError = (err: unknown): void => {
     console.error('[ESA-Bridge] Fatal init error', err);
     window.__ESA_RUNTIME_STATUS__ = { status: 'error', reason: 'init_exception' };
-    window.dispatchEvent(new CustomEvent('esa:runtime:error', { detail: { reason: 'init_exception', error: (err as Error)?.message } }));
+    window.dispatchEvent(
+      new CustomEvent('esa:runtime:error', {
+        detail: { reason: 'init_exception', error: (err as Error)?.message },
+      }),
+    );
+  };
+
+  window.addEventListener('esa:ui-provider:error', (evt: Event) => {
+    const code = (evt as CustomEvent<{ code?: string }>).detail?.code ?? 'provider_error';
+    window.__ESA_RUNTIME_STATUS__ = { status: 'error', reason: code };
+    window.dispatchEvent(new CustomEvent('esa:runtime:error', { detail: { reason: code } }));
   });
+
+  if (window.__ESA_UI_PROVIDER__) {
+    // Sync: provider-bootstrap.js ran as IIFE before this script.
+    initBridge().catch(handleFatalError);
+  } else {
+    // Async: wait for provider-bootstrap loaded as module script.
+    window.addEventListener('esa:ui-provider:ready', () => initBridge().catch(handleFatalError), {
+      once: true,
+    });
+    // Safety: if bootstrap already recorded failure synchronously before registering listener.
+    if (window.__ESA_UI_PROVIDER_STATUS__?.status === 'error') {
+      const reason = window.__ESA_UI_PROVIDER_STATUS__.reason ?? 'provider_error';
+      window.__ESA_RUNTIME_STATUS__ = { status: 'error', reason };
+      window.dispatchEvent(new CustomEvent('esa:runtime:error', { detail: { reason } }));
+    }
+  }
 }

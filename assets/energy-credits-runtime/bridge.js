@@ -1561,16 +1561,38 @@
 		window.__ESA_RUNTIME_STATUS__ = { status: "ready" };
 		window.ESA_ENERGY_CREDITS_RUNTIME = demoRuntimeProvider;
 		window.dispatchEvent(new CustomEvent("esa:runtime:ready", { detail: { mode: "demo" } }));
-	} else initBridge().catch((err) => {
-		console.error("[ESA-Bridge] Fatal init error", err);
-		window.__ESA_RUNTIME_STATUS__ = {
-			status: "error",
-			reason: "init_exception"
+	} else {
+		const handleFatalError = (err) => {
+			console.error("[ESA-Bridge] Fatal init error", err);
+			window.__ESA_RUNTIME_STATUS__ = {
+				status: "error",
+				reason: "init_exception"
+			};
+			window.dispatchEvent(new CustomEvent("esa:runtime:error", { detail: {
+				reason: "init_exception",
+				error: err?.message
+			} }));
 		};
-		window.dispatchEvent(new CustomEvent("esa:runtime:error", { detail: {
-			reason: "init_exception",
-			error: err?.message
-		} }));
-	});
+		window.addEventListener("esa:ui-provider:error", (evt) => {
+			const code = evt.detail?.code ?? "provider_error";
+			window.__ESA_RUNTIME_STATUS__ = {
+				status: "error",
+				reason: code
+			};
+			window.dispatchEvent(new CustomEvent("esa:runtime:error", { detail: { reason: code } }));
+		});
+		if (window.__ESA_UI_PROVIDER__) initBridge().catch(handleFatalError);
+		else {
+			window.addEventListener("esa:ui-provider:ready", () => initBridge().catch(handleFatalError), { once: true });
+			if (window.__ESA_UI_PROVIDER_STATUS__?.status === "error") {
+				const reason = window.__ESA_UI_PROVIDER_STATUS__.reason ?? "provider_error";
+				window.__ESA_RUNTIME_STATUS__ = {
+					status: "error",
+					reason
+				};
+				window.dispatchEvent(new CustomEvent("esa:runtime:error", { detail: { reason } }));
+			}
+		}
+	}
 	//#endregion
 })();
