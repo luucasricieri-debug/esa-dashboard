@@ -11890,6 +11890,61 @@
 		} });
 	}
 	//#endregion
+	//#region multitenancy/organizationContextResolver.ts
+	var ACTIVE_ORG_KEY = "esa_active_organization";
+	function readActiveOrgId() {
+		try {
+			return sessionStorage.getItem(ACTIVE_ORG_KEY);
+		} catch {
+			return null;
+		}
+	}
+	function buildRequestBody(activeOrgId) {
+		return activeOrgId ? JSON.stringify({ organizationId: activeOrgId }) : "{}";
+	}
+	async function fetchContext(sessionToken, body) {
+		return fetch("/.netlify/functions/organization-context", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Authorization: `Bearer ${sessionToken}`
+			},
+			body
+		});
+	}
+	async function resolveOrganizationContext(sessionToken) {
+		const activeOrgId = readActiveOrgId();
+		try {
+			const res = await fetchContext(sessionToken, buildRequestBody(activeOrgId));
+			if (res.status === 401) return {
+				context: null,
+				code: "unauthorized"
+			};
+			if (res.status === 403) return {
+				context: null,
+				code: "forbidden"
+			};
+			if (!res.ok) return {
+				context: null,
+				code: "context_unavailable"
+			};
+			const data = await res.json();
+			if (!data?.ok || !data.data) return {
+				context: null,
+				code: "context_unavailable"
+			};
+			return {
+				context: data.data,
+				code: null
+			};
+		} catch {
+			return {
+				context: null,
+				code: "backend_unavailable"
+			};
+		}
+	}
+	//#endregion
 	//#region bootstrap/standaloneProviderBootstrap.ts
 	function decodeUidFromToken(token) {
 		try {
@@ -11940,6 +11995,9 @@
 					console.warn("[ESA Standalone] invalid_session");
 					return;
 				}
+				const { context: orgContext } = await resolveOrganizationContext(sessionToken);
+				window.__ESA_ORG_CONTEXT__ = orgContext;
+				console.info("[ESA Standalone] tenancy_mode", orgContext?.tenancyMode ?? "single-user");
 				ESA.initialize();
 				window.ESA_OS = ESA;
 				const httpClient = createHttpFirebaseClient(sessionToken);

@@ -1,12 +1,17 @@
 // ============================================================
-// ESA OS — Standalone Provider Bootstrap — Gate 7
+// ESA OS — Standalone Provider Bootstrap — Gate 7 / Gate 8A
 // IIFE: inicializa ESA Core, conecta ao Firebase (via Netlify Functions),
 // hidrata repositório em memória + read model, expõe PersistentUiProvider
 // via window.__ESA_UI_PROVIDER__ para o bridge.js consumir.
 //
+// Gate 8A: resolve contexto organizacional antes dos repositórios.
+//   - tenancyMode 'single-user' mantém compatibilidade total com Gate 7
+//   - tenancyMode 'organization' prepara contexto (paths não mudam nesta missão)
+//
 // Segurança:
 //   - Sessão validada antes de qualquer acesso ao backend
 //   - uid extraído do token apenas para auditoria (segurança real no servidor)
+//   - Contexto org validado no backend — nunca role/permissions do browser
 //   - Sem PII em logs
 //   - Sem Firebase diretamente na UI
 //   - Sem credenciais hardcoded
@@ -18,6 +23,8 @@ import { resolveSessionToken }                                    from './sessio
 import type { SessionResolution }                                 from './sessionResolver.js';
 import { createHttpFirebaseClient, loadEnergyCreditsSnapshot }    from './httpFirebaseClient.js';
 import { createPersistentUiProvider }                             from './persistentUiProvider.js';
+import { resolveOrganizationContext }                             from '../multitenancy/organizationContextResolver.js';
+import type { OrganizationContext }                               from '../multitenancy/types.js';
 
 declare global {
   interface Window {
@@ -25,6 +32,7 @@ declare global {
     __ESA_UI_PROVIDER__?: unknown;
     __ESA_UI_PROVIDER_STATUS__?: { status: 'ready' | 'error'; reason?: string };
     __ESA_UI_PROVIDER_ERROR__?: { code: string; message: string };
+    __ESA_ORG_CONTEXT__?: OrganizationContext | null;
   }
 }
 
@@ -79,37 +87,44 @@ function dispatchProviderError(code: string, reason: string): void {
         return;
       }
 
-      // ── 2. Initialize ESA Core ───────────────────────────────────────────────
+      // ── 2. Resolve organization context (Gate 8A) ───────────────────────────
+      // Non-blocking: falha retorna null e tenancyMode='single-user' continua.
+      // Nenhum path de dados muda nesta missão; contexto exposto para Gate 8B.
+      const { context: orgContext } = await resolveOrganizationContext(sessionToken);
+      window.__ESA_ORG_CONTEXT__ = orgContext;
+      console.info('[ESA Standalone] tenancy_mode', orgContext?.tenancyMode ?? 'single-user');
+
+      // ── 3. Initialize ESA Core ───────────────────────────────────────────────
       (ESA as { initialize(): void }).initialize();
       window.ESA_OS = ESA;
 
-      // ── 3. Build HTTP client and load Firebase snapshot ──────────────────────
+      // ── 4. Build HTTP client and load Firebase snapshot ──────────────────────
       const httpClient = createHttpFirebaseClient(sessionToken);
       const snapshot = await loadEnergyCreditsSnapshot(sessionToken);
 
-      // ── 4. Hydrate memory repository (mutation target) ───────────────────────
+      // ── 5. Hydrate memory repository (mutation target) ───────────────────────
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const memoryRepo = (ESA as any).getEnergyCreditsRepository();
       memoryRepo.hydrateFromSnapshot(snapshot);
 
-      // ── 5. Hydrate read model (query source) ─────────────────────────────────
+      // ── 6. Hydrate read model (query source) ─────────────────────────────────
       (ESA as { hydrateEnergyCreditsReadModel(s: unknown, o: unknown): void })
         .hydrateEnergyCreditsReadModel(snapshot, { replace: true });
 
-      // ── 6. Build Firebase repository backed by HTTP client ───────────────────
+      // ── 7. Build Firebase repository backed by HTTP client ───────────────────
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const firebaseRepo = (ESA as any).createEnergyCreditsFirebaseRepository(httpClient);
 
-      // ── 7. Build inner UIProvider (reads from hydrated read model) ───────────
+      // ── 8. Build inner UIProvider (reads from hydrated read model) ───────────
       const UIProviderCtor = EnergyCreditsUIProvider as new (app: unknown) => unknown;
       const inner = new UIProviderCtor(ESA) as Record<string, (...args: unknown[]) => unknown>;
 
-      // ── 8. Wrap with persistent write-through ────────────────────────────────
+      // ── 9. Wrap with persistent write-through ────────────────────────────────
       const provider = createPersistentUiProvider(inner, firebaseRepo, memoryRepo, ESA as {
         hydrateEnergyCreditsReadModel(s: unknown, o: { replace: boolean }): void
       }, uid);
 
-      // ── 9. Expose and signal readiness ───────────────────────────────────────
+      // ── 10. Expose and signal readiness ──────────────────────────────────────
       window.__ESA_UI_PROVIDER__ = provider;
       window.__ESA_UI_PROVIDER_STATUS__ = { status: 'ready' };
       window.dispatchEvent(
