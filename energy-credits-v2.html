@@ -2848,9 +2848,10 @@ class Component extends DCLogic {
   };
 
   // ============================== FORMAT ==============================
-  brl(v) { return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2 }); }
-  kwh(v) { return v.toLocaleString("pt-BR", { maximumFractionDigits: 0 }) + " kWh"; }
-  num(v, d) { d = d === undefined ? 2 : d; return v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d }); }
+  _safeN(v) { return (v == null || (typeof v === 'number' && isNaN(v))) ? 0 : Number(v); }
+  brl(v) { return this._safeN(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2 }); }
+  kwh(v) { return this._safeN(v).toLocaleString("pt-BR", { maximumFractionDigits: 0 }) + " kWh"; }
+  num(v, d) { d = d === undefined ? 2 : d; return this._safeN(v).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d }); }
 
   // ============================== ÍCONES (lucide, traços simples) ==============================
   I(name, sz, color) {
@@ -3333,22 +3334,22 @@ class Component extends DCLogic {
 
     const kFmt = (v) => (v >= 1000 ? Math.round(v / 1000) + "k" : String(Math.round(v)));
     const brlFmt = (v) => (v >= 1000 ? "R$" + Math.round(v / 1000) + "k" : "R$" + Math.round(v));
-    const chartGenVsCons = results.map((r) => ({ name: r.ug.name.replace("UG Solar ", ""), Geração: Math.round(r.generation), Consumo: Math.round(r.rows.reduce((s, x) => s + x.ub.monthlyConsumption, 0)) }));
+    const chartGenVsCons = results.map((r) => ({ name: r.ug ? r.ug.name.replace("UG Solar ", "") : "—", Geração: Math.round(r.generation || 0), Consumo: Math.round((r.rows || []).reduce((s, x) => s + (x.ub ? x.ub.monthlyConsumption || 0 : 0), 0)) }));
     const genChart = S.chartMode === "por_ug"
       ? this.barChart(chartGenVsCons, ["Geração", "Consumo"], ["#00a86b", "#a9e4cb"], kFmt)
       : this.lineChart(trend, [{ key: "Geracao", color: "#00a86b" }, { key: "Consumo", color: "#a9e4cb" }], kFmt);
     const revChart = this.lineChart(trend, [{ key: "Receita", color: "#00a86b" }, { key: "Repasse", color: "#94a3b8", width: 2 }, { key: "Spread", color: "#00bd78", width: 1.5, dash: "4 4" }], brlFmt);
 
     // Rankings
-    const ugRankingArr = [...results].sort((a, b) => b.generation - a.generation);
-    const maxGen = ugRankingArr[0] ? ugRankingArr[0].generation : 1;
+    const ugRankingArr = [...results].sort((a, b) => (b.generation || 0) - (a.generation || 0));
+    const maxGen = (ugRankingArr[0] && ugRankingArr[0].generation) ? ugRankingArr[0].generation : 1;
     const ugRanking = ugRankingArr.map((r, i) => ({
-      rankName: "#" + (i + 1) + " " + r.ug.name, genTxt: kwh(r.generation), barW: ((r.generation / maxGen) * 100).toFixed(1),
-      onOpen: () => this.setState({ drill: { kind: "ug", id: r.ug.id } }),
+      rankName: "#" + (i + 1) + " " + (r.ug ? r.ug.name : "—"), genTxt: kwh(r.generation), barW: ((this._safeN(r.generation) / maxGen) * 100).toFixed(1),
+      onOpen: () => this.setState({ drill: { kind: "ug", id: r.ug ? r.ug.id : null } }),
     }));
-    const ubRanking = results.flatMap((r) => r.rows).sort((a, b) => b.ub.monthlyConsumption - a.ub.monthlyConsumption).slice(0, 5).map((row, i) => {
-      const pill = this.statusPill(row.ub.paymentStatus);
-      return { rankName: "#" + (i + 1) + " " + row.ub.name, consTxt: kwh(row.ub.monthlyConsumption), ecoTxt: brl(row.economia), faturaTxt: brl(row.faturaEsa), pillText: pill.text, pillBg: pill.bg, pillColor: pill.color, onOpen: () => this.setState({ drill: { kind: "ub", id: row.ub.id } }) };
+    const ubRanking = results.flatMap((r) => r.rows || []).sort((a, b) => (b.ub ? b.ub.monthlyConsumption || 0 : 0) - (a.ub ? a.ub.monthlyConsumption || 0 : 0)).slice(0, 5).map((row, i) => {
+      const pill = row.ub ? this.statusPill(row.ub.paymentStatus) : { text: "—", bg: "#f1f5f9", color: "#64748b" };
+      return { rankName: "#" + (i + 1) + " " + (row.ub ? row.ub.name : "—"), consTxt: kwh(row.ub ? row.ub.monthlyConsumption : 0), ecoTxt: brl(row.economia), faturaTxt: brl(row.faturaEsa), pillText: pill.text, pillBg: pill.bg, pillColor: pill.color, onOpen: () => this.setState({ drill: { kind: "ub", id: row.ub ? row.ub.id : null } }) };
     });
     const sevTone = { critico: { bg: "#fff1f2", border: "#fecdd3", color: "#be123c" }, risco: { bg: "#fffbeb", border: "#fde68a", color: "#92400e" }, atencao: { bg: "#f0f9ff", border: "#bae6fd", color: "#0369a1" }, info: { bg: "#f8fafc", border: "#e2e8f0", color: "#475569" } };
     const alertCards = alerts.slice(0, 4).map((a) => ({ severity: a.severity, unit: a.unit, message: a.message, ...sevTone[a.severity], onOpen: () => this.setState({ drill: { kind: "alert", id: a.id } }) }));
@@ -3364,15 +3365,15 @@ class Component extends DCLogic {
         drillVals.drillTitle = titles[drill.kind];
         drillVals.drillDesc = "Composição por unidade geradora — " + monthLabel;
         drillVals.drillHasList = true;
-        drillVals.drillList = results.map((r) => ({ name: r.ug.name, sub: r.ug.owner, value: kwh(drill.kind === "generation" ? r.generation : drill.kind === "balance" ? r.currentBalance : r.totalCompensated), valueColor: "#1e293b" }));
+        drillVals.drillList = results.map((r) => ({ name: r.ug ? r.ug.name : "—", sub: r.ug ? r.ug.owner : "—", value: kwh(drill.kind === "generation" ? r.generation : drill.kind === "balance" ? r.currentBalance : r.totalCompensated), valueColor: "#1e293b" }));
       } else if (drill.kind === "revenue" || drill.kind === "owner") {
         const isRev = drill.kind === "revenue";
         drillVals.drillTitle = isRev ? "Receita ESA" : "Repasse ao proprietário";
         drillVals.drillDesc = (isRev ? "Detalhamento por beneficiária — " : "Detalhamento por UG — ") + monthLabel;
         drillVals.drillHasList = true;
         drillVals.drillList = isRev
-          ? results.flatMap((r) => r.rows.map((row) => ({ name: row.ub.name, sub: kwh(row.compensated) + " · " + row.ub.esaPrice.toFixed(2) + "/kWh", value: brl(row.faturaEsa), valueColor: "#00875a" })))
-          : results.map((r) => ({ name: r.ug.name, sub: kwh(r.totalCompensated) + " · " + r.ug.purchasePrice.toFixed(2) + "/kWh", value: brl(r.ownerPayment), valueColor: "#e11d48" }));
+          ? results.flatMap((r) => (r.rows || []).map((row) => ({ name: row.ub ? row.ub.name : "—", sub: kwh(row.compensated) + " · " + (row.ub && row.ub.esaPrice != null ? this._safeN(row.ub.esaPrice).toFixed(2) : "0,00") + "/kWh", value: brl(row.faturaEsa), valueColor: "#00875a" })))
+          : results.map((r) => ({ name: r.ug ? r.ug.name : "—", sub: kwh(r.totalCompensated) + " · " + (r.ug && r.ug.purchasePrice != null ? this._safeN(r.ug.purchasePrice).toFixed(2) : "0,00") + "/kWh", value: brl(r.ownerPayment), valueColor: "#e11d48" }));
       } else if (drill.kind === "ug") {
         const r = results.find((x) => x.ug.id === drill.id);
         if (r) {
@@ -3382,21 +3383,21 @@ class Component extends DCLogic {
           drillVals.drillDesc = r.ug.id + " · " + r.ug.owner;
           drillVals.drillHasGrid = true;
           drillVals.drillGrid = [
-            { label: "UC", value: r.ug.uc, color: "#062e20" }, { label: "Distribuidora", value: r.ug.distributor, color: "#062e20" },
-            { label: "Saldo anterior", value: kwh(r.ug.previousBalance), color: "#062e20" }, { label: "Geração mensal", value: kwh(r.generation), color: "#062e20" },
+            { label: "UC", value: r.ug ? r.ug.uc : "—", color: "#062e20" }, { label: "Distribuidora", value: r.ug ? r.ug.distributor : "—", color: "#062e20" },
+            { label: "Saldo anterior", value: kwh(r.ug ? r.ug.previousBalance : 0), color: "#062e20" }, { label: "Geração mensal", value: kwh(r.generation), color: "#062e20" },
             { label: "Disponível", value: kwh(r.available), color: "#062e20" }, { label: "Alocado", value: kwh(r.totalAllocated), color: "#062e20" },
             { label: "Compensado", value: kwh(r.totalCompensated), color: "#062e20" }, { label: "Saldo atual", value: kwh(r.currentBalance), color: "#062e20" },
             { label: "Repasse mensal", value: brl(r.ownerPayment), color: "#e11d48" }, { label: "Receita ESA", value: brl(r.esaRevenue), color: "#00875a" },
           ];
           drillVals.drillHasSection = true;
           drillVals.drillSectionLabel = "Beneficiárias vinculadas";
-          drillVals.drillList2 = r.rows.map((row) => ({ name: row.ub.name, value: kwh(row.compensated) }));
+          drillVals.drillList2 = (r.rows || []).map((row) => ({ name: row.ub ? row.ub.name : "—", value: kwh(row.compensated) }));
           drillVals.drillHasActions = true;
           drillVals.drillActions = [actBtn("Abrir cadastro", () => this.setState({ view: "ug", drill: null })), actBtn("Apurar mês", () => this.setState({ view: "apuracao", apUgId: r.ug.id, drill: null }), true), actBtn("Gerar relatório", () => this.setState({ view: "relatorios", drill: null }), true)];
         }
       } else if (drill.kind === "ub") {
         let found = null;
-        results.forEach((r) => r.rows.forEach((row) => { if (row.ub.id === drill.id) found = { row, ug: r.ug }; }));
+        results.forEach((r) => (r.rows || []).forEach((row) => { if (row.ub && row.ub.id === drill.id) found = { row, ug: r.ug }; }));
         if (found) {
           const row = found.row;
           const pill = this.statusPill(row.ub.paymentStatus);
@@ -5584,6 +5585,7 @@ class Component extends DCLogic {
   }
 
   componentDidUpdate(prevProps, prevState) {
+    prevState = prevState || {};
     if (this.state._rtMode !== "real") return;
     const monthChanged = this.state.dashMonth !== prevState.dashMonth;
     const ugChanged = this.state.ugFilter !== prevState.ugFilter;
