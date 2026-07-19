@@ -1,0 +1,60 @@
+{
+  "meta": {
+    "tool": "migrate-energy-credits-to-organization.js",
+    "gate": "8C",
+    "mode": "dry-run",
+    "timestamp": "2026-07-19T15:36:37.587Z",
+    "maskedSourceUid": "PLAC****_ENV",
+    "targetOrganizationId": "PLACEHOLDER_ORG_ID_CONFIGURE_VIA_ENV",
+    "collectionsProcessed": [
+      "generatingUnits",
+      "beneficiaryUnits",
+      "generatingUnitMonthlyRecords",
+      "beneficiaryMonthlyRecords",
+      "creditAllocations",
+      "ownerSettlements",
+      "esaInvoices",
+      "monthlyReports",
+      "creditDocuments",
+      "creditAuditLog",
+      "beneficiaryCreditBalanceRecords",
+      "utilityBillImports"
+    ]
+  },
+  "source": {
+    "maskedUid": "PLAC****_ENV",
+    "userExists": false,
+    "firebaseUnavailable": true,
+    "collections": [],
+    "totalCount": 0,
+    "totalSizeBytes": 0,
+    "sourceHash": ""
+  },
+  "destination": {
+    "organizationId": "PLACEHOLDER_ORG_ID_CONFIGURE_VIA_ENV",
+    "hasOperationalData": false,
+    "collections": [],
+    "totalCount": 0
+  },
+  "references": [],
+  "projectedTransformations": [],
+  "classification": "DRY_RUN_BLOCKED",
+  "blockers": [
+    "Firebase indisponível: FIREBASE_SERVICE_ACCOUNT_JSON não configurada"
+  ],
+  "warnings": [],
+  "risks": [
+    "Dados legados sem campo version serão criados com version=1 na org path",
+    "organizationId será sobrescrito pelo targetOrganizationId",
+    "Timestamps originais serão preservados",
+    "IDs preservados — sem risco de colisão se destino estiver vazio"
+  ],
+  "backupPlan": {
+    "note": "Backup será executado no Gate 8D antes da cópia real",
+    "sourcePath": "users/PLAC****_ENV/energyCredits/",
+    "destinationPath": "organizations/PLACEHOLDER_ORG_ID_CONFIGURE_VIA_ENV/energyCredits/",
+    "retentionDays": 30,
+    "verificationCommand": "node scripts/verify-migration-backup.js --hash-file backup-hashes.json"
+  },
+  "recommendation": "Configure FIREBASE_SERVICE_ACCOUNT_JSON e re-execute o dry-run."
+}
