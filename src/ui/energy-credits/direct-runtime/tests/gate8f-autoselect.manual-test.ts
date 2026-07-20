@@ -44,12 +44,12 @@ assert('AS01 Object.entries usado em loadMemberships',
   orgCtxSrc.includes('Object.entries(raw)'));
 assert('AS02 Fallback: m.organizationId || key',
   orgCtxSrc.includes('m.organizationId || key'));
-assert('AS03 Filtro por status active mantido',
-  orgCtxSrc.includes("m.status === 'active'"));
+assert('AS03 Filtro por status active mantido (classifyMembership, pós diagnóstico Gate 8H)',
+  orgCtxSrc.includes("m.status !== 'active'") && orgCtxSrc.includes("reason: 'membership_inactive'"));
 assert('AS04 Filtro por organizationId mantido',
   orgCtxSrc.includes('m.organizationId'));
 assert('AS05 Guarda contra m nulo (typeof check ou conditional spread)',
-  orgCtxSrc.includes('typeof m === \'object\'') || orgCtxSrc.includes("typeof m === \"object\""));
+  orgCtxSrc.includes("typeof m !== 'object'") || orgCtxSrc.includes('typeof m === \'object\'') || orgCtxSrc.includes("typeof m === \"object\""));
 
 // ── Suite 2: organizationContextResolver.ts — auto-seleção ───────────────────
 
@@ -128,14 +128,14 @@ console.log('\nSuite AS5 — organization-context.js comportamento esperado (an�
 
 assert('AS34 buildSingleUserContext retorna availableOrganizations: []',
   orgCtxSrc.includes('availableOrganizations: []'));
-assert('AS35 loadOrganization ainda presente',
-  orgCtxSrc.includes('function loadOrganization'));
+assert('AS35 organização é carregada e validada (enrichMembershipsWithOrganizations, pós diagnóstico Gate 8H)',
+  orgCtxSrc.includes('function enrichMembershipsWithOrganizations'));
 assert('AS36 ROLE_PERMISSIONS inclui organization.members.manage para owner',
   orgCtxSrc.includes("organization.members.manage'") && orgCtxSrc.includes('owner:'));
-assert('AS37 loadMemberships usa key como fallback via map+filter',
-  orgCtxSrc.includes('.map(([key, m])') || orgCtxSrc.includes('.map(([key,m]'));
+assert('AS37 loadMemberships usa key como fallback (classifyMembership, pós diagnóstico Gate 8H)',
+  orgCtxSrc.includes('function classifyMembership') && orgCtxSrc.includes('m.organizationId || key'));
 assert('AS38 Fallback não quebra records nulos (conditional)',
-  orgCtxSrc.includes('m && typeof m') || orgCtxSrc.includes('m &&'));
+  orgCtxSrc.includes('!m || typeof m !== \'object\''));
 
 // ── Relatório ─────────────────────────────────────────────────────────────────
 

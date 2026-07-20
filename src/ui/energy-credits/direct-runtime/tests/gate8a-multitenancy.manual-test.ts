@@ -137,7 +137,7 @@ assert('permissões calculadas pelo backend (ROLE_PERMISSIONS)',
 assert('organização inativa retorna 403',
   orgCtxFnSrc.includes("org.status !== 'active'") && orgCtxFnSrc.includes('403'));
 assert('membership inativo não autoriza acesso',
-  orgCtxFnSrc.includes("status === 'active'"));
+  orgCtxFnSrc.includes("status !== 'active'") || orgCtxFnSrc.includes("status === 'active'"));
 assert('sem role ou permissions confiadas do browser',
   !orgCtxFnSrc.includes('body.role') && !orgCtxFnSrc.includes('body.permissions'));
 assert('cross-tenant: organizationId do body validado contra memberships',

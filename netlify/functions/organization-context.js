@@ -8,8 +8,14 @@
 //   4. Com memberships → valida org selecionada, status, role
 //   5. Permissões calculadas NO BACKEND a partir da role — nunca do browser
 //   6. Cross-tenant bloqueado por design (uid do token !== organizationId livre)
+//
+// Diagnóstico temporário (produção retornando single-user com dados confirmados
+// no Firebase): instrumentação segura via console.info + campo `diagnostics`
+// opcional no response, habilitado apenas com ORGANIZATION_CONTEXT_DIAGNOSTICS=true.
+// Remover esta instrumentação assim que a causa raiz em produção for confirmada.
 
-const { getDatabase } = require('./_shared/firebase-admin');
+const crypto = require('crypto');
+const { getDatabase, getDatabaseHost, getProjectId } = require('./_shared/firebase-admin');
 const { verifyToken } = require('./_shared/upload-session');
 
 // Matriz de permissões espelhada do permissionMatrix.ts — fonte de verdade no backend
@@ -43,22 +49,119 @@ function buildSingleUserContext(uid) {
   };
 }
 
-async function loadMemberships(db, uid) {
-  const snap = await db.ref(`users/${uid}/memberships`).once('value');
-  const raw = snap.val() || {};
-  // Use the Firebase key as fallback for organizationId in case the field
-  // was not written into the record value (e.g. records created before Gate 8F).
-  return Object.entries(raw)
-    .map(([key, m]) => (m && typeof m === 'object' ? { ...m, organizationId: m.organizationId || key } : null))
-    .filter(m => m && m.status === 'active' && m.organizationId);
+// ── Diagnóstico temporário — helpers seguros (sem PII/segredos) ─────────────
+
+function newRequestId() {
+  try { return crypto.randomUUID(); } catch { return `rid_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`; }
 }
 
-async function loadOrganization(db, orgId) {
-  const snap = await db.ref(`organizations/${orgId}`).once('value');
-  return snap.val();
+function maskUid(uid) {
+  if (!uid) return '(vazio)';
+  if (uid.length <= 4) return '*'.repeat(uid.length);
+  return `${uid.slice(0, 2)}***${uid.slice(-2)}`;
+}
+
+function maskKey(key) {
+  if (!key) return '(vazio)';
+  return key.length > 8 ? `${key.slice(0, 8)}…` : key;
+}
+
+function diagnosticsEnabled() {
+  return process.env.ORGANIZATION_CONTEXT_DIAGNOSTICS === 'true';
+}
+
+function logDiagnostics(requestId, diag) {
+  // Nunca inclui token, private_key, ou payload/uid completo — apenas contadores e chaves mascaradas.
+  try {
+    console.info('[organization-context][diag]', JSON.stringify({ requestId, ...diag }));
+  } catch {
+    // logging nunca deve derrubar a request
+  }
+}
+
+function classifyMembership(key, m) {
+  if (!m || typeof m !== 'object') return { organizationId: null, reason: 'invalid_shape' };
+  const organizationId = m.organizationId || key;
+  if (!organizationId) return { organizationId: null, reason: 'missing_organization_id' };
+  if (m.status !== 'active') return { organizationId, reason: 'membership_inactive' };
+  return { organizationId, reason: null, membership: { ...m, organizationId } };
+}
+
+// Lê users/{uid}/memberships explicitamente; organizationId = membership.organizationId || child.key
+// (cobre records criados antes do Gate 8F, quando o campo organizationId não era gravado no valor).
+async function loadMembershipsWithDiagnostics(db, uid, diag) {
+  const path = `users/${uid}/memberships`;
+  diag.membershipPath = 'users/{uid}/memberships'; // path com uid mascarado — nunca o path real completo
+  const snap = await db.ref(path).once('value');
+  diag.userMembershipsSnapshotExists = snap.exists();
+  const raw = snap.val() || {};
+  const rawEntries = Object.entries(raw);
+  diag.rawMembershipCount = rawEntries.length;
+
+  const normalized = [];
+  const discarded = [];
+  for (const [key, m] of rawEntries) {
+    const c = classifyMembership(key, m);
+    if (c.reason) {
+      discarded.push({ key: maskKey(key), reason: c.reason });
+      continue;
+    }
+    normalized.push(c.membership);
+  }
+  diag.normalizedMembershipCount = normalized.length;
+  diag.discardedMemberships = discarded;
+  return normalized;
+}
+
+// Para cada membership normalizado (status ativo), carrega a organização correspondente
+// e confirma o caminho reverso organizations/{orgId}/members/{uid}. O caminho reverso é
+// só para diagnóstico de inconsistência dual-path — nunca é usado como fallback de autorização.
+async function enrichMembershipsWithOrganizations(db, uid, normalized, diag) {
+  const results = await Promise.all(normalized.map(async (m) => {
+    let orgData = null;
+    let orgReadFailed = false;
+    try {
+      const orgSnap = await db.ref(`organizations/${m.organizationId}`).once('value');
+      orgData = orgSnap.val();
+    } catch {
+      orgReadFailed = true;
+    }
+
+    let reverseExists = null;
+    try {
+      const revSnap = await db.ref(`organizations/${m.organizationId}/members/${uid}`).once('value');
+      reverseExists = revSnap.exists();
+    } catch {
+      reverseExists = null; // leitura reversa falhou — não bloqueia o fluxo principal
+    }
+
+    let reason = null;
+    if (orgReadFailed) reason = 'organization_context_failed';
+    else if (!orgData) reason = 'organization_not_found';
+    else if (orgData.status !== 'active') reason = 'organization_inactive';
+
+    return { membership: m, orgData, reverseExists, reason };
+  }));
+
+  diag.activeMembershipCount = results.filter((r) => !r.reason).length;
+  for (const r of results) {
+    if (r.reason) diag.discardedMemberships.push({ key: maskKey(r.membership.organizationId), reason: r.reason });
+    // Inconsistência dual-path: users/{uid}/memberships existe mas organizations/{orgId}/members/{uid} não.
+    // Registrada apenas como sinal de diagnóstico — nunca usada para autorizar ou negar acesso.
+    if (r.reverseExists === false) {
+      console.warn('[organization-context][dual_path_inconsistency]', JSON.stringify({
+        orgId: maskKey(r.membership.organizationId),
+        uid: maskUid(uid),
+        note: 'users/{uid}/memberships existe mas organizations/{orgId}/members/{uid} não foi encontrado',
+      }));
+    }
+  }
+  return results;
 }
 
 exports.handler = async function (event) {
+  const requestId = newRequestId();
+
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: JSON.stringify({ error: 'Método não permitido' }) };
   }
@@ -79,26 +182,52 @@ exports.handler = async function (event) {
   // uid SOMENTE do token — nunca do body
   const { uid } = payload;
 
+  const diag = {};
   let db;
-  try { db = getDatabase(); } catch {
+  try {
+    db = getDatabase();
+    diag.serviceAccountProjectId = getProjectId();
+    diag.databaseHost = getDatabaseHost();
+  } catch (e) {
+    logDiagnostics(requestId, { ...diag, fatal: 'firebase_init_failed' });
     return { statusCode: 500, body: JSON.stringify({ error: 'Erro de configuração do servidor' }) };
   }
 
   let activeMemberships;
   try {
-    activeMemberships = await loadMemberships(db, uid);
+    activeMemberships = await loadMembershipsWithDiagnostics(db, uid, diag);
   } catch {
+    logDiagnostics(requestId, { ...diag, uid: maskUid(uid), fatal: 'memberships_read_failed' });
     return { statusCode: 500, body: JSON.stringify({ error: 'Erro ao acessar banco de dados' }) };
   }
 
   // Sem memberships → fallback single-user (compatibilidade Gate 7)
   if (activeMemberships.length === 0) {
+    diag.activeMembershipCount = 0;
+    diag.resolvedTenancyMode = 'single-user';
+    logDiagnostics(requestId, { ...diag, uid: maskUid(uid) });
     return {
       statusCode: 200,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ok: true, data: buildSingleUserContext(uid) }),
+      body: JSON.stringify({
+        ok: true,
+        data: buildSingleUserContext(uid),
+        ...(diagnosticsEnabled() ? {
+          diagnostics: {
+            projectId: diag.serviceAccountProjectId,
+            databaseHost: diag.databaseHost,
+            userMembershipsExists: diag.userMembershipsSnapshotExists,
+            rawMembershipCount: diag.rawMembershipCount,
+            normalizedMembershipCount: diag.normalizedMembershipCount,
+            activeMembershipCount: diag.activeMembershipCount,
+          },
+        } : {}),
+      }),
     };
   }
+
+  // Enriquece com dados de organização (existência/status) + checagem dual-path
+  const enriched = await enrichMembershipsWithOrganizations(db, uid, activeMemberships, diag);
 
   // Determinar organização solicitada
   let requestedOrgId = null;
@@ -112,20 +241,22 @@ exports.handler = async function (event) {
     : activeMemberships[0];
 
   if (!membership) {
+    diag.resolvedTenancyMode = 'error:organization_invalid';
+    logDiagnostics(requestId, { ...diag, uid: maskUid(uid) });
     return { statusCode: 403, body: JSON.stringify({ error: 'Organização não autorizada para este usuário', code: 'organization_invalid' }) };
   }
 
-  let org;
-  try {
-    org = await loadOrganization(db, membership.organizationId);
-  } catch {
-    return { statusCode: 500, body: JSON.stringify({ error: 'Erro ao acessar organização', code: 'organization_context_failed' }) };
-  }
+  const selected = enriched.find(r => r.membership.organizationId === membership.organizationId);
+  const org = selected ? selected.orgData : null;
 
   if (!org) {
+    diag.resolvedTenancyMode = 'error:organization_invalid';
+    logDiagnostics(requestId, { ...diag, uid: maskUid(uid) });
     return { statusCode: 403, body: JSON.stringify({ error: 'Organização não encontrada', code: 'organization_invalid' }) };
   }
   if (org.status !== 'active') {
+    diag.resolvedTenancyMode = 'error:organization_inactive';
+    logDiagnostics(requestId, { ...diag, uid: maskUid(uid) });
     return { statusCode: 403, body: JSON.stringify({ error: 'Organização inativa. Contacte o administrador.', code: 'organization_inactive' }) };
   }
 
@@ -133,18 +264,16 @@ exports.handler = async function (event) {
   const role = membership.role;
   const permissions = ROLE_PERMISSIONS[role] || [];
 
-  // Carrega nomes das organizações disponíveis em paralelo (Gate 8B)
-  const availableOrganizations = await Promise.all(
-    activeMemberships.map(async m => {
-      try {
-        const orgSnap = await db.ref(`organizations/${m.organizationId}`).once('value');
-        const orgData = orgSnap.val();
-        return { id: m.organizationId, name: orgData?.name || '', role: m.role };
-      } catch {
-        return { id: m.organizationId, name: '', role: m.role };
-      }
-    }),
-  );
+  // availableOrganizations reaproveita os dados já carregados em enrichMembershipsWithOrganizations
+  // (evita uma segunda leitura por organização) — mantém o mesmo formato de antes (Gate 8B).
+  const availableOrganizations = enriched.map(r => ({
+    id: r.membership.organizationId,
+    name: r.orgData?.name || '',
+    role: r.membership.role,
+  }));
+
+  diag.resolvedTenancyMode = 'organization';
+  logDiagnostics(requestId, { ...diag, uid: maskUid(uid) });
 
   return {
     statusCode: 200,
@@ -160,6 +289,27 @@ exports.handler = async function (event) {
         permissions,
         availableOrganizations,
       },
+      ...(diagnosticsEnabled() ? {
+        diagnostics: {
+          projectId: diag.serviceAccountProjectId,
+          databaseHost: diag.databaseHost,
+          userMembershipsExists: diag.userMembershipsSnapshotExists,
+          rawMembershipCount: diag.rawMembershipCount,
+          normalizedMembershipCount: diag.normalizedMembershipCount,
+          activeMembershipCount: diag.activeMembershipCount,
+        },
+      } : {}),
     }),
   };
 };
+
+// Exportado apenas para testes (funções puras — nenhuma delas expõe segredos).
+// exports.handler continua sendo o único ponto de entrada usado pelo Netlify.
+module.exports.classifyMembership = classifyMembership;
+module.exports.maskUid = maskUid;
+module.exports.maskKey = maskKey;
+module.exports.diagnosticsEnabled = diagnosticsEnabled;
+module.exports.buildSingleUserContext = buildSingleUserContext;
+module.exports.loadMembershipsWithDiagnostics = loadMembershipsWithDiagnostics;
+module.exports.enrichMembershipsWithOrganizations = enrichMembershipsWithOrganizations;
+module.exports.ROLE_PERMISSIONS = ROLE_PERMISSIONS;
