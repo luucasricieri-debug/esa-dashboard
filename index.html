@@ -850,6 +850,32 @@ async function fbDelete(path) {
   await fetch(DB+'/'+path+'.json',{method:'DELETE'});
 }
 
+// Campos de perfil permitidos em users/{uid} — nunca inclui subtrees pertencentes
+// a outros fluxos (memberships é gerido por organization-members.js / Gate 8F;
+// energyCredits é gerido por energy-credits-data.js). Toda escrita de perfil de
+// usuário deve passar por aqui: usa PATCH (merge raso), nunca PUT/set() no node
+// inteiro, preservando qualquer subtree existente que não esteja na whitelist.
+var USER_PROFILE_ALLOWED_FIELDS=['uid','name','login','passHash','level','gestor','cargo','createdAt','createdBy','updatedAt'];
+var USER_PROFILE_PROTECTED_FIELDS=['memberships','energyCredits','organizationId','permissions','sessionToken'];
+async function safeUpdateUserProfile(uid, fields){
+  if(!uid||typeof uid!=='string'||!/^[A-Za-z0-9_.-]+$/.test(uid)){
+    throw new Error('safeUpdateUserProfile: uid invalido');
+  }
+  var safeFields={};
+  var keys=Object.keys(fields||{});
+  for(var i=0;i<keys.length;i++){
+    var key=keys[i];
+    if(USER_PROFILE_PROTECTED_FIELDS.indexOf(key)!==-1){
+      throw new Error('safeUpdateUserProfile: campo protegido "'+key+'" nao pode ser gravado por este helper');
+    }
+    if(USER_PROFILE_ALLOWED_FIELDS.indexOf(key)===-1){
+      throw new Error('safeUpdateUserProfile: campo "'+key+'" nao esta na whitelist de perfil de usuario');
+    }
+    safeFields[key]=fields[key];
+  }
+  return fbPatch('users/'+uid, safeFields);
+}
+
 function setPill(s,t){
   const p=document.getElementById('sync-pill'),tx=document.getElementById('sync-txt');
   p.className='sync-pill '+s; tx.textContent=t||(s==='ok'?'Conectado':s==='err'?'Erro':'...');
@@ -870,8 +896,11 @@ async function boot() {
     // Hash de Luizfelippe2009 (SHA-256)
     const DIRECTOR_HASH = '2ef2838a7f98c7f70647a46e09a367dc206bece9981774f3fd66233f1fa2a3c4';
     const dirKey = 'lucas_vizentin';
-    // Sempre garante que o diretor existe com as credenciais corretas
-    await fbSet('users/'+dirKey, {
+    // Garante que o diretor existe com as credenciais corretas — PATCH (merge raso)
+    // via safeUpdateUserProfile, nunca PUT/set() no node inteiro. boot() roda em
+    // toda abertura do app (antes do login); um set() completo aqui apagava
+    // users/{uid}/memberships e users/{uid}/energyCredits a cada carregamento.
+    await safeUpdateUserProfile(dirKey, {
       uid: dirKey,
       name: 'Lucas Vizentin',
       login: 'lucas.vizentin',
@@ -885,7 +914,7 @@ async function boot() {
     try {
       const allU = await fbGet('users') || {};
       const jakUser = Object.values(allU).find(function(u){ return u.login === 'jaqueline.demarchi' && u.level === 'jackeline'; });
-      if(jakUser) await fbPatch('users/' + jakUser.uid, {level:'executivo'});
+      if(jakUser) await safeUpdateUserProfile(jakUser.uid, {level:'executivo'});
     } catch(e){}
     setPill('ok','Pronto');
   } catch(e){ setPill('err','Erro: '+e.message); }
@@ -5562,7 +5591,7 @@ async function saveUser(){
   try{
     var uid=safeKey(login)+'_'+Date.now().toString(36);
     var gestorId=CU.level==='gestor'?CU.uid:(document.getElementById('cu-gestor').value||null);
-    await fbSet('users/'+uid,{uid,name,login,passHash:await hashPass(pass),level,gestor:gestorId,createdAt:Date.now(),createdBy:CU.uid});
+    await safeUpdateUserProfile(uid,{uid,name,login,passHash:await hashPass(pass),level,gestor:gestorId,createdAt:Date.now(),createdBy:CU.uid});
     showToast('Usuario criado: '+name);closeModal('modal-create-user');await loadAllData();renderUsuarios(document.getElementById('content'));
   }catch(e){errEl.textContent='Erro: '+e.message;}
   btn.disabled=false;btn.textContent='Criar usuario';
@@ -5581,7 +5610,7 @@ async function saveEditUser(){
   try{
     var updates={name,level};if(cargo)updates.cargo=cargo;
     if(pass){if(pass.length<6){errEl.textContent='Minimo 6 caracteres.';return;}updates.passHash=await hashPass(pass);}
-    await fbPatch('users/'+uid,updates);showToast('Usuario atualizado!');closeModal('modal-edit-user');await loadAllData();renderUsuarios(document.getElementById('content'));
+    await safeUpdateUserProfile(uid,updates);showToast('Usuario atualizado!');closeModal('modal-edit-user');await loadAllData();renderUsuarios(document.getElementById('content'));
   }catch(e){errEl.textContent='Erro: '+e.message;}
 }
 async function deleteUser(uid,name){
@@ -5591,7 +5620,7 @@ async function deleteUser(uid,name){
 }
 async function resetPass(uid,name){
   var nova=prompt('Nova senha para '+name+' (min 6):');if(!nova||nova.length<6){showToast('Min 6 caracteres',false);return;}
-  try{await fbPatch('users/'+uid,{passHash:await hashPass(nova)});showToast('Senha redefinida para '+name);}catch(e){showToast('Erro: '+e.message,false);}
+  try{await safeUpdateUserProfile(uid,{passHash:await hashPass(nova)});showToast('Senha redefinida para '+name);}catch(e){showToast('Erro: '+e.message,false);}
 }
 
 // MINHA CONTA
@@ -5614,7 +5643,7 @@ async function saveChangePass(){
   if(nova.length<6){errEl.textContent='Minimo 6 caracteres.';return;}
   if(nova!==conf){errEl.textContent='Senhas nao coincidem.';return;}
   if(await hashPass(old)!==CU.passHash){errEl.textContent='Senha atual incorreta.';return;}
-  try{var h=await hashPass(nova);await fbPatch('users/'+CU.uid,{passHash:h});CU.passHash=h;showToast('Senha alterada!');closeModal('modal-change-pass');}
+  try{var h=await hashPass(nova);await safeUpdateUserProfile(CU.uid,{passHash:h});CU.passHash=h;showToast('Senha alterada!');closeModal('modal-change-pass');}
   catch(e){errEl.textContent='Erro: '+e.message;}
 }
 
