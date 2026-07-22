@@ -694,6 +694,7 @@ body.esa-energy-credits-active #esa-energy-credits-react-root{
 
 <div class="toast" id="toast"></div>
 
+<script src="/assets/performance-goals.js"></script>
 <script>
 // // CONFIG
 const DB = 'https://agenda-executiva-esa-default-rtdb.firebaseio.com';
@@ -758,17 +759,27 @@ const ROLE_LABELS = {
 };
 
 // Metas por cargo
+// Dias úteis (seg-sex) do mês corrente — usado para derivar a meta mensal de
+// Leads Qualificados a partir da meta diária (0,5/dia), sem hardcodar 22 dias.
+function _currentMonthBusinessDays(){
+  var now=new Date(), y=now.getFullYear(), m=now.getMonth();
+  var start=new Date(y,m,1), end=new Date(y,m+1,0);
+  function iso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+  return ESAPerformanceGoals.countBusinessDays(iso(start), iso(end));
+}
+const DAILY_QUALIFIED_LEADS_GOAL = 0.5;
 const METAS = {
   executivo:{
     diaria:[
-      {id:'novos_clientes', label:'Novos Clientes',           meta:5},
-      {id:'interacao',      label:'Interação Comercial',      meta:10},
-      {id:'atendimentos',   label:'Atendimentos Realizados',  meta:2},
+      {id:'novos_clientes',       label:'Novos Clientes',           meta:5},
+      {id:'interacao',            label:'Interação Comercial',      meta:10},
+      {id:'leads_qualificados_diario', label:'Leads Qualificados',  meta:DAILY_QUALIFIED_LEADS_GOAL},
+      {id:'atendimentos',         label:'Atendimentos Realizados',  meta:2},
     ],
     mensal:[
-      {id:'prosp_mensal',       label:'Prospecções',          meta:100},
-      {id:'leads_qualificados', label:'Leads Qualificados',   meta:10},
-      {id:'atend_mensal',       label:'Atendimentos',         meta:40},
+      {id:'prosp_mensal',       label:'Novos Clientes',       meta:100},
+      {id:'leads_qualificados', label:'Leads Qualificados',   meta:ESAPerformanceGoals.computeMonthlyGoalFromDaily(DAILY_QUALIFIED_LEADS_GOAL,_currentMonthBusinessDays())},
+      {id:'atend_mensal',       label:'Atendimentos Realizados', meta:40},
       {id:'contratos',          label:'Contratos Fechados',   meta:0},
       {id:'vendas',             label:'Vendas (R$)',          meta:0},
       {id:'vendas_mensal',      label:'Meta de Vendas (R$)',  meta:200000},
@@ -2049,6 +2060,15 @@ function countMeta(list,id,_uid,_uName){
       return _dt.getMonth()===_now1.getMonth()&&_dt.getFullYear()===_now1.getFullYear();
     }).length;
   }
+  if(id==='leads_qualificados_diario'){
+    var _selDay=window._metaDataSel?new Date(window._metaDataSel+'T00:00:00'):new Date();
+    _selDay.setHours(0,0,0,0);
+    return Object.values(crmDeals||{}).filter(function(d){
+      if(!d||d.captadorUid!==_eu||d.funil!=='venda_ufv') return false;
+      var _dt=new Date(d.createdAt||d.ts||0); _dt.setHours(0,0,0,0);
+      return _dt.getTime()===_selDay.getTime();
+    }).length;
+  }
   if(id==='contratos'){
     var _now2=new Date();
     var _etapasAssGD=['Conclusão da GD','Início do faturamento'];
@@ -2155,8 +2175,11 @@ function metaRow(m,real,meta){
   const lbl=pct>=100?'✓ Meta atingida':pct>=60?'Em andamento':'Abaixo da meta';
   const _isBRL=m.id==='vendas'||m.id==='vendas_mensal'||m.id==='vendas_empresa'||m.id==='vendas_gestao'||m.id==='vendas_pessoais';
   const _isKWH=m.id==='kwh_assinatura'||m.id==='kwh_exec';
-  const displayReal=_isBRL?Number(real).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:0}):_isKWH?Number(real).toLocaleString('pt-BR')+' kWh':real;
-  const displayMeta=_isBRL?(meta>0?Number(meta).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:0}):'—'):_isKWH?(meta>0?Number(meta).toLocaleString('pt-BR')+' kWh':'—'):meta;
+  // Formatação pt-BR (vírgula decimal) — preserva precisão de metas fracionárias
+  // (ex.: Leads Qualificados = 0,5/dia) em vez de imprimir o número cru com ponto.
+  const _fmtNum=v=>(typeof v==='number'&&isFinite(v))?v.toLocaleString('pt-BR',{maximumFractionDigits:2}):v;
+  const displayReal=_isBRL?Number(real).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:0}):_isKWH?Number(real).toLocaleString('pt-BR')+' kWh':_fmtNum(real);
+  const displayMeta=_isBRL?(meta>0?Number(meta).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:0,maximumFractionDigits:0}):'—'):_isKWH?(meta>0?Number(meta).toLocaleString('pt-BR')+' kWh':'—'):_fmtNum(meta);
   return `<tr><td style="font-weight:500">${m.label}</td>
   <td style="font-family:DM Mono,monospace;font-weight:600">${displayReal}</td>
   <td style="font-family:DM Mono,monospace;color:var(--gr)">${displayMeta}</td>
@@ -2713,6 +2736,86 @@ async function renderRelCharts(){
   });
   html+='</tbody></table></div>';
 
+  // ── BLOCO PERCENTUAL MÉDIO DA META — visível apenas para Lucas Vizentin e
+  // Fernando Fadel. Este check no cliente é só a primeira camada (esconder a
+  // seção); a autorização real é sempre validada de novo no backend
+  // (reports-performance-goal-average.js), que nunca confia no uid do body —
+  // só no uid extraído do sessionToken verificado. Ver
+  // netlify/functions/_shared/reports-permissions.js (fonte da verdade).
+  var PERFORMANCE_GOAL_AVERAGE_AUTHORIZED_UIDS=['lucas_vizentin','fernando_fadel_mphd4rj6'];
+  if(PERFORMANCE_GOAL_AVERAGE_AUTHORIZED_UIDS.indexOf(CU.uid)>=0){
+    var _pgaMetaOf=function(id){
+      var m=(METAS.executivo.diaria||[]).find(function(x){return x.id===id;});
+      return m?m.meta:undefined;
+    };
+    var _pgaRowsHtml='';
+    for(var _pgaI=0;_pgaI<selUids.length;_pgaI++){
+      var _pgaUid=selUids[_pgaI];
+      var _pgaUser=allUsers[_pgaUid]; if(!_pgaUser) continue;
+      var _pgaIsExec=_pgaUser.level==='executivo';
+      var _pgaDays=dates.map(function(dt){
+        if(!_pgaIsExec) return {date:dt, newClients:{}, qualifiedLeads:{}, completedAttendances:{}};
+        return {
+          date:dt,
+          newClients:{realizado:countMetaFor(_pgaUid,byUD[_pgaUid][dt]||[],'novos_clientes',dt), meta:_pgaMetaOf('novos_clientes')},
+          qualifiedLeads:{realizado:countMetaFor(_pgaUid,[],'leads_qualificados_diario',dt), meta:_pgaMetaOf('leads_qualificados_diario')},
+          completedAttendances:{realizado:countMetaFor(_pgaUid,[],'atendimentos',dt), meta:_pgaMetaOf('atendimentos')},
+        };
+      });
+      var _pgaResp=null, _pgaErrCode=null;
+      try{
+        var _pgaAttempt=await authenticatedFetch('/.netlify/functions/reports-performance-goal-average', function(token){
+          return {sessionToken:token, days:_pgaDays};
+        });
+        if(_pgaAttempt.ok) _pgaResp=await _pgaAttempt.res.json();
+        else _pgaErrCode=_pgaAttempt.code;
+      }catch(e){ _pgaErrCode='upload_failed'; }
+
+      var _pgaTotals={newClients:{r:0,m:0},qualifiedLeads:{r:0,m:0},completedAttendances:{r:0,m:0}};
+      _pgaDays.forEach(function(d){
+        ['newClients','qualifiedLeads','completedAttendances'].forEach(function(k){
+          var entry=d[k]||{};
+          if(typeof entry.meta==='number'&&entry.meta>0){
+            _pgaTotals[k].r+=(typeof entry.realizado==='number'?entry.realizado:0);
+            _pgaTotals[k].m+=entry.meta;
+          }
+        });
+      });
+      function _pgaPct(tot){
+        if(tot.m<=0) return null;
+        return Math.min(100, Math.round((tot.r/tot.m)*10000)/100);
+      }
+      var _fmtPct=function(v){return v===null?'Meta não configurada':_fmtNumPga(v)+'%';};
+      var _fmtNumPga=function(v){return (typeof v==='number'&&isFinite(v))?v.toLocaleString('pt-BR',{maximumFractionDigits:2}):v;};
+
+      if(!_pgaResp){
+        _pgaRowsHtml+='<tr style="border-top:1px solid #F0EDE8"><td style="padding:9px 14px;font-weight:600">'+_pgaUser.name+'</td>'
+          +'<td colspan="4" style="padding:9px 8px;text-align:center;color:#C0392B">Não foi possível calcular ('+(_pgaErrCode||'erro')+')</td></tr>';
+        continue;
+      }
+
+      var _pgaAvg=_pgaResp.periodGoalAveragePercentage;
+      var _pgaAvgLbl=(_pgaAvg===null||_pgaAvg===undefined)?'Meta não configurada':_fmtNumPga(_pgaAvg)+'%';
+      var _ncTot=_pgaTotals.newClients, _qlTot=_pgaTotals.qualifiedLeads, _caTot=_pgaTotals.completedAttendances;
+      _pgaRowsHtml+='<tr style="border-top:1px solid #F0EDE8">'
+        +'<td style="padding:9px 14px;font-weight:600">'+_pgaUser.name+'<div style="font-size:10px;color:var(--gr);font-weight:400">'+(_pgaResp.validDaysCount||0)+' dia(s) considerado(s)</div></td>'
+        +'<td style="padding:9px 8px;text-align:center;font-weight:700">'+_pgaAvgLbl+'</td>'
+        +'<td style="padding:9px 8px;text-align:center"><div style="font-weight:600">'+_ncTot.r+' / '+_fmtNumPga(_ncTot.m)+'</div><div style="font-size:10px;color:var(--gr)">'+_fmtPct(_pgaPct(_ncTot))+'</div></td>'
+        +'<td style="padding:9px 8px;text-align:center"><div style="font-weight:600">'+_qlTot.r+' / '+_fmtNumPga(_qlTot.m)+'</div><div style="font-size:10px;color:var(--gr)">'+_fmtPct(_pgaPct(_qlTot))+'</div></td>'
+        +'<td style="padding:9px 8px;text-align:center"><div style="font-weight:600">'+_caTot.r+' / '+_fmtNumPga(_caTot.m)+'</div><div style="font-size:10px;color:var(--gr)">'+_fmtPct(_pgaPct(_caTot))+'</div></td>'
+        +'</tr>';
+    }
+    html+='<div style="font-size:11px;font-weight:700;color:#0D2418;letter-spacing:.8px;text-transform:uppercase;margin-bottom:10px;margin-top:24px">Percentual médio da meta</div>';
+    html+='<div style="background:#fff;border:1px solid #E8E4DC;border-radius:10px;overflow-x:auto;margin-bottom:20px"><table style="width:100%;border-collapse:collapse;font-size:12px">';
+    html+='<thead><tr style="background:#0D2418;color:#fff">'
+      +'<th style="padding:10px 14px;text-align:left;white-space:nowrap">Colaborador (período: '+dates[0]+' a '+dates[dates.length-1]+')</th>'
+      +'<th style="padding:10px 8px;text-align:center">Percentual médio da meta</th>'
+      +'<th style="padding:10px 8px;text-align:center">Novos Clientes (realizado/meta)</th>'
+      +'<th style="padding:10px 8px;text-align:center">Leads Qualificados (realizado/meta)</th>'
+      +'<th style="padding:10px 8px;text-align:center">Atendimentos Realizados (realizado/meta)</th>'
+      +'</tr></thead><tbody>'+_pgaRowsHtml+'</tbody></table></div>';
+  }
+
   // ── BLOCO ATIVIDADES: Atividades realizadas por colaborador no dia ────
   if(!window._relAtivDia) window._relAtivDia=todayStr;
   var ativDia=window._relAtivDia;
@@ -2744,10 +2847,14 @@ async function renderRelCharts(){
     html+='<tr style="border-top:1px solid #F0EDE8">'
       +'<td style="padding:9px 14px;font-weight:600">'+u.name+'<div style="font-size:10px;color:var(--gr);font-weight:400">'+(ROLE_LABELS[u.level]||u.level)+'</div></td>';
     if(u.level==='executivo'){
+      // Busca por id, nunca por posição — a inserção de Leads Qualificados no
+      // meio do array de METAS.executivo.diaria já quebrou uma referência
+      // posicional (dm[2]) que antes apontava para "atendimentos".
       var dm=METAS.executivo.diaria;
-      html+=ativCell('Novos Clientes',countMetaFor(uid,hjList,'novos_clientes',ativDia),dm[0].meta);
-      html+=ativCell('Interação Comercial',countMetaFor(uid,hjList,'interacao',ativDia),dm[1].meta);
-      html+=ativCell('Atendimentos Realizados',countMetaFor(uid,hjList,'atendimentos',ativDia),dm[2].meta);
+      var _metaById=function(id){var m=dm.find(function(x){return x.id===id;});return m?m.meta:0;};
+      html+=ativCell('Novos Clientes',countMetaFor(uid,hjList,'novos_clientes',ativDia),_metaById('novos_clientes'));
+      html+=ativCell('Interação Comercial',countMetaFor(uid,hjList,'interacao',ativDia),_metaById('interacao'));
+      html+=ativCell('Atendimentos Realizados',countMetaFor(uid,hjList,'atendimentos',ativDia),_metaById('atendimentos'));
     } else if(u.level==='sdr'){
       var dms=METAS.sdr.diaria;
       html+=ativCell('Prospecção',countMetaFor(uid,hjList,'prosp_sdr',ativDia),dms[0].meta);
