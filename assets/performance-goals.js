@@ -60,14 +60,29 @@
 
     ['leadsqualificados', 'qualifiedLeads'],
     ['leads_qualificados', 'qualifiedLeads'],
+    ['leads_qualificados_diario', 'qualifiedLeads'],
     ['qualifiedleads', 'qualifiedLeads'],
 
     ['atendimento', 'completedAttendances'],
     ['atendimentos', 'completedAttendances'],
+    ['atendimento_realizado', 'completedAttendances'],
+    ['atendimentos_realizados', 'completedAttendances'],
     ['atend_mensal', 'completedAttendances'],
     ['atendimentosrealizados', 'completedAttendances'],
     ['completedattendances', 'completedAttendances'],
   ];
+
+  // Mapeamento canônico → id legado usado em METAS (index.html). Os ids
+  // internos NUNCA foram renomeados quando os labels mudaram (Prospecções →
+  // Novos Clientes, Atendimentos → Atendimentos Realizados) — isso preserva
+  // 100% de compatibilidade com contadores/relatórios que dependem desses ids.
+  // Este mapeamento existe para que nenhum código precise hardcodar a string
+  // do id legado em múltiplos lugares — usar sempre esta fonte única.
+  var CANONICAL_TO_LEGACY_METAS_ID = {
+    newClients: { daily: 'novos_clientes', monthly: 'prosp_mensal' },
+    qualifiedLeads: { daily: 'leads_qualificados_diario', monthly: 'leads_qualificados' },
+    completedAttendances: { daily: 'atendimentos', monthly: 'atend_mensal' },
+  };
 
   var INDICATOR_ALIASES = {};
   ALIAS_PAIRS.forEach(function (pair) {
@@ -208,6 +223,7 @@
   return {
     PERFORMANCE_INDICATORS: PERFORMANCE_INDICATORS,
     INDICATOR_KEYS: INDICATOR_KEYS,
+    CANONICAL_TO_LEGACY_METAS_ID: CANONICAL_TO_LEGACY_METAS_ID,
     normalizeIndicatorKey: normalizeIndicatorKey,
     countBusinessDays: countBusinessDays,
     computeMonthlyGoalFromDaily: computeMonthlyGoalFromDaily,

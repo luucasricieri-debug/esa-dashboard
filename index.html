@@ -695,6 +695,7 @@ body.esa-energy-credits-active #esa-energy-credits-react-root{
 <div class="toast" id="toast"></div>
 
 <script src="/assets/performance-goals.js"></script>
+<script src="/assets/lead-origin.js"></script>
 <script>
 // // CONFIG
 const DB = 'https://agenda-executiva-esa-default-rtdb.firebaseio.com';
@@ -1963,6 +1964,39 @@ function crmEtapasContendo(funilKey,substr){
     return et.indexOf(substr)>=0||String(disp).indexOf(substr)>=0;
   });
 }
+// Meta kWh Assinatura — estágios elegíveis do funil "Assinatura de Energia".
+// Aceita variações de acentuação/capitalização (Conclusao da GD, conclusão da
+// gd, Inicio do Faturamento, Início de Faturamento) via normalização de acento
+// + minúsculas, sem depender de um match exato de string.
+var ASSINATURA_ELIGIBLE_STAGE_KEYS=['conclusaodagd','iniciodofaturamento','iniciodefaturamento'];
+function _stripStageKey(s){
+  return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]/g,'');
+}
+function isEligibleAssinaturaStage(etapa){
+  return ASSINATURA_ELIGIBLE_STAGE_KEYS.indexOf(_stripStageKey(etapa))>=0;
+}
+// Fonte única da soma de kWh Assinatura — evita duplicar a lógica (e o risco
+// de bugs como o de kwh_exec comparando d.captador/d.responsavel, campos que
+// nunca existem nos deals reais — o deal sempre grava captadorNome/
+// responsavelNome). Cálculo derivado do ESTADO ATUAL dos deals a cada chamada
+// (nunca incremento cumulativo): idempotente por construção — reabrir em duas
+// abas, salvar repetidamente, ou alternar entre os dois estágios elegíveis
+// nunca duplica, porque cada deal é somado no máximo uma vez por chamada,
+// usando sempre o valor de kwh e o estágio ATUAIS do registro.
+function _sumKwhAssinatura(filterFn){
+  var now=new Date(), sum=0;
+  Object.values(crmDeals||{}).forEach(function(d){
+    if(!d||d.funil!=='assinatura_energia') return;
+    if(!isEligibleAssinaturaStage(d.etapa)) return;
+    if(filterFn&&!filterFn(d)) return;
+    var dt=new Date(d.etapaTs||d.createdAt||d.ts||0);
+    if(dt.getMonth()!==now.getMonth()||dt.getFullYear()!==now.getFullYear()) return;
+    var kwhVal=Number(d.kwh);
+    if(!isFinite(kwhVal)||kwhVal<=0) return; // sem kWh válido — não conta (nunca soma NaN/negativo)
+    sum+=kwhVal;
+  });
+  return sum;
+}
 function countMeta(list,id,_uid,_uName){
   var _eu=_uid||CU.uid, _en=_uName||CU.name;
   if(id==='prosp') return list.filter(function(p){return !p.tipo||p.tipo!=='atendimento';}).length;
@@ -2120,27 +2154,13 @@ function countMeta(list,id,_uid,_uName){
     return _sum3;
   }
   if(id==='kwh_assinatura'){
-    var _now6=new Date(), _sumKwh=0;
-    Object.values(crmDeals||{}).forEach(function(d){
-      if(!d||d.funil!=='assinatura_energia') return;
-      if(d.etapa!=='Conclusão da GD'&&d.etapa!=='Início do faturamento') return;
-      var _dt=new Date(d.etapaTs||d.createdAt||d.ts||0);
-      if(_dt.getMonth()!==_now6.getMonth()||_dt.getFullYear()!==_now6.getFullYear()) return;
-      _sumKwh+=Number(d.kwh)||0;
-    });
-    return _sumKwh;
+    return _sumKwhAssinatura(null);
   }
   if(id==='kwh_exec'){
-    var _nowKE=new Date(), _sumKE=0;
-    Object.values(crmDeals||{}).forEach(function(d){
-      if(!d||d.funil!=='assinatura_energia') return;
-      if(d.etapa!=='Conclusão da GD'&&d.etapa!=='Início do faturamento') return;
-      if(d.captador!==_en&&d.responsavel!==_en) return;
-      var _dt=new Date(d.etapaTs||d.createdAt||d.ts||0);
-      if(_dt.getMonth()!==_nowKE.getMonth()||_dt.getFullYear()!==_nowKE.getFullYear()) return;
-      _sumKE+=Number(d.kwh)||0;
-    });
-    return _sumKE;
+    // Bugfix: comparava d.captador/d.responsavel — campos que NUNCA existem
+    // nos deals reais (sempre gravados como captadorNome/responsavelNome).
+    // Isso fazia "Meta kWh Assinatura" retornar sempre 0 para todo executivo.
+    return _sumKwhAssinatura(function(d){return d.captadorNome===_en||d.responsavelNome===_en;});
   }
   if(id==='vendas_gestao'){
     var _now7=new Date(), _sum7=0;
@@ -4419,6 +4439,8 @@ function crmOpenNew(){
   document.getElementById('cd-valor').value='';
   document.getElementById('cd-produto').value='';
   document.getElementById('cd-status').value='Em andamento';
+  document.getElementById('cd-origem').value='';
+  document.getElementById('cd-origem-hint').textContent='';
   document.getElementById('cd-err').textContent='';
   document.getElementById('cd-historico-wrap').style.display='none';
   crmPopulateFunilSelect('cd-funil',crmFunilAtual);
@@ -4448,6 +4470,12 @@ window.crmOpenEdit=function(id){
   document.getElementById('cd-valor').value=(d.funil==='assinatura_energia'?d.kwh:d.valor)||'';
   document.getElementById('cd-produto').value=d.produto||'';
   document.getElementById('cd-status').value=d.status||'Em andamento';
+  // Compatibilidade com leads antigos: normaliza a origem histórica quando
+  // reconhecida; nunca classifica silenciosamente um valor desconhecido —
+  // fica em branco (pendência) até o usuário selecionar e salvar de novo.
+  var _origemNormalizada=ESALeadOrigin.normalizeLeadOrigin(d.origem);
+  document.getElementById('cd-origem').value=_origemNormalizada||'';
+  document.getElementById('cd-origem-hint').textContent=_origemNormalizada?'':'Origem não informada — selecione para continuar.';
   document.getElementById('cd-err').textContent='';
   crmPopulateFunilSelect('cd-funil',d.funil);
   crmPopulateEtapaSelect('cd-etapa',d.funil,d.etapa);
@@ -4456,7 +4484,7 @@ window.crmOpenEdit=function(id){
   var _saveBtn=document.getElementById('cd-save-btn');
   _saveBtn.textContent='Salvar alterações';
   _saveBtn.style.display=_canEdit?'':'none';
-  ['cd-nome','cd-empresa','cd-telefone','cd-valor','cd-produto','cd-funil','cd-etapa','cd-status','cd-responsavel','cd-objecao-cliente','cd-objecao-yn','cd-objecao-descricao'].forEach(function(fid){
+  ['cd-nome','cd-empresa','cd-telefone','cd-valor','cd-produto','cd-funil','cd-etapa','cd-status','cd-responsavel','cd-origem','cd-objecao-cliente','cd-objecao-yn','cd-objecao-descricao'].forEach(function(fid){
     var el=document.getElementById(fid); if(el) el.disabled=!_canEdit;
   });
   document.getElementById('cd-objecao-cliente').value=d.objecao_cliente||'';
@@ -4477,6 +4505,13 @@ window.crmSaveDeal=async function(){
   if(!nome){ errEl.textContent='Informe o nome do cliente.'; return; }
   if(!respUid){ errEl.textContent='Selecione o responsável.'; return; }
   if(!funil||!etapa){ errEl.textContent='Selecione o funil e a etapa.'; return; }
+  // Origem do Lead é obrigatória — nunca confiar apenas no HTML required.
+  // Validação centralizada em ESALeadOrigin (assets/lead-origin.js): rejeita
+  // ausência e qualquer valor fora das 4 opções oficiais antes de qualquer
+  // escrita no Firebase.
+  var _origemInput=getVal('cd-origem');
+  var _origemCheck=ESALeadOrigin.validateLeadOriginForSave(_origemInput);
+  if(!_origemCheck.valid){ errEl.textContent='Selecione a origem do lead.'; return; }
   if(funil==='venda_ufv'&&etapa==='Negociação'){
     var _obYn=getVal('cd-objecao-yn');
     if(_obYn==='sim'&&!getVal('cd-objecao-descricao').trim()){
@@ -4498,6 +4533,7 @@ window.crmSaveDeal=async function(){
       status:getVal('cd-status')||'Em andamento',
       responsavelUid:respUid,
       responsavelNome:respUser?respUser.name:'',
+      origem:_origemCheck.id, // sempre a chave canônica oficial — nunca texto livre em escritas novas
     };
     if(funil==='assinatura_energia'){
       common.kwh=valorInput;
@@ -6437,6 +6473,13 @@ var _origInitDash=window.initDashboard||null;
       <div class="ff"><label>Etapa atual *</label><select id="cd-etapa" onchange="crmDealEtapaChanged()"></select></div>
       <div class="ff"><label>Status</label><select id="cd-status"><option>Em andamento</option><option>Vendido</option><option>Perdido</option><option>Pausado</option></select></div>
       <div class="ff s2"><label>Responsável *</label><select id="cd-responsavel"></select></div>
+      <div class="ff"><label>Origem do Lead *</label><select id="cd-origem">
+        <option value="">Selecione...</option>
+        <option value="active_prospecting">Prospecção Ativa</option>
+        <option value="sdr">SDR</option>
+        <option value="paid_traffic">Tráfego Pago</option>
+        <option value="ambassadors">Embaixadores</option>
+      </select><div id="cd-origem-hint" style="font-size:11px;color:var(--gr);margin-top:3px"></div></div>
     </div>
     <div id="cd-objecao-apresentacao-wrap" style="display:none;margin-top:12px">
       <div style="font-size:11px;font-weight:600;color:var(--g);margin-bottom:4px">Objeção do cliente <span style="color:var(--gr);font-weight:400">(opcional)</span></div>
