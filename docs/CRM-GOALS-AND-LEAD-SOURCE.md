@@ -1,6 +1,83 @@
 # CRM — Preservação de Atendimentos, Meta kWh Assinatura, Origem do Lead
 
-## 1. Preservação do contador de Atendimentos
+## 0. Causa raiz REAL do contador zerado (missão de restauração)
+
+A missão anterior (seção 1 abaixo) investigou o rótulo/alias e concluiu, com
+razão, que o **id interno** de meta nunca havia mudado. Mas o indicador
+continuava exibindo 0 em produção — porque a causa real **não estava na
+definição da meta, e sim no carregamento dos dados de realizado**.
+
+### Fonte real do realizado
+
+Nó Firebase **`events`** (`events/{data ISO}/{eventId}`) — a agenda/calendário
+do sistema. Não é um nó chamado "agEvs"; `agEvs` é apenas o nome da variável
+JavaScript em memória que guarda uma cópia desse nó no cliente.
+
+### Causa exata do zero
+
+`countMeta('atendimentos')` (diário) e `countMeta('atend_mensal')` (mensal)
+sempre leram a variável em memória `agEvs`. Essa variável **só era populada**
+por `agInit()`/`agPoll()` (`fetch(DB+'/events.json')`), e essas duas funções
+eram chamadas **exclusivamente por `renderAgenda()`** — a página Agenda.
+
+`loadAllData()` (chamada no login e a cada 60s de polling) busca apenas
+`events/{hoje}` e guarda em **`allEventsToday`** — uma variável **diferente**,
+que nenhuma função de contagem (`countMeta`) jamais lê.
+
+**Resultado**: qualquer usuário que abrisse "Minhas Metas" sem ter antes
+visitado a página Agenda naquela sessão via `agEvs` no valor inicial `{}`
+(nunca populado) — os indicadores "Atendimentos Realizados" (diário e
+mensal) eram **sempre 0**, não importa quantos atendimentos reais existissem
+em `events/`. Este é o comportamento exatamente reproduzido no incidente
+confirmado em produção (Lucas Vizentin, julho/2026): o histórico real
+existe em `events/`, mas nunca chegava a `agEvs` na tela de Metas.
+
+### Estrutura real dos registros (`events/{data}/{eventId}`)
+
+| Campo | Papel |
+|---|---|
+| chave do nó pai (`events/{data}`) | **Campo de data** — sempre `YYYY-MM-DD` (construído por `agDk()`) |
+| `author` | **Campo de usuário** — nome (não uid) de quem criou o evento |
+| `guests[].name` + `guests[].status==='confirmed'` | usuário como convidado confirmado (alternativa a `author`) |
+| `resultado` | **Campo de status** — só `'sucesso'` conta como realizado; qualquer outro valor ou ausência é tratado como "cancelado"/não realizado |
+| `tipo_atendimento` | deve ser `'cliente'` ou ausente |
+| `type` / `tipo_atendimento === 'retomada'` | exclui (retomada de SDR nunca conta como atendimento — regra histórica preservada) |
+
+Não existe um campo "excluído": eventos removidos são **deletados** de
+verdade do Firebase (`agDelEv` → `DELETE events/{data}/{id}`) — a ausência do
+registro já resolve isso, sem necessidade de um campo de soft-delete.
+
+### Correção aplicada
+
+`ensureAgEvsLoaded()` (novo, em `index.html`): carrega o nó `events`
+completo em `agEvs` **uma única vez por sessão**, de forma idempotente
+(chamadas concorrentes/repetidas não refazem o fetch). `renderMetas()`
+(tela "Minhas Metas" / "Metas e Desempenho") agora é `async` e **aguarda**
+essa carga antes de calcular qualquer indicador, com um estado de
+carregamento breve exibido enquanto isso acontece. **Nenhuma regra de
+negócio de contagem foi alterada** — `countMeta()` continua idêntico;
+apenas a garantia de que os dados existem antes de contar foi adicionada.
+
+### Diagnóstico
+
+`scripts/diagnose-attendance-history.js` (novo, somente leitura) — recebe
+`--uid` e opcionalmente `--month YYYY-MM`, lê `users/{uid}` e `events`
+(mais os nós candidatos `agEvs`, `agenda`, `dailyGoals`, `dailyResults`,
+`metas`, citados na tarefa, para confirmar que nenhum deles é a fonte real),
+e reporta contagens/estrutura resumida — nunca conteúdo bruto, nunca uid ou
+nome completos. **Não foi executado contra produção real nesta sessão**: não
+há `FIREBASE_SERVICE_ACCOUNT_JSON`/`DATABASE_URL` configurados neste
+ambiente. O script está pronto para ser executado pela equipe com acesso às
+credenciais reais — ver comando exato na seção de validação em produção.
+
+Um flag de diagnóstico visual (`ATTENDANCE_GOALS_DIAGNOSTICS=true`) foi
+avaliado e **não implementado**: a causa raiz já foi identificada e corrigida
+com alta confiança (40 assertions novas com execução real cobrindo o cenário
+exato do incidente), tornando um mecanismo de diagnóstico adicional na UI
+desnecessário no momento — item explicitamente condicional na tarefa
+("se necessário").
+
+## 1. Preservação do contador de Atendimentos (rótulo/alias — missão anterior)
 
 ### Causa investigada
 
@@ -14,7 +91,9 @@ confirmou que **os ids internos usados em `METAS` nunca foram alterados**:
 `countMeta()` continua contando exatamente os mesmos registros de sempre —
 eventos de agenda (`agEvs`) com `resultado === 'sucesso'`, autor/convidado
 confirmado igual ao usuário, e `tipo_atendimento !== 'retomada'`. Nenhuma
-lógica de contagem foi tocada pela renomeação do label.
+lógica de contagem foi tocada pela renomeação do label. **Esta investigação
+estava correta, mas incompleta**: o rótulo/alias nunca foi a causa do zero em
+produção — ver seção 0 acima para a causa raiz real.
 
 **Lacuna real encontrada**: `assets/performance-goals.js` não reconhecia o
 alias `atendimento_realizado` (singular, com underscore) explicitamente
@@ -212,18 +291,42 @@ ampliar o escopo além do pedido mínimo ("preparar a estrutura").
 
 ## Validação em produção
 
-1. Abrir **Metas Diárias/Mensais** → confirmar "Atendimentos Realizados"
-   continua exibindo valores reais (não zerado) para um executivo com
-   atendimentos registrados no mês.
-2. Confirmar "Meta kWh Assinatura" (mensal, nível executivo) passa a exibir
+### Restauração do histórico de Atendimentos (esta missão)
+
+1. Rodar o diagnóstico read-only com credenciais reais, antes de qualquer
+   outra validação:
+   ```
+   node scripts/diagnose-attendance-history.js --uid lucas_vizentin --month 2026-07
+   ```
+   Confirmar que `nodes.events.exists === true` e que
+   `eventsMonth.eventsReferencingUserByName > 0` — isto comprova que o
+   histórico real está em `events/`.
+2. Login como **Lucas Vizentin** → abrir **Minhas Metas** diretamente (sem
+   passar pela página Agenda antes) → confirmar breve estado "Carregando
+   dados de atendimentos…" seguido dos valores reais.
+3. Confirmar **Atendimentos Realizados diário** deixa de mostrar 0 quando
+   existem registros no dia selecionado.
+4. Confirmar **Atendimentos Realizados mensal** (julho/2026) soma o
+   histórico real (comparar com a contagem do diagnóstico do passo 1).
+5. Confirmar que **nenhum outro indicador muda**: Novos Clientes e Leads
+   Qualificados continuam com os mesmos valores de antes desta correção.
+6. Confirmar que o **percentual médio da meta** passa a usar o valor
+   restaurado de Atendimentos Realizados (não mais 0).
+7. Repetir o passo 2 em uma segunda sessão/aba, agora **depois** de visitar
+   a página Agenda — confirmar que o resultado é idêntico (a correção não
+   depende mais da ordem de navegação, mas também não quebra o caminho antigo).
+
+### Demais indicadores (missão anterior)
+
+8. Confirmar "Meta kWh Assinatura" (mensal, nível executivo) passa a exibir
    valores reais somados a partir de leads em Conclusão da GD/Início do
-   faturamento — antes desta correção, sempre aparecia 0 por causa do
+   faturamento — antes da correção anterior, sempre aparecia 0 por causa do
    bugfix descrito acima.
-3. Criar um novo lead no CRM → confirmar que salvar sem selecionar "Origem
+9. Criar um novo lead no CRM → confirmar que salvar sem selecionar "Origem
    do Lead" é bloqueado com a mensagem "Selecione a origem do lead.".
-4. Editar um lead antigo sem origem → confirmar aviso "Origem não
-   informada" e que salvar sem selecionar continua bloqueado.
-5. Editar um lead com origem reconhecível (ex.: valor histórico
-   "tráfego pago") → confirmar pré-seleção correta.
-6. Confirmar que nenhum dado histórico de `origem`, `atendimentos` ou `kwh`
-   foi apagado ou sobrescrito por esta correção.
+10. Editar um lead antigo sem origem → confirmar aviso "Origem não
+    informada" e que salvar sem selecionar continua bloqueado.
+11. Editar um lead com origem reconhecível (ex.: valor histórico
+    "tráfego pago") → confirmar pré-seleção correta.
+12. Confirmar que nenhum dado histórico de `origem`, `atendimentos`, `kwh`
+    ou `events` foi apagado, duplicado ou sobrescrito por esta correção.

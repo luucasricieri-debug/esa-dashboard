@@ -2265,7 +2265,18 @@ function renderMetasFor(c, targetUid, targetName, targetLevel) {
   return html;
 }
 
-function renderMetas(c) {
+async function renderMetas(c) {
+  // Atendimentos Realizados (diário e mensal) depende de agEvs (nó Firebase
+  // "events"), que antes só era carregado ao visitar a página Agenda. Garante
+  // que os dados existam ANTES de calcular os indicadores desta tela — sem
+  // isso, o contador aparecia 0 mesmo com atendimentos reais registrados.
+  if(!_agEvsLoadedOnce){
+    c.innerHTML='<div style="text-align:center;padding:48px;color:var(--gr)"><div style="font-size:28px;margin-bottom:10px">⏳</div><div>Carregando dados de atendimentos…</div></div>';
+    await ensureAgEvsLoaded();
+    if(currentPage!=='metas') return; // usuário navegou para outra página enquanto carregava
+    var _liveC=document.getElementById('content');
+    if(_liveC) c=_liveC;
+  }
   const isTop = CU.level==='diretor'||CU.level==='gestor'||CU.level==='trafego';
 
   if(isTop) {
@@ -5963,7 +5974,29 @@ function agInit(){var T=new Date();agVY=T.getFullYear();agVM=T.getMonth();agSel=
 function agDk(d){return d.getFullYear()+'-'+agP(d.getMonth()+1)+'-'+agP(d.getDate());}
 function agFd(k){var p=k.split('-');return new Date(p[0],p[1]-1,p[2]);}
 function agF12(t){if(!t)return null;var p=t.split(':');return{t:p[0]+':'+p[1],ap:''};}
-async function agPoll(){try{var r=await fetch(DB+'/events.json');if(!r.ok)throw new Error();agEvs=await r.json()||{};agRenderAll();}catch(e){}}
+async function agPoll(){try{var r=await fetch(DB+'/events.json');if(!r.ok)throw new Error();agEvs=await r.json()||{};_agEvsLoadedOnce=true;agRenderAll();}catch(e){}}
+// Carrega o nó Firebase "events" (agenda) em agEvs uma única vez por sessão,
+// independentemente de o usuário já ter aberto a página Agenda. ANTES desta
+// correção, agEvs só era populado por agInit()/agPoll(), chamados
+// exclusivamente por renderAgenda() — quem abrisse "Minhas Metas" sem antes
+// visitar a Agenda via agEvs={} (valor inicial), fazendo os contadores de
+// Atendimentos Realizados (diário e mensal, que leem agEvs) sempre 0, mesmo
+// com atendimentos reais gravados em events/. Esta é a causa raiz real do
+// contador zerado — não um problema de alias/label.
+let _agEvsLoadedOnce=false, _agEvsLoadPromise=null;
+async function ensureAgEvsLoaded(){
+  if(_agEvsLoadedOnce) return;
+  if(_agEvsLoadPromise) return _agEvsLoadPromise;
+  _agEvsLoadPromise=(async function(){
+    try{
+      var r=await fetch(DB+'/events.json');
+      if(r.ok) agEvs=await r.json()||{};
+    }catch(e){ /* falha silenciosa — countMeta trata agEvs vazio normalmente */ }
+    _agEvsLoadedOnce=true;
+    _agEvsLoadPromise=null;
+  })();
+  return _agEvsLoadPromise;
+}
 window.agRenderAll=function(){agRenderCal();agRenderWeek();agRenderDay();agRenderUp();}
 function agRenderCal(){
   var grid=document.getElementById('ag-cal-grid');if(!grid)return;
