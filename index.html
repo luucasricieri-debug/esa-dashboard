@@ -876,6 +876,77 @@ async function safeUpdateUserProfile(uid, fields){
   return fbPatch('users/'+uid, safeFields);
 }
 
+// ── Sessão renovável para endpoints autenticados (crm-upload e futuros) ─────
+// Reutiliza o MESMO sessionToken oficial emitido em doLogin() via session-init —
+// nenhum segundo token independente é criado. Renovação via session-token.js
+// (Path B: uid+login revalidados contra Firebase — mesmo mecanismo já usado por
+// resumeSession()), nunca por senha em cache nem por uid enviado livremente.
+function getStoredSession(){
+  try{ return JSON.parse(sessionStorage.getItem('esa_session')||'{}'); }catch(e){ return {}; }
+}
+async function getValidSessionToken(){
+  return getStoredSession().sessionToken||null;
+}
+var _sessionRefreshInFlight=null; // dedup: só uma renovação em voo por aba
+async function refreshSessionToken(){
+  if(_sessionRefreshInFlight) return _sessionRefreshInFlight;
+  _sessionRefreshInFlight=(async function(){
+    var sess=getStoredSession();
+    if(!sess.uid||!sess.login){
+      var errNoSess=new Error('renewal_failed'); errNoSess.code='renewal_failed'; throw errNoSess;
+    }
+    var res;
+    try{
+      res=await fetch('/.netlify/functions/session-token',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({uid:sess.uid, login:sess.login}),
+      });
+    }catch(networkErr){
+      var errNet=new Error('renewal_failed'); errNet.code='renewal_failed'; throw errNet;
+    }
+    if(!res.ok){
+      var errBad=new Error('renewal_failed'); errBad.code='renewal_failed'; throw errBad;
+    }
+    var data=await res.json().catch(function(){return{};});
+    if(!data.sessionToken){
+      var errEmpty=new Error('renewal_failed'); errEmpty.code='renewal_failed'; throw errEmpty;
+    }
+    var updated={uid:sess.uid, login:sess.login, sessionToken:data.sessionToken, sessionExpiresAt:data.expiresAt};
+    sessionStorage.setItem('esa_session', JSON.stringify(updated));
+    // "Lembrar de mim": mantém localStorage sincronizado com o token renovado
+    if(localStorage.getItem('esa_remember')){
+      localStorage.setItem('esa_remember', JSON.stringify(updated));
+    }
+    return data.sessionToken;
+  })();
+  try{ return await _sessionRefreshInFlight; }
+  finally{ _sessionRefreshInFlight=null; }
+}
+// authenticatedFetch: envia com o token atual; em 401 code token_expired/invalid_session,
+// renova UMA única vez e repete a mesma requisição uma única vez com o token novo.
+// buildBody(token) monta o corpo da requisição — chamado de novo no retry com o token novo.
+async function authenticatedFetch(url, buildBody){
+  var token=await getValidSessionToken();
+  if(!token){
+    try{ token=await refreshSessionToken(); }
+    catch(e){ return {ok:false, code:'renewal_failed'}; }
+  }
+  var res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(buildBody(token))});
+  if(res.ok) return {ok:true, res:res, renewed:false};
+  var errBody=await res.json().catch(function(){return{};});
+  if(errBody.code==='token_expired'||errBody.code==='invalid_session'){
+    var newToken;
+    try{ newToken=await refreshSessionToken(); }
+    catch(e){ return {ok:false, code:'renewal_failed', renewed:false}; }
+    var res2=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(buildBody(newToken))});
+    if(res2.ok) return {ok:true, res:res2, renewed:true};
+    var errBody2=await res2.json().catch(function(){return{};});
+    return {ok:false, code:errBody2.code||'upload_failed', renewed:true};
+  }
+  return {ok:false, code:errBody.code||'upload_failed', renewed:false};
+}
+
 function setPill(s,t){
   const p=document.getElementById('sync-pill'),tx=document.getElementById('sync-txt');
   p.className='sync-pill '+s; tx.textContent=t||(s==='ok'?'Conectado':s==='err'?'Erro':'...');
@@ -3988,6 +4059,17 @@ window.crmOpenArquivos=function(dealId){
   crmRenderArquivos(dealId);
   openModal('modal-crm-arq');
 };
+// Mensagens honestas para o usuário final — nunca expõe "Token inválido" nem
+// detalhes internos de validação de assinatura/issuer/audience.
+var CRM_UPLOAD_ERROR_MESSAGES={
+  renewal_failed:'Sua sessão expirou. Faça login novamente para enviar o arquivo.',
+  no_permission:'Sem permissão para upload no CRM.',
+  invalid_session:'Sua sessão expirou. Faça login novamente para enviar o arquivo.',
+  file_too_large:'O arquivo excede o limite de 10 MB.',
+  unsupported_file_type:'Formato de arquivo não permitido.',
+  invalid_deal_id:'Não foi possível identificar o card. Recarregue a página.',
+  upload_failed:'Não foi possível enviar o arquivo. Tente novamente.',
+};
 window.crmUploadArquivo=async function(){
   var dealId=document.getElementById('arq-deal-id').value;
   var fileInput=document.getElementById('arq-file');
@@ -3999,14 +4081,17 @@ window.crmUploadArquivo=async function(){
   if(!_temAcessoCRM){errEl.textContent='Sem permissão para upload no CRM.';return;}
   if(!file){errEl.textContent='Selecione um arquivo.';return;}
   if(file.size>10*1024*1024){errEl.textContent='Arquivo muito grande. Máximo 10MB.';return;}
-  var _sess=JSON.parse(sessionStorage.getItem('esa_session')||'{}');
-  if(!_sess.sessionToken){errEl.textContent='Sessão segura de upload indisponível. Saia e entre novamente no sistema.';return;}
+  var _sess=getStoredSession();
+  if(!_sess.uid||!_sess.login){errEl.textContent='Sessão segura de upload indisponível. Saia e entre novamente no sistema.';return;}
   var btn=document.getElementById('arq-send-btn');
   btn.disabled=true; btn.textContent='Enviando...';
   var pw=document.getElementById('arq-progress-wrap');
   var pb=document.getElementById('arq-progress-bar');
   var pl=document.getElementById('arq-progress-label');
   pw.style.display=''; pb.style.width='50%'; pl.textContent='Enviando…';
+  // Chave de idempotência: um retry pós-renovação (ou uma resposta atrasada)
+  // nunca duplica o anexo — o backend devolve o mesmo resultado já processado.
+  var _clientRequestId='up_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,10);
   try{
     var fileBase64=await new Promise(function(resolve,reject){
       var reader=new FileReader();
@@ -4014,28 +4099,33 @@ window.crmUploadArquivo=async function(){
       reader.onerror=reject;
       reader.readAsDataURL(file);
     });
-    var res=await fetch('/.netlify/functions/crm-upload',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({sessionToken:_sess.sessionToken,dealId:dealId,fileName:file.name,contentType:file.type,fileBase64:fileBase64})
+    // O arquivo (fileBase64) já está em memória aqui e NÃO é descartado até
+    // sucesso confirmado — se o token expirou, authenticatedFetch renova e
+    // reenvia o MESMO fileBase64 uma única vez, sem pedir ao usuário para
+    // selecionar o arquivo de novo.
+    var attempt=await authenticatedFetch('/.netlify/functions/crm-upload', function(token){
+      return {sessionToken:token, dealId:dealId, fileName:file.name, contentType:file.type, fileBase64:fileBase64, clientRequestId:_clientRequestId};
     });
-    if(!res.ok){
-      var errBody=await res.json().catch(function(){return{};});
-      throw new Error(errBody.error||'HTTP '+res.status);
+    if(attempt.renewed){
+      pl.textContent='Tivemos que renovar sua sessão. Tentando enviar novamente...';
     }
-    var arqData=await res.json();
+    if(!attempt.ok){
+      errEl.textContent=CRM_UPLOAD_ERROR_MESSAGES[attempt.code]||CRM_UPLOAD_ERROR_MESSAGES.upload_failed;
+      return; // arquivo selecionado é preservado — input não é limpo em caso de falha
+    }
+    var arqData=await attempt.res.json();
     var arqId='arq_'+arqData.uploadedAt;
     await fbSet('crm/deals/'+dealId+'/arquivos/'+arqId,arqData);
     if(!crmDeals[dealId]) crmDeals[dealId]={};
     if(!crmDeals[dealId].arquivos) crmDeals[dealId].arquivos={};
     crmDeals[dealId].arquivos[arqId]=arqData;
-    fileInput.value='';
+    fileInput.value=''; // só limpa a seleção após sucesso confirmado
     pb.style.width='100%'; pl.textContent='100%';
     crmRenderArquivos(dealId);
     crmRenderView();
     showToast('Arquivo enviado com sucesso!');
   }catch(e){
-    errEl.textContent='Erro no upload: '+e.message;
+    errEl.textContent=CRM_UPLOAD_ERROR_MESSAGES.upload_failed;
   }finally{
     btn.disabled=false; btn.textContent='Enviar arquivo';
     pw.style.display='none';

@@ -1,8 +1,8 @@
 'use strict';
 
 const crypto = require('crypto');
-const { getDatabase, getBucket, STORAGE_BUCKET } = require('./_shared/firebase-admin');
-const { verifyToken } = require('./_shared/upload-session');
+const { getDatabase, getBucket, STORAGE_BUCKET, getDatabaseHost } = require('./_shared/firebase-admin');
+const { verifyToken, ISSUER, AUDIENCE } = require('./_shared/upload-session');
 
 const CRM_LEVELS = ['diretor', 'trafego', 'gestor', 'engenharia', 'executivo', 'sdr', 'jackeline'];
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -26,31 +26,66 @@ function isValidDealId(id) {
   return typeof id === 'string' && /^[a-zA-Z0-9_-]+$/.test(id) && id.length > 0;
 }
 
+function isValidClientRequestId(id) {
+  return typeof id === 'string' && /^[a-zA-Z0-9_-]{1,80}$/.test(id);
+}
+
+// ── Diagnóstico seguro (sem token, sem secret, sem conteúdo de arquivo) ──────
+
+function newRequestId() {
+  try { return crypto.randomUUID(); } catch { return `rid_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`; }
+}
+
+function maskUid(uid) {
+  if (!uid) return '(vazio)';
+  if (uid.length <= 4) return '*'.repeat(uid.length);
+  return `${uid.slice(0, 2)}***${uid.slice(-2)}`;
+}
+
+function logDiag(requestId, fields) {
+  try { console.info('[crm-upload][diag]', JSON.stringify({ requestId, ...fields })); } catch { /* nunca derruba a request */ }
+}
+
+function respond(statusCode, code, message, requestId, extra) {
+  return {
+    statusCode,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ok: false, code, message, requestId, ...extra }),
+  };
+}
+
 exports.handler = async function (event) {
+  const requestId = newRequestId();
+
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: JSON.stringify({ error: 'Método não permitido' }) };
   }
 
   const secret = process.env.UPLOAD_SESSION_SECRET;
   if (!secret) {
-    return { statusCode: 500, body: JSON.stringify({ error: 'UPLOAD_SESSION_SECRET não configurada' }) };
+    logDiag(requestId, { fatal: 'missing_secret' });
+    return respond(500, 'upload_failed', 'Erro de configuração do servidor.', requestId);
   }
 
   let body;
   try {
     body = JSON.parse(event.body || '{}');
   } catch (e) {
-    return { statusCode: 400, body: JSON.stringify({ error: 'Body inválido' }) };
+    return respond(400, 'invalid_body', 'Body inválido.', requestId);
   }
 
-  const { sessionToken, dealId, fileName, contentType, fileBase64 } = body;
+  const { sessionToken, dealId, fileName, contentType, fileBase64, clientRequestId } = body;
 
-  // Validar token — source of trust para uid
+  // Validar token — source of trust para uid. Nunca logamos o token, só o code
+  // do resultado (token_expired vs invalid_session) e claims não-sensíveis.
   let tokenPayload;
   try {
     tokenPayload = verifyToken(sessionToken, secret);
   } catch (e) {
-    return { statusCode: 401, body: JSON.stringify({ error: 'Token inválido: ' + e.message }) };
+    const code = e.code === 'token_expired' ? 'token_expired' : 'invalid_session';
+    logDiag(requestId, { code, issuerExpected: ISSUER, audienceExpected: AUDIENCE });
+    const message = code === 'token_expired' ? 'Sessão expirada.' : 'Sessão inválida.';
+    return respond(401, code, message, requestId);
   }
 
   const uid = tokenPayload.uid;
@@ -60,7 +95,8 @@ exports.handler = async function (event) {
   try {
     db = getDatabase();
   } catch (e) {
-    return { statusCode: 500, body: JSON.stringify({ error: 'Erro de configuração do servidor' }) };
+    logDiag(requestId, { fatal: 'firebase_init_failed' });
+    return respond(500, 'upload_failed', 'Erro de configuração do servidor.', requestId);
   }
 
   let user;
@@ -68,46 +104,68 @@ exports.handler = async function (event) {
     const snapshot = await db.ref('users/' + uid).once('value');
     user = snapshot.val();
   } catch (e) {
-    return { statusCode: 500, body: JSON.stringify({ error: 'Erro ao verificar usuário' }) };
+    logDiag(requestId, { uidMasked: maskUid(uid), fatal: 'user_read_failed' });
+    return respond(500, 'upload_failed', 'Erro ao verificar usuário.', requestId);
   }
 
   if (!user) {
-    return { statusCode: 401, body: JSON.stringify({ error: 'Usuário não encontrado' }) };
+    logDiag(requestId, { uidMasked: maskUid(uid), code: 'invalid_session', reason: 'user_not_found' });
+    return respond(401, 'invalid_session', 'Sessão inválida.', requestId);
   }
 
   // Verificar acesso ao CRM pelo level server-side
   const level = (user.level || '').toLowerCase().trim();
   if (!CRM_LEVELS.includes(level)) {
-    return { statusCode: 403, body: JSON.stringify({ error: 'Sem permissão para upload no CRM' }) };
+    logDiag(requestId, { uidMasked: maskUid(uid), code: 'no_permission' });
+    return respond(403, 'no_permission', 'Usuário sem permissão.', requestId);
   }
 
   // Validar dealId — sem path separators
   if (!isValidDealId(dealId)) {
-    return { statusCode: 400, body: JSON.stringify({ error: 'dealId inválido' }) };
+    return respond(400, 'invalid_deal_id', 'dealId inválido.', requestId);
   }
 
   // Validar fileName
   if (!fileName || typeof fileName !== 'string' || fileName.trim().length === 0) {
-    return { statusCode: 400, body: JSON.stringify({ error: 'fileName ausente' }) };
+    return respond(400, 'invalid_file_name', 'fileName ausente.', requestId);
   }
 
-  // Validar contentType
+  // Validar contentType — whitelist estrita de MIME
   if (!contentType || !ALLOWED_MIMES.has(contentType)) {
-    return { statusCode: 400, body: JSON.stringify({ error: 'Tipo de arquivo não permitido' }) };
+    logDiag(requestId, { uidMasked: maskUid(uid), code: 'unsupported_file_type' });
+    return respond(415, 'unsupported_file_type', 'Formato de arquivo não permitido.', requestId);
   }
 
   // Validar e decodificar base64
   if (!fileBase64 || typeof fileBase64 !== 'string' || fileBase64.length === 0) {
-    return { statusCode: 400, body: JSON.stringify({ error: 'fileBase64 ausente' }) };
+    return respond(400, 'invalid_file_payload', 'fileBase64 ausente.', requestId);
   }
 
   const fileBuffer = Buffer.from(fileBase64, 'base64');
   if (fileBuffer.length === 0) {
-    return { statusCode: 400, body: JSON.stringify({ error: 'arquivo vazio ou base64 inválido' }) };
+    return respond(400, 'invalid_file_payload', 'Arquivo vazio ou base64 inválido.', requestId);
   }
 
   if (fileBuffer.length > MAX_BYTES) {
-    return { statusCode: 400, body: JSON.stringify({ error: 'Arquivo muito grande. Máximo 10MB.' }) };
+    logDiag(requestId, { uidMasked: maskUid(uid), code: 'file_too_large' });
+    return respond(413, 'file_too_large', 'O arquivo excede o limite de 10 MB.', requestId);
+  }
+
+  // Idempotência: se o cliente reenviou um clientRequestId já processado
+  // (retry pós-renovação de token, resposta atrasada, duplo clique), devolve
+  // o resultado já gravado em vez de subir o arquivo de novo — nunca duplica
+  // o anexo. Chave de idempotência mal-formada é ignorada (upload segue normal).
+  const hasIdempotencyKey = isValidClientRequestId(clientRequestId);
+  const idempotencyRef = hasIdempotencyKey ? db.ref(`crm/${dealId}/idempotency/${clientRequestId}`) : null;
+  if (idempotencyRef) {
+    try {
+      const idemSnap = await idempotencyRef.once('value');
+      const cached = idemSnap.val();
+      if (cached && cached.result) {
+        logDiag(requestId, { uidMasked: maskUid(uid), idempotent: true });
+        return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cached.result) };
+      }
+    } catch { /* leitura de idempotência falhou — segue com upload normal */ }
   }
 
   const ts = Date.now();
@@ -118,7 +176,7 @@ exports.handler = async function (event) {
   try {
     bucket = getBucket();
   } catch (e) {
-    return { statusCode: 500, body: JSON.stringify({ error: 'Erro de configuração do Storage' }) };
+    return respond(500, 'upload_failed', 'Erro de configuração do Storage.', requestId);
   }
 
   // Token de download permanente compatível com Firebase Storage getDownloadURL()
@@ -135,7 +193,8 @@ exports.handler = async function (event) {
       },
     });
   } catch (e) {
-    return { statusCode: 500, body: JSON.stringify({ error: 'Erro no upload: ' + e.message }) };
+    logDiag(requestId, { uidMasked: maskUid(uid), code: 'upload_failed', databaseHost: getDatabaseHost() });
+    return respond(500, 'upload_failed', 'Não foi possível enviar o arquivo. Tente novamente.', requestId);
   }
 
   // URL permanente no mesmo formato que getDownloadURL() gera
@@ -153,6 +212,12 @@ exports.handler = async function (event) {
     uploadedAt: ts,
     path,
   };
+
+  if (idempotencyRef) {
+    idempotencyRef.set({ result: arqData, completedAt: ts }).catch(() => {});
+  }
+
+  logDiag(requestId, { uidMasked: maskUid(uid), code: 'ok' });
 
   return {
     statusCode: 200,
