@@ -17,6 +17,7 @@
 // que é tratado apenas como metadado redundante, nunca como fonte de verdade.
 
 const { verifyToken } = require('./upload-session');
+const { resolveUserIdentifier, canonicalSessionLogin } = require('../../../assets/user-identity-resolution.js');
 
 function identityError(code, stage, message) {
   const err = new Error(message);
@@ -25,22 +26,27 @@ function identityError(code, stage, message) {
   return err;
 }
 
-// Localiza um usuário por login, escaneando `users` e retornando a CHAVE do
-// Firebase como uid canônico — nunca o campo `.uid` do valor. Usado por
-// session-init.js (emissão) e por qualquer fluxo que precise resolver
-// login → uid a partir de uma varredura, nunca confiando em um campo
-// possivelmente ausente/desatualizado.
-async function resolveUserByLogin(db, login) {
-  if (!login || typeof login !== 'string') return null;
-  const normalized = login.trim().toLowerCase();
+// Localiza um usuário por LOGIN INTERNO ou E-MAIL cadastrado, escaneando
+// `users` e retornando a CHAVE do Firebase como uid canônico — nunca o campo
+// `.uid` do valor, nunca displayName/name. Usado por session-init.js
+// (emissão) e por qualquer fluxo que precise resolver identificador → uid a
+// partir de uma varredura, nunca confiando em um campo possivelmente
+// ausente/desatualizado.
+//
+// Incidente corrigido (login mobile): o autofill do navegador preenche o
+// campo login com o e-mail cadastrado (ex.: lucas@esacapitalenergia.com.br);
+// antes desta correção, só o campo `login` era comparado, então o e-mail
+// nunca resolvia, mesmo com o usuário existindo (cadastrado como
+// lucas_vizentin). A regra de correspondência (login > email > uid direto,
+// sempre exata, nunca substring, falha segura em conflito) vive em
+// assets/user-identity-resolution.js — fonte única também usada pelo
+// frontend (doLogin(), index.html), garantindo que backend e frontend nunca
+// divirjam nessa lógica.
+async function resolveUserByLogin(db, identifier) {
+  if (!identifier || typeof identifier !== 'string') return null;
   const snap = await db.ref('users').once('value');
   const all = snap.val() || {};
-  for (const [key, u] of Object.entries(all)) {
-    if (u && typeof u.login === 'string' && u.login.trim().toLowerCase() === normalized) {
-      return { uid: key, user: u };
-    }
-  }
-  return null;
+  return resolveUserIdentifier(all, identifier);
 }
 
 // Política de usuário ativo: como o schema legado não tem um campo padrão de
@@ -100,4 +106,4 @@ async function resolveAuthenticatedUserIdentity(db, sessionToken, secret) {
   };
 }
 
-module.exports = { resolveUserByLogin, resolveAuthenticatedUserIdentity, isUserActive };
+module.exports = { resolveUserByLogin, resolveAuthenticatedUserIdentity, isUserActive, canonicalSessionLogin };

@@ -5,7 +5,7 @@ const { getDatabase } = require('./_shared/firebase-admin');
 const { generateToken, TTL_SECONDS } = require('./_shared/upload-session');
 const { resolveUserByLogin } = require('./_shared/user-identity');
 
-const GENERIC_401 = JSON.stringify({ error: 'Login ou senha inválidos' });
+const GENERIC_401 = JSON.stringify({ error: 'Usuário ou senha inválidos.' });
 
 function sha256Hex(str) {
   return crypto.createHash('sha256').update(str, 'utf8').digest('hex');
@@ -33,8 +33,12 @@ exports.handler = async function (event) {
     return { statusCode: 400, body: JSON.stringify({ error: 'login e password são obrigatórios' }) };
   }
 
-  // Normalizar login exatamente como doLogin() faz no cliente
-  const normalizedLogin = login.trim().toLowerCase();
+  // Apenas trim aqui — a normalização completa (minúsculas, comparação por
+  // login/e-mail, fallback de uid direto) é responsabilidade de
+  // resolveUserByLogin()/resolveUserIdentifier(), a mesma fonte única usada
+  // pelo frontend (doLogin(), index.html). Repassar o valor já em minúsculas
+  // quebraria o fallback de uid direto (chaves do Firebase são case-sensitive).
+  const trimmedIdentifier = login.trim();
 
   let db;
   try {
@@ -48,9 +52,14 @@ exports.handler = async function (event) {
   // registros legados) como uid da sessão. resolveUserByLogin() retorna
   // sempre a CHAVE do Firebase — a única fonte de verdade de uid em todo o
   // projeto (é ela que users/{uid} usa em todos os outros endpoints).
+  //
+  // Incidente corrigido (login mobile): resolveUserByLogin() agora aceita
+  // login interno OU e-mail cadastrado (nunca displayName) — antes só
+  // aceitava login, então o autofill mobile preenchendo com e-mail sempre
+  // retornava "usuário não encontrado" mesmo com o usuário existindo.
   let resolved;
   try {
-    resolved = await resolveUserByLogin(db, normalizedLogin);
+    resolved = await resolveUserByLogin(db, trimmedIdentifier);
   } catch (e) {
     return { statusCode: 500, body: JSON.stringify({ error: 'Erro ao acessar banco de dados' }) };
   }

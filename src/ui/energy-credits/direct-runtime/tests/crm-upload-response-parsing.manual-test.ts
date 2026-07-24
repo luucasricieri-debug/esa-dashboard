@@ -18,9 +18,12 @@ import fs from 'fs';
 import path from 'path';
 import vm from 'vm';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '../../../../..');
+const require = createRequire(import.meta.url);
+const userIdentityResolution = require(path.join(ROOT, 'assets/user-identity-resolution.js'));
 
 let passed = 0;
 let failed = 0;
@@ -232,7 +235,7 @@ async function run() {
       const context = vm.createContext({
         console, Object, JSON,
         document: makeDom(),
-        window: {},
+        window: { ESAUserIdentityResolution: userIdentityResolution },
         fbGet: async (p: string) => (p === 'users/chave_correta' ? { login: 'exec.legado', name: 'Exec Legado' } : null), // SEM campo .uid
         sessionStorage: { getItem: () => JSON.stringify({ uid: 'chave_correta', login: 'exec.legado' }), setItem: () => {}, removeItem: () => {} },
         localStorage: { getItem: () => null },

@@ -1,5 +1,157 @@
 # CRM — Confiabilidade da Autenticação de Upload de Anexos
 
+## Login mobile: autenticação por login interno OU e-mail cadastrado (missão mais recente)
+
+### Incidente
+
+No acesso mobile, o autofill do navegador preenche o campo **Login** com o
+e-mail cadastrado do usuário (ex.: `lucas@esacapitalenergia.com.br`). O
+sistema retornava "Usuário não encontrado.", mesmo o usuário existindo —
+cadastrado com o login interno `lucas_vizentin`.
+
+### Causa
+
+`doLogin()` (`index.html`) e `resolveUserByLogin()`
+(`netlify/functions/_shared/user-identity.js`) só comparavam o identificador
+digitado contra o campo `login` de cada registro em `users/{uid}` — nunca
+contra `email`. Um usuário com `login: "lucas_vizentin"` e
+`email: "lucas@esacapitalenergia.com.br"` só conseguia entrar digitando
+exatamente `lucas_vizentin`; qualquer outra forma (o próprio e-mail,
+preenchido automaticamente pelo navegador) resultava em "não encontrado".
+
+O campo `email` já existia e era usado em outro lugar do sistema
+(`organization-members.js:177`, `login = u.login || u.email || ''`, como
+fallback de exibição) — confirmando que é um campo real do schema, não
+inventado para esta correção.
+
+### Campo usado no Firebase
+
+`users/{uid}.email` (string) — o único campo de e-mail realmente encontrado
+no banco (não existe `.mail` nem variações; não inventamos nenhum). Quando
+ausente, o usuário só pode ser resolvido por `login`.
+
+### Resolução canônica
+
+Nova fonte única: [`assets/user-identity-resolution.js`](../assets/user-identity-resolution.js)
+(UMD — usada por backend via `require()` e por `index.html` via
+`<script src="/assets/user-identity-resolution.js">`, mesmo padrão de
+`performance-goals.js`/`lead-origin.js`/`attendance-performance.js`).
+
+`resolveUserIdentifier(usersMap, identifier)`:
+
+1. Normaliza o identificador: `trim()` + minúsculas (só para comparação —
+   nunca altera o valor original armazenado).
+2. Compara contra `login` de cada registro — correspondência **exata**
+   (nunca substring/prefixo). Exatamente 1 resultado → resolve. Mais de 1
+   (conflito de dados) → falha segura (`null`).
+3. Se não resolveu por login, compara contra `email` — mesma regra de
+   correspondência exata e falha segura em conflito.
+4. Se ainda não resolveu, tenta o identificador como uid direto: só quando
+   ele não contém caracteres proibidos em chave do Firebase (`. # $ [ ] /`)
+   e existe literalmente como chave em `usersMap`.
+5. **Nunca** usa `displayName`/`name` para resolução — esses campos são
+   apenas para exibição.
+
+`resolveUserByLogin(db, identifier)` (`_shared/user-identity.js`) agora só
+faz a leitura (`db.ref('users').once('value')`) e delega toda a lógica de
+correspondência a `resolveUserIdentifier()` — garantindo que backend e
+frontend usem exatamente a mesma regra, sem risco de divergência futura.
+
+`canonicalSessionLogin(user)` retorna `user.login` quando presente, ou
+`user.email` como alternativa (usuário legado só com e-mail) — usado para
+persistir o identificador de sessão (nunca o texto bruto digitado, que pode
+ter sido o e-mail mesmo para um usuário com login interno cadastrado).
+
+### Usuários legados
+
+Cenários suportados (apenas os realmente possíveis no schema atual):
+usuário com `login` e `email`; usuário só com `login` (sem `email`);
+usuário só com `email` (sem `login` — resolvido e sessão mantida via
+`canonicalSessionLogin`); `uid` (chave do Firebase) diferente do valor do
+campo `login`. **Não inventamos** suporte a campos como `.mail` ou a
+"login contendo e-mail" como um caso especial — um `login` que por acaso
+tenha formato de e-mail já funciona normalmente, pois a comparação é sempre
+por valor exato do campo, não por formato.
+
+Diagnóstico somente leitura:
+[`scripts/diagnose-users-without-email.js`](../scripts/diagnose-users-without-email.js)
+— conta usuários com/sem `email`, com/sem `login`, e o caso extremo sem
+nenhum dos dois (inacessível por identificador) — nunca expõe e-mail/login
+completos (sempre mascarados), nunca escreve no Firebase. **Não executado
+contra produção real nesta sessão** (sem `FIREBASE_SERVICE_ACCOUNT_JSON`/
+`DATABASE_URL` neste ambiente, mesma limitação de todo diagnóstico já criado
+neste projeto).
+
+### Mobile e autofill
+
+Campo de login (`index.html`, tela de autenticação):
+
+```html
+<input type="text" id="auth-login" placeholder="seu.login ou e-mail"
+  autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false">
+<div>Use seu login ou e-mail cadastrado.</div>
+```
+
+- `autocomplete="username"` (não `"email"`) — o campo aceita AMBOS os
+  formatos; usar `"email"` sinalizaria erroneamente ao navegador/gerenciador
+  de senhas que só e-mail é aceito.
+- `type="text"` preservado — nunca `type="email"`, que alguns navegadores
+  validam/formatam de forma a atrapalhar um login interno com underscore.
+- `autocapitalize="off"`/`autocorrect="off"`/`spellcheck="false"` — evita que
+  o teclado mobile capitalize a primeira letra ou "corrija" o login.
+- **`inputmode="email"` deliberadamente NÃO foi usado**: embora acrescente
+  atalhos de teclado (`@`, `.com`) em dispositivos móveis, não há garantia,
+  testável a partir deste ambiente, de que todos os teclados mobile mantêm o
+  underscore igualmente acessível nesse modo — a decisão conservadora foi
+  não arriscar a entrada de `lucas_vizentin`. Reavaliar apenas com teste real
+  em dispositivos físicos.
+- Nenhum código de `doLogin()`/`resolveUserIdentifier()` filtra, substitui ou
+  trunca o caractere `_` em nenhum momento — o underscore é preservado
+  integralmente do input até a comparação.
+
+### Mensagens
+
+Mensagem única e genérica para qualquer falha de identificação/senha:
+**"Usuário ou senha inválidos."** — usada em `doLogin()` (index.html) e em
+`session-init.js` (antes: "Login ou senha inválidos", "Usuário não
+encontrado.", "Senha incorreta." — três mensagens distintas que permitiam
+enumerar contas existentes por tentativa/erro). Nunca mais diferenciar
+"usuário não encontrado" de "senha incorreta" em nenhuma resposta visível ao
+usuário.
+
+### Token de sessão
+
+Após resolver por e-mail, o token continua sendo emitido com o **uid
+canônico** (a chave do Firebase, nunca o e-mail) — `generateToken(userKey,
+secret)`, inalterado. `session-token.js` (Path B, renovação por uid+login)
+passou a comparar contra `canonicalSessionLogin(user)` (login OU e-mail),
+não mais só `user.login` — preserva a renovação para usuários legados que só
+têm e-mail cadastrado. Upload do CRM (`crm-upload.js`) e resolução de
+contexto organizacional (`organization-members.js`) não foram alterados e
+continuam funcionando sem alteração (validado com os mesmos testes
+existentes, mais os novos cenários desta missão).
+
+### Validação em produção
+
+1. Rodar `node scripts/diagnose-users-without-email.js` com credenciais
+   reais para confirmar quantos usuários ainda dependem exclusivamente do
+   login interno.
+2. Em um celular real, deixar o navegador preencher o campo Login via
+   autofill com o e-mail cadastrado de um usuário real (ex.: Lucas
+   Vizentin) → confirmar login bem-sucedido, sem "Usuário não encontrado.".
+3. Repetir o login digitando manualmente o login interno (`lucas_vizentin`)
+   → confirmar que continua funcionando exatamente como antes.
+4. Testar e-mail com letras maiúsculas e com espaços acidentais (comum em
+   autofill/copy-paste) → confirmar que ainda resolve.
+5. Testar senha incorreta e e-mail/login inexistente → confirmar a MESMA
+   mensagem genérica nos dois casos.
+6. Confirmar que o token emitido tem o uid canônico (não o e-mail) — via
+   `CRM_UPLOAD_AUTH_DIAGNOSTICS=true`, campo `uidPresent`/`loginPresent`.
+7. Confirmar que upload de CRM e troca/seleção de organização continuam
+   funcionando normalmente para um usuário que logou por e-mail.
+8. Confirmar visualmente, em um teclado mobile real, que o campo login ainda
+   permite digitar `_` sem dificuldade extra.
+
 ## 0. HTTP 401 para alguns usuários (missão de resolução canônica de identidade)
 
 A correção anterior (renovação automática, ver seção "Causa raiz" abaixo)

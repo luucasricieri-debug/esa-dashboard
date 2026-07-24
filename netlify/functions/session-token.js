@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const { getDatabase } = require('./_shared/firebase-admin');
 const { generateToken, verifyToken, TTL_SECONDS } = require('./_shared/upload-session');
 const { isAuthDiagnosticsEnabled, inspectTokenUnsafe, buildDiagnostics } = require('./_shared/auth-diagnostics');
+const { canonicalSessionLogin } = require('./_shared/user-identity');
 
 function newRequestId() {
   try { return crypto.randomUUID(); } catch { return `rid_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`; }
@@ -111,7 +112,12 @@ exports.handler = async function (event) {
     return { statusCode: 500, body: JSON.stringify({ error: 'Erro ao acessar banco de dados' }) };
   }
 
-  if (!user || typeof user.login !== 'string' || user.login.trim().toLowerCase() !== normalizedLogin) {
+  // Compara contra o identificador CANÔNICO da sessão (user.login, ou
+  // user.email quando o registro não tem login — mesma regra de
+  // assets/user-identity-resolution.js/doLogin()) — nunca apenas user.login,
+  // para não quebrar Path B de usuários legados que só têm e-mail cadastrado.
+  const expectedLogin = canonicalSessionLogin(user);
+  if (!user || !expectedLogin || expectedLogin.trim().toLowerCase() !== normalizedLogin) {
     logDiag(requestId, { path: 'B', uidMasked: maskUid(uid), code: 'invalid_session' });
     return respond401('invalid_session', requestId, 'Sessão inválida', { uidPresent: true, loginPresent: true });
   }
