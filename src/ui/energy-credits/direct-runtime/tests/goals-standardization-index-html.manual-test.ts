@@ -207,8 +207,8 @@ assert('GS21 bloco chama o endpoint dedicado /.netlify/functions/reports-perform
   currentHtml.includes("authenticatedFetch('/.netlify/functions/reports-performance-goal-average'"));
 assert('GS22 chamada usa o token via authenticatedFetch (renovação automática reaproveitada) — não fetch cru com token fixo',
   /authenticatedFetch\('\/\.netlify\/functions\/reports-performance-goal-average', function\(token\)/.test(currentHtml));
-assert('GS23 body enviado ao backend inclui days (não envia uid nem role — uid vem sempre do token no backend)',
-  currentHtml.includes('return {sessionToken:token, days:_pgaDays};'));
+assert('GS23 body enviado ao backend inclui days e targetUid (não envia uid do CALLER nem role — a AUTORIZAÇÃO de quem chama vem sempre do token no backend; targetUid só indica de qual colaborador ler os atendimentos)',
+  currentHtml.includes('return {sessionToken:token, days:_pgaDays, targetUid:_pgaUid};'));
 assert('GS24 texto "Percentual médio da meta" presente na interface', currentHtml.includes('Percentual médio da meta'));
 assert('GS25 o gate está fora de qualquer template estático — é uma condição JS real (if), não apenas CSS/display:none',
   /if\(PERFORMANCE_GOAL_AVERAGE_AUTHORIZED_UIDS\.indexOf\(CU\.uid\)>=0\)\{/.test(currentHtml));

@@ -2830,27 +2830,42 @@ async function renderRelCharts(){
           date:dt,
           newClients:{realizado:countMetaFor(_pgaUid,byUD[_pgaUid][dt]||[],'novos_clientes',dt), meta:_pgaMetaOf('novos_clientes')},
           qualifiedLeads:{realizado:countMetaFor(_pgaUid,[],'leads_qualificados_diario',dt), meta:_pgaMetaOf('leads_qualificados_diario')},
-          completedAttendances:{realizado:countMetaFor(_pgaUid,[],'atendimentos',dt), meta:_pgaMetaOf('atendimentos')},
+          // realizado é apenas um placeholder: o backend (reports-performance-
+          // goal-average.js) sempre recalcula este valor lendo events/{date}
+          // diretamente via targetUid, sem depender de agEvs (memória do
+          // frontend) — ver docs/DAILY-MONTHLY-GOALS-PERFORMANCE.md.
+          completedAttendances:{realizado:0, meta:_pgaMetaOf('atendimentos')},
         };
       });
       var _pgaResp=null, _pgaErrCode=null;
       try{
         var _pgaAttempt=await authenticatedFetch('/.netlify/functions/reports-performance-goal-average', function(token){
-          return {sessionToken:token, days:_pgaDays};
+          return {sessionToken:token, days:_pgaDays, targetUid:_pgaUid};
         });
         if(_pgaAttempt.ok) _pgaResp=await _pgaAttempt.res.json();
         else _pgaErrCode=_pgaAttempt.code;
       }catch(e){ _pgaErrCode='upload_failed'; }
 
+      // Atendimentos Realizados: o realizado exibido vem SEMPRE do backend
+      // (_pgaResp.days[i].completedAttendances), nunca do placeholder enviado
+      // em _pgaDays — o backend é quem lê events/{date} e calcula o valor real,
+      // independente de agEvs. Novos Clientes e Leads Qualificados continuam
+      // agregados a partir do que o próprio cliente calculou (inalterado).
+      var _pgaRespDays=(_pgaResp&&Array.isArray(_pgaResp.days))?_pgaResp.days:null;
       var _pgaTotals={newClients:{r:0,m:0},qualifiedLeads:{r:0,m:0},completedAttendances:{r:0,m:0}};
-      _pgaDays.forEach(function(d){
-        ['newClients','qualifiedLeads','completedAttendances'].forEach(function(k){
+      _pgaDays.forEach(function(d,_pgaDIdx){
+        ['newClients','qualifiedLeads'].forEach(function(k){
           var entry=d[k]||{};
           if(typeof entry.meta==='number'&&entry.meta>0){
             _pgaTotals[k].r+=(typeof entry.realizado==='number'?entry.realizado:0);
             _pgaTotals[k].m+=entry.meta;
           }
         });
+        var caEntry=(_pgaRespDays&&_pgaRespDays[_pgaDIdx]&&_pgaRespDays[_pgaDIdx].completedAttendances)||{};
+        if(typeof caEntry.meta==='number'&&caEntry.meta>0){
+          _pgaTotals.completedAttendances.r+=(typeof caEntry.realizado==='number'?caEntry.realizado:0);
+          _pgaTotals.completedAttendances.m+=caEntry.meta;
+        }
       });
       function _pgaPct(tot){
         if(tot.m<=0) return null;

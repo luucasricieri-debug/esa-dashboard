@@ -182,6 +182,88 @@ Nunca permitido em nenhum resultado: `Infinity`, `NaN`, percentual negativo,
 percentual acima de 100 no cálculo da média (indicadores individuais são
 sempre capados **antes** de entrar na média).
 
+## Correção: "Atendimentos Realizados" sempre 0/48 no relatório (2026-07-24)
+
+**Incidente**: mesmo após a correção de "Minhas Metas" (que passou a chamar
+`ensureAgEvsLoaded()` antes de contar atendimentos), o bloco "Percentual médio
+da meta" do relatório continuava mostrando `0 / 48` (`0%`) em "Atendimentos
+Realizados" para todos os colaboradores, mesmo havendo histórico real de
+atendimentos no período (ex.: `2026-07-01` a `2026-07-24`, usuários Jéssica
+Lane, Felipe dos Santos, Yasmin Crosoletti, Jaqueline Demarchi).
+
+**Causa raiz exata**: `renderRelCharts()` (o bloco do relatório, em
+`index.html`) **nunca chamava `ensureAgEvsLoaded()`** — só `renderMetas()`
+(tela Minhas Metas) chamava. O bloco "Percentual médio da meta" calculava
+`completedAttendances.realizado` no CLIENTE via
+`countMetaFor(uid, [], 'atendimentos', dia)`, que lê a variável em memória
+`agEvs` — populada apenas quando o usuário visitava Agenda/Minhas Metas na
+mesma sessão. Se o usuário abrisse Relatórios sem antes visitar essas telas,
+`agEvs` permanecia `{}` e o indicador ficava sempre zerado, mesmo com
+histórico real no Firebase.
+
+**Diferença entre frontend e backend agora**: Novos Clientes e Leads
+Qualificados continuam sendo pré-computados pelo CLIENTE (dependem de dados de
+CRM já carregados na página) e enviados ao backend só para aplicação da
+fórmula — isso é **inalterado**. Atendimentos Realizados passou a ser
+**autoritativo no backend**: o cliente envia apenas um placeholder
+(`realizado: 0`) e o campo `targetUid` (uid do colaborador cujos atendimentos
+devem ser contados); o endpoint
+[`reports-performance-goal-average.js`](../netlify/functions/reports-performance-goal-average.js)
+lê `events/{data}` diretamente via Firebase Admin — **apenas as datas do
+período pedido**, nunca o nó inteiro — resolve o nome canônico do colaborador
+(`users/{targetUid}.name`) e calcula o valor real usando
+[`assets/attendance-performance.js`](../assets/attendance-performance.js), a
+nova fonte única. O backend devolve o `completedAttendances` (realizado +
+meta) já corrigido por dia; o cliente usa esse valor (não o placeholder que
+enviou) para montar a coluna e os totais do período.
+
+**Regra de participação** (idêntica à usada por `countMeta('atendimentos')`
+em Minhas Metas — preservada exatamente, sem regressão):
+
+- Conta quando a pessoa é `ev.author` OU aparece em `ev.guests[]` com
+  `status === 'confirmed'`. Convidado `pending`/`declined`/`invited`/sem
+  status **nunca** conta.
+- Um mesmo evento nunca conta duas vezes para a mesma pessoa, mesmo que ela
+  seja autora E convidada confirmada simultaneamente.
+- Exige `ev.resultado === 'sucesso'`.
+- Exclui `ev.type === 'retomada'` **e** `ev.tipo_atendimento === 'retomada'`
+  (ambos os campos podem carregar esse valor historicamente).
+- Exige `ev.tipo_atendimento` ausente ou exatamente `'cliente'` — qualquer
+  outro valor não conta. Esta é a regra REAL já em produção via Minhas Metas;
+  foi verificada por um teste de paridade que extrai `countMeta()` direto de
+  `index.html` e compara, evento a evento, contra o novo módulo
+  (`report-attendance-performance.manual-test.ts`, suíte AP1).
+
+**Resolução de nome** (para o relatório, que compara colaboradores de fora
+pelo uid, ao contrário de Minhas Metas que sempre compara contra o próprio
+nome logado): normalização controlada — `trim`, minúsculas,
+`normalize('NFD')` + remoção de diacríticos, colapso de espaços internos.
+**Nunca** por substring/prefixo: "Felipe dos Santos" casa com
+"felipe dos santos", mas nunca com "Felipe Santos Junior".
+
+**Filtro de período**: datas tratadas como strings `YYYY-MM-DD` (comparação
+lexicográfica, nunca via `Date`/fuso horário — elimina qualquer risco de
+deslocamento de dia por conversão UTC). `startDate` e `endDate` são ambos
+inclusivos. O backend lê exclusivamente `events/{data}` para as datas
+presentes no período recebido (nunca o nó `events` inteiro).
+
+**Fórmula**: inalterada. A meta (`2/dia`, `48` para 24 dias) continua vindo do
+cliente; só o `realizado` passou a ser recalculado no backend. O teto de 100%
+por indicador e a média diária/período (`computeDailyGoalAveragePercentage`/
+`computePeriodGoalAveragePercentage`, ambos em `assets/performance-goals.js`,
+**não modificado**) continuam exatamente os mesmos.
+
+**Diagnóstico temporário**: com `REPORT_ATTENDANCE_DIAGNOSTICS=true`, a
+resposta do endpoint inclui `attendanceDiagnostics: { sourceNode: "events",
+datesRead, eventsRead, successfulEvents, excludedRetomada, matchedAsAuthor,
+matchedAsConfirmedGuest, uniqueMatchedEvents, resolvedPersonName }` — nunca
+inclui descrição do evento, tokens ou dados pessoais além do nome já
+resolvido. **Não deve permanecer permanentemente habilitado** após a validação
+em produção. Também existe
+[`scripts/diagnose-report-attendances.js`](../scripts/diagnose-report-attendances.js)
+(somente leitura, `--start-date --end-date [--uid|--name]`) para investigar
+manualmente contra o Firebase real.
+
 ## Validação em produção
 
 1. Abrir **Metas Diárias** (nível executivo) → confirmar os 3 indicadores
@@ -198,3 +280,13 @@ sempre capados **antes** de entrar na média).
 8. **Confirmar os UIDs reais** `lucas_vizentin` e `fernando_fadel_mphd4rj6`
    contra o Firebase de produção antes de considerar a permissão
    definitivamente correta — este passo não pôde ser feito neste ambiente.
+9. **Validação específica da correção de Atendimentos Realizados** (sem
+   depender de testes sintéticos): selecionar o período `2026-07-01` a
+   `2026-07-24` no relatório, sem visitar Agenda/Minhas Metas antes; confirmar
+   que "Atendimentos Realizados" deixa de mostrar `0/48` para **Felipe dos
+   Santos** e para um segundo colaborador com histórico real (ex.: Jéssica
+   Lane); comparar o valor exibido contra os eventos reais em Agenda para o
+   mesmo colaborador/período; recarregar a página (F5) e repetir sem visitar
+   Agenda — o valor deve permanecer correto; confirmar que Novos Clientes e
+   Leads Qualificados permanecem inalterados; confirmar que o "Percentual
+   médio da meta" (média) muda de acordo com o novo realizado.

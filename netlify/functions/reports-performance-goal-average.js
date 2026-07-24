@@ -17,6 +17,8 @@ const { getDatabase } = require('./_shared/firebase-admin');
 const { verifyToken } = require('./_shared/upload-session');
 const { hasPerformanceGoalAveragePermission } = require('./_shared/reports-permissions');
 const goals = require('../../assets/performance-goals.js');
+const attendance = require('../../assets/attendance-performance.js');
+const { isReportAttendanceDiagnosticsEnabled, buildAttendanceDiagnostics } = require('./_shared/report-attendance-diagnostics');
 
 const MAX_DAYS_PER_REQUEST = 366;
 
@@ -70,7 +72,7 @@ exports.handler = async function (event) {
     return respond(400, { ok: false, code: 'invalid_body', message: 'Body inválido.', requestId });
   }
 
-  const { sessionToken, days } = body;
+  const { sessionToken, days, targetUid } = body;
 
   let tokenPayload;
   try {
@@ -123,11 +125,61 @@ exports.handler = async function (event) {
     }
   }
 
+  // ── Atendimentos Realizados — contagem autoritativa no backend ────────────
+  // O relatório não confia mais no realizado pré-computado pelo cliente para
+  // este indicador (que dependia de agEvs, memória do frontend, populada só
+  // se o usuário tivesse visitado Agenda/Minhas Metas na mesma sessão — causa
+  // raiz do indicador aparecer sempre 0/48). Em vez disso, quando targetUid é
+  // informado, este endpoint lê events/{date} diretamente via Firebase Admin,
+  // apenas para as datas do período solicitado, e substitui o realizado por um
+  // valor calculado aqui, usando a mesma regra de negócio de countMeta('atendimentos')
+  // (ver assets/attendance-performance.js). A meta continua vindo do cliente
+  // (configuração de metas, não é responsabilidade deste indicador recalcular).
+  let attendanceByDate = null;
+  let attendanceDiagnostics = null;
+
+  if (typeof targetUid === 'string' && targetUid.trim()) {
+    let targetUser;
+    try {
+      const targetSnap = await db.ref('users/' + targetUid).once('value');
+      targetUser = targetSnap.val();
+    } catch (e) {
+      logDiag(requestId, { uidMasked: maskUid(uid), fatal: 'target_user_read_failed' });
+      return respond(500, { ok: false, code: 'upload_failed', message: 'Erro ao resolver colaborador do relatório.', requestId });
+    }
+    const personName = (targetUser && (targetUser.name || targetUser.displayName)) || '';
+
+    const uniqueDates = Array.from(new Set(days.map((d) => d.date))).sort();
+    const eventsByDate = {};
+    try {
+      await Promise.all(uniqueDates.map(async (date) => {
+        const snap = await db.ref('events/' + date).once('value');
+        eventsByDate[date] = snap.val() || {};
+      }));
+    } catch (e) {
+      logDiag(requestId, { uidMasked: maskUid(uid), fatal: 'events_read_failed' });
+      return respond(500, { ok: false, code: 'upload_failed', message: 'Erro ao ler eventos do período.', requestId });
+    }
+
+    attendanceByDate = {};
+    uniqueDates.forEach((date) => {
+      attendanceByDate[date] = attendance.countAttendancesForPersonOnDate(eventsByDate[date], personName);
+    });
+
+    if (isReportAttendanceDiagnosticsEnabled()) {
+      attendanceDiagnostics = buildAttendanceDiagnostics(eventsByDate, personName, attendance);
+    }
+  }
+
   const computedDays = days.map((d) => {
+    let completedAttendances = d.completedAttendances;
+    if (attendanceByDate && completedAttendances !== undefined && completedAttendances !== null) {
+      completedAttendances = { meta: completedAttendances.meta, realizado: attendanceByDate[d.date] || 0 };
+    }
     const daily = goals.computeDailyGoalAveragePercentage({
       newClients: d.newClients,
       qualifiedLeads: d.qualifiedLeads,
-      completedAttendances: d.completedAttendances,
+      completedAttendances,
     });
     return {
       date: d.date,
@@ -135,6 +187,11 @@ exports.handler = async function (event) {
       dailyGoalAveragePercentage: daily.average,
       status: daily.status,
       missingIndicators: daily.missingIndicators,
+      // Valor bruto (realizado/meta) de Atendimentos Realizados efetivamente
+      // usado neste dia — sempre o autoritativo do backend quando targetUid
+      // foi informado. O cliente usa este campo (não o que ele mesmo enviou)
+      // para exibir a coluna "Atendimentos Realizados (realizado/meta)".
+      completedAttendances: completedAttendances || null,
     };
   });
 
@@ -144,12 +201,14 @@ exports.handler = async function (event) {
 
   logDiag(requestId, { uidMasked: maskUid(uid), code: 'ok', daysReceived: days.length, validDaysCount: period.validDaysCount });
 
-  return respond(200, {
+  const response = {
     ok: true,
     requestId,
     days: computedDays,
     periodGoalAveragePercentage: period.average,
     validDaysCount: period.validDaysCount,
     status: period.status,
-  });
+  };
+  if (attendanceDiagnostics) response.attendanceDiagnostics = attendanceDiagnostics;
+  return respond(200, response);
 };

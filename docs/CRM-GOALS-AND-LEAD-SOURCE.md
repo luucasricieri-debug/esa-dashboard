@@ -289,6 +289,35 @@ consumidor futuro de relatórios sem refatoração destrutiva). Filtro por
 origem em telas de relatório **não foi implementado** nesta missão, para não
 ampliar o escopo além do pedido mínimo ("preparar a estrutura").
 
+## 4. Atendimentos Realizados zerado no relatório "Percentual médio da meta" (follow-up da seção 0)
+
+A seção 0 corrigiu a tela **Minhas Metas** (`renderMetas()` passou a chamar
+`ensureAgEvsLoaded()`). Mas o mesmo sintoma (`0` sempre, mesmo com histórico
+real) persistiu no bloco **"Percentual médio da meta"** dentro de
+**Relatórios** — um fluxo diferente (`renderRelCharts()`) que **nunca**
+chamava `ensureAgEvsLoaded()`, e por isso calculava
+`completedAttendances.realizado` contra `agEvs` vazio sempre que o usuário não
+tivesse antes visitado Agenda/Minhas Metas na mesma sessão.
+
+**Diferente da correção da seção 0** (que apenas garantiu o carregamento
+prévio de `agEvs` no cliente), esta correção move o cálculo de "Atendimentos
+Realizados" **para o backend**: o relatório não depende mais de `agEvs`, de
+cache de página, nem de visita prévia a nenhuma outra tela. O endpoint
+[`reports-performance-goal-average.js`](../netlify/functions/reports-performance-goal-average.js)
+agora lê `events/{data}` diretamente via Firebase Admin (só as datas do
+período pedido) e conta usando a nova fonte única
+[`assets/attendance-performance.js`](../assets/attendance-performance.js) —
+mesma regra de negócio de `countMeta('atendimentos')` (author/convidado
+confirmado, `resultado==='sucesso'`, exclusão de retomada e de
+`tipo_atendimento` diferente de `cliente`/ausente), verificada por teste de
+paridade direto contra o código real de `index.html`.
+
+Detalhes completos (arquitetura, resolução de nome, filtro de período,
+diagnóstico) em
+[`docs/DAILY-MONTHLY-GOALS-PERFORMANCE.md`](./DAILY-MONTHLY-GOALS-PERFORMANCE.md#correção-atendimentos-realizados-sempre-048-no-relatório-2026-07-24).
+**Minhas Metas não foi alterada de novo** por esta correção — `countMeta()`
+e `ensureAgEvsLoaded()` continuam exatamente como a seção 0 deixou.
+
 ## Validação em produção
 
 ### Restauração do histórico de Atendimentos (esta missão)
@@ -315,6 +344,29 @@ ampliar o escopo além do pedido mínimo ("preparar a estrutura").
 7. Repetir o passo 2 em uma segunda sessão/aba, agora **depois** de visitar
    a página Agenda — confirmar que o resultado é idêntico (a correção não
    depende mais da ordem de navegação, mas também não quebra o caminho antigo).
+
+### Atendimentos Realizados no relatório "Percentual médio da meta" (esta missão)
+
+1. Rodar o diagnóstico read-only com credenciais reais:
+   ```
+   node scripts/diagnose-report-attendances.js --start-date 2026-07-01 --end-date 2026-07-24 --name "Felipe dos Santos"
+   ```
+   Confirmar `finalTotal > 0` quando há histórico real no período.
+2. Login como **Lucas Vizentin** → abrir **Relatórios** → período
+   `2026-07-01` a `2026-07-24` → abrir "Percentual médio da meta" **sem**
+   visitar Agenda/Minhas Metas antes na mesma sessão.
+3. Confirmar que "Atendimentos Realizados" deixa de mostrar `0/48` para
+   **Felipe dos Santos** e para um segundo colaborador com histórico real.
+4. Comparar o valor exibido contra os eventos reais desse colaborador em
+   Agenda para o mesmo período.
+5. Confirmar `realizado/meta` e o percentual individual da coluna.
+6. Confirmar que o "Percentual médio da meta" (média) muda de acordo com o
+   novo realizado de Atendimentos Realizados.
+7. Confirmar que **Novos Clientes** e **Leads Qualificados** permanecem
+   inalterados (não são recalculados pelo backend).
+8. Recarregar a página (F5) e repetir sem visitar Agenda — o valor correto
+   deve se manter, provando que não depende mais de estado em memória do
+   navegador.
 
 ### Demais indicadores (missão anterior)
 
