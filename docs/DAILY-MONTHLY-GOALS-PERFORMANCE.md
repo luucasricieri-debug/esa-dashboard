@@ -94,7 +94,7 @@ meta mensal = meta diária × dias úteis do período
 - `percentage = realizado / meta * 100`; `capped = Math.min(percentage, 100)`,
   nunca negativo.
 
-## Fórmula da média diária
+## Fórmula da média diária (uso interno/per-dia — NÃO é a coluna principal do relatório)
 
 `computeDailyGoalAveragePercentage({ newClients, qualifiedLeads, completedAttendances })`:
 
@@ -112,27 +112,106 @@ Exemplo oficial da tarefa: Novos Clientes 150% (capado a 100), Leads
 Qualificados 50%, Atendimentos Realizados 80% → `(100+50+80)/3 = 76,67%`.
 Arredondado a 2 casas decimais.
 
-## Fórmula do período (múltiplos dias)
+Esta função ainda é usada pelo backend para compor o breakdown por dia
+(`days[i].indicators`, `days[i].dailyGoalAveragePercentage`) retornado pelo
+endpoint — informação útil para depuração/drill-down —, mas **desde
+2026-07-24 ela não é mais a base do valor principal do relatório** (ver seção
+seguinte).
 
-`computePeriodGoalAveragePercentage(days)`:
+## Fórmula consolidada do período — FÓRMULA OFICIAL da coluna "Percentual médio da meta"
+
+**Correção de 2026-07-24**: o valor principal do relatório **não é** a média
+das médias diárias. É a **média dos três percentuais consolidados do
+período** — exatamente os mesmos percentuais exibidos nas 3 colunas
+individuais (Novos Clientes, Leads Qualificados, Atendimentos Realizados).
 
 ```
-periodAverage = soma(dailyGoalAveragePercentage dos dias válidos) / quantidade de dias válidos
+Para cada indicador:
+  realizadoTotal = soma(realizado de cada dia do período, apenas dias com meta > 0)
+  metaTotal       = soma(meta de cada dia do período, apenas dias com meta > 0)
+  percentualConsolidado = min(realizadoTotal / metaTotal * 100, 100)
+
+percentualMedioDaMeta = (
+  percentualConsolidadoNovosClientes
+  + percentualConsolidadoLeadsQualificados
+  + percentualConsolidadoAtendimentosRealizados
+) / 3
 ```
 
-Regras:
+Implementada em `ESAPerformanceGoals.computeConsolidatedGoalAveragePercentage({ newClients, qualifiedLeads, completedAttendances })`
+(`assets/performance-goals.js`), onde cada indicador recebe `{ realized, goal }`
+já **consolidado (somado) para o período inteiro**. Retorna:
 
-- **Dias duplicados** (mesma `date` repetida) contam uma única vez.
-- **Dias com `average === null`** (`not_configured` — nenhum dos 3 indicadores
-  tinha meta naquele dia) são **excluídos do denominador**, nunca tratados
-  como 0. Isso cobre naturalmente finais de semana/feriados/dias sem
-  expediente para o indicador: se não há meta configurada para aquele dia,
-  ele simplesmente não entra na conta — não derruba a média artificialmente.
-- Se **nenhum** dia do período for válido, `status: 'no_valid_days'` e
-  `average: null` (a UI deve mostrar "Meta não configurada", nunca "0%").
-- O cálculo usa o **resultado consolidado por usuário e por dia**
-  (`countMetaFor(uid, ..., id, data)`, que já soma os registros de CRM do
-  dia) — nunca a média simples dos registros individuais do CRM.
+```js
+{
+  indicators: {
+    newClients:           { realized, goal, cappedPercentage },
+    qualifiedLeads:        { realized, goal, cappedPercentage },
+    completedAttendances:  { realized, goal, cappedPercentage },
+  },
+  averagePercentage, // null quando os 3 indicadores estão sem meta configurada
+  status,            // 'ok' | 'incomplete_configuration' | 'not_configured'
+  missingIndicators,
+}
+```
+
+**Por que a fórmula antiga estava errada**: a "média das médias diárias"
+capa cada indicador **por dia**, então um dia com realizado muito acima da
+meta "desperdiça" o excedente (capado a 100% *naquele dia*), mesmo que outro
+dia do mesmo período tivesse ficado abaixo da meta — o excedente de um dia
+não pode mais compensar o déficit de outro. A fórmula consolidada soma
+realizado e meta do período **antes** de aplicar o teto, então um excesso e
+um déficit em dias diferentes se compensam corretamente dentro do mesmo
+indicador — exatamente como as 3 colunas individuais já faziam. Isso é o que
+causava o "Percentual médio da meta" divergir do resultado esperado a partir
+das 3 colunas visíveis (ver exemplos abaixo).
+
+**Regras** (idênticas, por design, às da média diária — reaproveita
+`computeIndicatorPercentage` internamente):
+
+- Realizado negativo → tratado como `0`.
+- Meta ausente ou `<= 0` → indicador em `missing_goal`/`incomplete_configuration`,
+  não conta na soma, nunca divide por zero.
+- Percentual de cada indicador tem teto de 100% — aplicado **antes** de
+  entrar na média (um indicador muito acima da meta nunca compensa outro
+  indicador abaixo da meta).
+- **Sempre divide por 3**, mesmo com 1 ou 2 indicadores sem meta configurada.
+  Só quando os 3 estão ausentes o resultado é `not_configured` e
+  `averagePercentage: null` — nunca 0 silencioso.
+- Nunca `NaN`/`Infinity`.
+- `cappedPercentage` de cada indicador é devolvido **sem arredondamento**
+  (mesma convenção de `computeIndicatorPercentage.capped`); só
+  `averagePercentage` é arredondado, e só no final, a partir dos valores com
+  precisão integral — nunca a partir de percentuais já arredondados.
+
+**Exemplos reais confirmados em produção** (2026-07-24):
+
+| Colaborador          | Novos Clientes | Leads Qualificados | Atendimentos Realizados | Percentual médio da meta |
+|-----------------------|:---:|:---:|:---:|:---:|
+| Yasmin Crosoletti      | 24,17% | 100% | 47,92% | **57,36%** |
+| Jéssica Lane           | 100%   | 25%  | 20,83% | **48,61%** |
+| Jaqueline Demarchi     | 12,5%  | 50%  | 10,42% | **24,31%** |
+| Felipe dos Santos      | 61,67% | 100% | 91,67% | **84,45%** |
+
+`(24,17 + 100 + 47,92) / 3 = 57,36`; `(100 + 25 + 20,83) / 3 = 48,61`;
+`(12,5 + 50 + 10,42) / 3 = 24,31`; `(61,67 + 100 + 91,67) / 3 = 84,45`.
+
+**Fonte única — nunca recalculado com fórmula diferente**: o backend
+(`reports-performance-goal-average.js`) calcula os totais e o
+`averagePercentage` **uma única vez** e devolve `indicators`/`averagePercentage`
+na resposta. O frontend (`index.html`, bloco "Percentual médio da meta" em
+`renderRelCharts()`) usa **diretamente** esses valores para as 3 colunas e
+para a coluna principal — não existe mais nenhuma agregação/fórmula
+equivalente recalculada no cliente. Isso garante, por construção, que o
+valor principal seja sempre matematicamente igual à média das 3 colunas
+visíveis.
+
+`computePeriodGoalAveragePercentage(days)` (média das médias diárias,
+`assets/performance-goals.js`) **continua existindo** no módulo, mas
+**não é mais chamada por `reports-performance-goal-average.js`** — mantida
+apenas por compatibilidade, caso algum consumidor futuro precise
+especificamente de uma média diária de verdade (não é o mesmo cálculo do
+relatório "Percentual médio da meta").
 
 ## Permissões
 
@@ -165,15 +244,15 @@ ver seção "Validação em produção".
 
 | Caso                                  | Comportamento                                                    |
 |----------------------------------------|-------------------------------------------------------------------|
-| Meta 0                                  | `missing_goal` — nunca divide por zero                            |
-| Meta ausente                            | `missing_goal`                                                     |
+| Meta 0 (total do indicador no período)   | `cappedPercentage: null`, indicador não entra na soma — nunca divide por zero |
+| Meta ausente                            | Mesmo tratamento de meta 0                                          |
 | Realizado 0                              | Percentual 0%, não é erro                                          |
-| Realizado acima da meta                  | Capado em 100% para a média; percentual "cru" continua disponível |
+| Realizado acima da meta                  | Capado em 100% para a média; `cappedPercentage` "cru" continua disponível |
 | Valor decimal (0,5)                      | Preservado exatamente, formatado com vírgula                       |
-| Dia sem expediente / sem meta configurada| Excluído do denominador do período — nunca vira 0                  |
-| Usuário sem meta configurada             | Todos os 3 indicadores `missing_goal` → dia `not_configured`       |
-| Dia parcial / filtro de 1 dia            | `periodGoalAveragePercentage` = o próprio valor do dia             |
-| Período sem dados válidos                | `status: 'no_valid_days'`, `average: null`                         |
+| Indicador sem meta configurada no período| Não entra na soma (contribui 0), `status: 'incomplete_configuration'` |
+| Usuário sem meta configurada             | Os 3 indicadores sem meta → `status: 'not_configured'`, `averagePercentage: null` |
+| Período de 1 dia                         | `averagePercentage` = a própria média consolidada desse dia (matematicamente igual à antiga fórmula só quando há 1 único dia) |
+| Nenhum indicador configurado no período  | `status: 'not_configured'`, `averagePercentage: null` (nunca 0 silencioso) |
 | Filtro por usuário/equipe                | Uma linha por usuário selecionado na tabela do relatório           |
 | Usuário não autorizado                   | Bloqueado no backend (403), oculto no frontend                    |
 | Dados históricos (Prospecção/Atendimento)| Lidos normalmente via alias — nenhum dado apagado ou migrado       |
@@ -290,3 +369,12 @@ manualmente contra o Firebase real.
    Agenda — o valor deve permanecer correto; confirmar que Novos Clientes e
    Leads Qualificados permanecem inalterados; confirmar que o "Percentual
    médio da meta" (média) muda de acordo com o novo realizado.
+10. **Validação específica da fórmula consolidada** (correção de 2026-07-24):
+    para cada colaborador exibido, conferir manualmente que o valor da coluna
+    "Percentual médio da meta" é igual à média aritmética simples dos 3
+    percentuais das outras colunas (Novos Clientes, Leads Qualificados,
+    Atendimentos Realizados) — a diferença nunca deve ultrapassar 0,01 ponto
+    percentual (tolerância de arredondamento). Confirmar isso para pelo menos
+    Yasmin Crosoletti, Jéssica Lane, Jaqueline Demarchi e Felipe dos Santos
+    (os 4 casos confirmados no incidente); testar com período de 1 dia e com
+    período de vários dias.

@@ -102,7 +102,7 @@ async function run() {
     const resBody = JSON.parse(res.body);
     assert('RPA08 Lucas: HTTP 200', res.statusCode === 200);
     assert('RPA09 Lucas: ok === true', resBody.ok === true);
-    assert('RPA10 Lucas: percentualMédio do exemplo da tarefa === 76.67', resBody.periodGoalAveragePercentage === 76.67);
+    assert('RPA10 Lucas: percentualMédio do exemplo da tarefa === 76.67', resBody.averagePercentage === 76.67);
     assert('RPA11 Lucas: validDaysCount === 1', resBody.validDaysCount === 1);
     assert('RPA12 Lucas: breakdown por indicador presente (newClients capped=100)', resBody.days[0].indicators.newClients.capped === 100);
   }
@@ -129,7 +129,7 @@ async function run() {
     const resBody = JSON.parse(res.body);
     assert('RPA15 outro usuário: HTTP 403', res.statusCode === 403);
     assert('RPA16 outro usuário: code === no_permission', resBody.code === 'no_permission');
-    assert('RPA17 outro usuário: nenhum dado de cálculo vaza na resposta de bloqueio', resBody.days === undefined && resBody.periodGoalAveragePercentage === undefined);
+    assert('RPA17 outro usuário: nenhum dado de cálculo vaza na resposta de bloqueio', resBody.days === undefined && resBody.averagePercentage === undefined);
   }
 
   console.log('\nSuite RPA5 — uid do body é ignorado: só o uid do token verificado decide a permissão');
@@ -175,11 +175,15 @@ async function run() {
     assert('RPA22 meta 0: HTTP 200 (não é erro — é sinalizado como missing_goal)', resZeroGoal.statusCode === 200);
     assert('RPA23 meta 0: indicador sinalizado como missing_goal, não NaN/Infinity', bodyZeroGoal.days[0].indicators.newClients.status === 'missing_goal');
 
-    // Nenhum indicador do dia com meta configurada -> status not_configured, average null
+    // Nenhum indicador do dia com meta configurada -> status not_configured, average null.
+    // validDaysCount agora conta datas únicas no período recebido (metadado
+    // informativo de "dias considerados"), não mais "dias que contribuíram
+    // para uma média diária" — a fórmula consolidada não tem mais o conceito
+    // de "dia válido para a média", só totais por indicador.
     const resNoConfig = await fn.handler({ httpMethod: 'POST', body: JSON.stringify({ sessionToken: token, days: [{ date: '2026-08-03' }] }) } as any);
     const bodyNoConfig = JSON.parse(resNoConfig.body);
-    assert('RPA24 dia totalmente sem meta configurada: validDaysCount=0 (não conta como dia zerado)', bodyNoConfig.validDaysCount === 0);
-    assert('RPA25 dia totalmente sem meta: periodGoalAveragePercentage === null (não 0 silencioso)', bodyNoConfig.periodGoalAveragePercentage === null);
+    assert('RPA24 dia totalmente sem meta configurada: validDaysCount=1 (data única recebida — metadado informativo, não mais "dia válido para média diária")', bodyNoConfig.validDaysCount === 1);
+    assert('RPA25 dia totalmente sem meta: averagePercentage === null (não 0 silencioso) — os 3 indicadores ficam sem meta configurada', bodyNoConfig.averagePercentage === null);
 
     // Realizado negativo -> vira 0, nunca percentual negativo
     const resNegative = await fn.handler({ httpMethod: 'POST', body: JSON.stringify({ sessionToken: token, days: [{ date: '2026-08-03', newClients: { realizado: -100, meta: 5 } }] }) } as any);
@@ -193,8 +197,8 @@ async function run() {
     ];
     const resPeriod = await fn.handler({ httpMethod: 'POST', body: JSON.stringify({ sessionToken: token, days: manyDays }) } as any);
     const bodyPeriod = JSON.parse(resPeriod.body);
-    assert('RPA27 período de 2 dias: validDaysCount === 2', bodyPeriod.validDaysCount === 2);
-    assert('RPA28 período de 2 dias: (100+0)/2 = 50', bodyPeriod.periodGoalAveragePercentage === 50);
+    assert('RPA27 período de 2 dias: validDaysCount === 2 (2 datas únicas)', bodyPeriod.validDaysCount === 2);
+    assert('RPA28 período de 2 dias: fórmula consolidada — totais iguais por indicador (5/10, 2/4, 2/4) = 50% cada, média = 50', bodyPeriod.averagePercentage === 50);
     assert('RPA29 nenhum valor NaN/Infinity na resposta inteira', !JSON.stringify(bodyPeriod).match(/NaN|Infinity/));
   }
 

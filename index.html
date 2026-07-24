@@ -2846,33 +2846,16 @@ async function renderRelCharts(){
         else _pgaErrCode=_pgaAttempt.code;
       }catch(e){ _pgaErrCode='upload_failed'; }
 
-      // Atendimentos Realizados: o realizado exibido vem SEMPRE do backend
-      // (_pgaResp.days[i].completedAttendances), nunca do placeholder enviado
-      // em _pgaDays — o backend é quem lê events/{date} e calcula o valor real,
-      // independente de agEvs. Novos Clientes e Leads Qualificados continuam
-      // agregados a partir do que o próprio cliente calculou (inalterado).
-      var _pgaRespDays=(_pgaResp&&Array.isArray(_pgaResp.days))?_pgaResp.days:null;
-      var _pgaTotals={newClients:{r:0,m:0},qualifiedLeads:{r:0,m:0},completedAttendances:{r:0,m:0}};
-      _pgaDays.forEach(function(d,_pgaDIdx){
-        ['newClients','qualifiedLeads'].forEach(function(k){
-          var entry=d[k]||{};
-          if(typeof entry.meta==='number'&&entry.meta>0){
-            _pgaTotals[k].r+=(typeof entry.realizado==='number'?entry.realizado:0);
-            _pgaTotals[k].m+=entry.meta;
-          }
-        });
-        var caEntry=(_pgaRespDays&&_pgaRespDays[_pgaDIdx]&&_pgaRespDays[_pgaDIdx].completedAttendances)||{};
-        if(typeof caEntry.meta==='number'&&caEntry.meta>0){
-          _pgaTotals.completedAttendances.r+=(typeof caEntry.realizado==='number'?caEntry.realizado:0);
-          _pgaTotals.completedAttendances.m+=caEntry.meta;
-        }
-      });
-      function _pgaPct(tot){
-        if(tot.m<=0) return null;
-        return Math.min(100, Math.round((tot.r/tot.m)*10000)/100);
-      }
-      var _fmtPct=function(v){return v===null?'Meta não configurada':_fmtNumPga(v)+'%';};
-      var _fmtNumPga=function(v){return (typeof v==='number'&&isFinite(v))?v.toLocaleString('pt-BR',{maximumFractionDigits:2}):v;};
+      // Fonte única: os percentuais das 3 colunas E o "Percentual médio da
+      // meta" vêm TODOS de _pgaResp.indicators/_pgaResp.averagePercentage
+      // (calculados uma única vez no backend, com a mesma fórmula
+      // consolidada — ver assets/performance-goals.js:
+      // computeConsolidatedGoalAveragePercentage). O cliente NUNCA recalcula
+      // esses percentuais com uma fórmula própria — isso é o que causava o
+      // "Percentual médio da meta" divergir das 3 colunas visíveis
+      // (incidente corrigido em 2026-07-24).
+      var _fmtPct=function(v){return (v===null||v===undefined)?'Meta não configurada':_fmtNumPga(v)+'%';};
+      var _fmtNumPga=function(v){return (typeof v==='number'&&isFinite(v))?v.toLocaleString('pt-BR',{maximumFractionDigits:2}):'—';};
 
       if(!_pgaResp){
         _pgaRowsHtml+='<tr style="border-top:1px solid #F0EDE8"><td style="padding:9px 14px;font-weight:600">'+_pgaUser.name+'</td>'
@@ -2880,15 +2863,18 @@ async function renderRelCharts(){
         continue;
       }
 
-      var _pgaAvg=_pgaResp.periodGoalAveragePercentage;
+      var _pgaInd=_pgaResp.indicators||{};
+      var _ncInd=_pgaInd.newClients||{realized:0,goal:null,cappedPercentage:null};
+      var _qlInd=_pgaInd.qualifiedLeads||{realized:0,goal:null,cappedPercentage:null};
+      var _caInd=_pgaInd.completedAttendances||{realized:0,goal:null,cappedPercentage:null};
+      var _pgaAvg=_pgaResp.averagePercentage;
       var _pgaAvgLbl=(_pgaAvg===null||_pgaAvg===undefined)?'Meta não configurada':_fmtNumPga(_pgaAvg)+'%';
-      var _ncTot=_pgaTotals.newClients, _qlTot=_pgaTotals.qualifiedLeads, _caTot=_pgaTotals.completedAttendances;
       _pgaRowsHtml+='<tr style="border-top:1px solid #F0EDE8">'
         +'<td style="padding:9px 14px;font-weight:600">'+_pgaUser.name+'<div style="font-size:10px;color:var(--gr);font-weight:400">'+(_pgaResp.validDaysCount||0)+' dia(s) considerado(s)</div></td>'
         +'<td style="padding:9px 8px;text-align:center;font-weight:700">'+_pgaAvgLbl+'</td>'
-        +'<td style="padding:9px 8px;text-align:center"><div style="font-weight:600">'+_ncTot.r+' / '+_fmtNumPga(_ncTot.m)+'</div><div style="font-size:10px;color:var(--gr)">'+_fmtPct(_pgaPct(_ncTot))+'</div></td>'
-        +'<td style="padding:9px 8px;text-align:center"><div style="font-weight:600">'+_qlTot.r+' / '+_fmtNumPga(_qlTot.m)+'</div><div style="font-size:10px;color:var(--gr)">'+_fmtPct(_pgaPct(_qlTot))+'</div></td>'
-        +'<td style="padding:9px 8px;text-align:center"><div style="font-weight:600">'+_caTot.r+' / '+_fmtNumPga(_caTot.m)+'</div><div style="font-size:10px;color:var(--gr)">'+_fmtPct(_pgaPct(_caTot))+'</div></td>'
+        +'<td style="padding:9px 8px;text-align:center"><div style="font-weight:600">'+_ncInd.realized+' / '+_fmtNumPga(_ncInd.goal)+'</div><div style="font-size:10px;color:var(--gr)">'+_fmtPct(_ncInd.cappedPercentage)+'</div></td>'
+        +'<td style="padding:9px 8px;text-align:center"><div style="font-weight:600">'+_qlInd.realized+' / '+_fmtNumPga(_qlInd.goal)+'</div><div style="font-size:10px;color:var(--gr)">'+_fmtPct(_qlInd.cappedPercentage)+'</div></td>'
+        +'<td style="padding:9px 8px;text-align:center"><div style="font-weight:600">'+_caInd.realized+' / '+_fmtNumPga(_caInd.goal)+'</div><div style="font-size:10px;color:var(--gr)">'+_fmtPct(_caInd.cappedPercentage)+'</div></td>'
         +'</tr>';
     }
     html+='<div style="font-size:11px;font-weight:700;color:#0D2418;letter-spacing:.8px;text-transform:uppercase;margin-bottom:10px;margin-top:24px">Percentual médio da meta</div>';

@@ -195,6 +195,15 @@
   // days = [{ date: 'YYYY-MM-DD', dailyGoalAveragePercentage: number|null, status }]
   // Dias com average === null (not_configured) são EXCLUÍDOS do denominador —
   // nunca contam como 0. Datas duplicadas são ignoradas na segunda ocorrência.
+  //
+  // ATENÇÃO: esta função calcula a MÉDIA DAS MÉDIAS DIÁRIAS — matematicamente
+  // diferente da média dos três percentuais CONSOLIDADOS do período (ver
+  // computeConsolidatedGoalAveragePercentage abaixo). O relatório "Percentual
+  // médio da meta" usa a fórmula consolidada, NUNCA esta, para a coluna
+  // principal — usar esta função para esse fim reproduz o incidente de
+  // 2026-07-24 (valor exibido divergente das 3 colunas visíveis). Mantida
+  // aqui apenas por compatibilidade com quem eventualmente precise de uma
+  // média diária de verdade (não é mais usada por reports-performance-goal-average.js).
 
   function computePeriodGoalAveragePercentage(days) {
     var list = Array.isArray(days) ? days : [];
@@ -220,6 +229,78 @@
     return { average: average, validDaysCount: validCount, status: 'ok' };
   }
 
+  // ── Percentual médio consolidado do período — FÓRMULA OFICIAL da coluna
+  // "Percentual médio da meta" ────────────────────────────────────────────
+  //
+  // indicators = {
+  //   newClients:           { realized, goal },
+  //   qualifiedLeads:        { realized, goal },
+  //   completedAttendances:  { realized, goal },
+  // }
+  //
+  // Cada `realized`/`goal` já deve vir CONSOLIDADO (somado) para o período
+  // inteiro — a mesma soma usada para exibir "realizado/meta" em cada uma
+  // das 3 colunas do relatório. Esta função NUNCA deve receber valores
+  // diários isolados (isso seria a média das médias diárias, a fórmula
+  // incorreta corrigida em 2026-07-24 — ver computePeriodGoalAveragePercentage).
+  //
+  // Por indicador: percentualConsolidado = min(realized/goal*100, 100),
+  // realized negativo tratado como 0, goal ausente/<=0 vira "configuração
+  // incompleta" (nunca divide por zero, nunca NaN/Infinity) — reaproveita
+  // computeIndicatorPercentage, a mesma função já usada por
+  // computeDailyGoalAveragePercentage, garantindo idêntico comportamento de
+  // teto/borda em ambas as fórmulas.
+  //
+  // averagePercentage = média dos 3 cappedPercentage — SEMPRE dividido por 3,
+  // mesmo com 1 ou 2 indicadores em falta (contribuem 0, status sinaliza
+  // 'incomplete_configuration'). Só quando os 3 estão ausentes o resultado é
+  // 'not_configured' e averagePercentage é null (nunca 0 silencioso).
+  //
+  // cappedPercentage de cada indicador é devolvido SEM arredondamento (mesma
+  // convenção de computeIndicatorPercentage.capped) — arredondar é
+  // responsabilidade da exibição. Só averagePercentage é arredondado (2
+  // casas), e só no final — nunca a partir de valores já arredondados.
+
+  function computeConsolidatedGoalAveragePercentage(indicators) {
+    var ind = indicators || {};
+    var results = {};
+    var missing = [];
+    var sum = 0;
+
+    INDICATOR_KEYS.forEach(function (key) {
+      var entry = ind[key] || {};
+      var r = computeIndicatorPercentage(entry.realized, entry.goal);
+      var realizedSafe = typeof entry.realized === 'number' && isFinite(entry.realized) ? entry.realized : 0;
+      if (realizedSafe < 0) realizedSafe = 0;
+      results[key] = {
+        realized: realizedSafe,
+        goal: typeof entry.goal === 'number' && isFinite(entry.goal) ? entry.goal : null,
+        cappedPercentage: r.capped, // null quando missing_goal — nunca 0 silencioso
+      };
+      if (r.status === 'missing_goal') {
+        missing.push(key);
+      } else {
+        sum += r.capped;
+      }
+    });
+
+    var allMissing = missing.length === INDICATOR_KEYS.length;
+    var status = allMissing ? 'not_configured' : (missing.length > 0 ? 'incomplete_configuration' : 'ok');
+    var averagePercentage = allMissing ? null : sum / INDICATOR_KEYS.length;
+    if (averagePercentage !== null) {
+      averagePercentage = Math.round(averagePercentage * 100) / 100;
+      if (averagePercentage < 0) averagePercentage = 0;
+      if (averagePercentage > 100) averagePercentage = 100;
+    }
+
+    return {
+      indicators: results,
+      averagePercentage: averagePercentage,
+      status: status,
+      missingIndicators: missing,
+    };
+  }
+
   return {
     PERFORMANCE_INDICATORS: PERFORMANCE_INDICATORS,
     INDICATOR_KEYS: INDICATOR_KEYS,
@@ -230,5 +311,6 @@
     computeIndicatorPercentage: computeIndicatorPercentage,
     computeDailyGoalAveragePercentage: computeDailyGoalAveragePercentage,
     computePeriodGoalAveragePercentage: computePeriodGoalAveragePercentage,
+    computeConsolidatedGoalAveragePercentage: computeConsolidatedGoalAveragePercentage,
   };
 });

@@ -217,11 +217,15 @@ assert('GS25 o gate está fora de qualquer template estático — é uma condiç
 // Suite GS6 — Execução real: agregação de totais do período (mesma fórmula do exemplo da tarefa)
 // ═══════════════════════════════════════════════════════════════════════════
 
-console.log('\nSuite GS6 — agregação client-side de realizado/meta por período (execução real)');
+console.log('\nSuite GS6 — agregação de totais realizado/meta por período (execução real)');
 
 {
-  // Réplica funcional mínima da lógica de totals usada dentro do bloco (mesma
-  // fórmula, testada isoladamente): soma realizado/meta pelos dias com meta > 0.
+  // Réplica funcional mínima da lógica de totais por indicador — hoje
+  // calculada no BACKEND (reports-performance-goal-average.js, ver suíte
+  // dedicada report-consolidated-percentage.manual-test.ts), não mais no
+  // cliente: soma realizado/meta pelos dias com meta > 0. Testada aqui
+  // isoladamente apenas para confirmar a fórmula básica de soma + teto de
+  // 100%, que é o primeiro passo da fórmula consolidada oficial.
   function aggregateTotals(days: Array<Record<string, { realizado?: number; meta?: number }>>) {
     const totals: Record<string, { r: number; m: number }> = { newClients: { r: 0, m: 0 }, qualifiedLeads: { r: 0, m: 0 }, completedAttendances: { r: 0, m: 0 } };
     days.forEach((d) => {

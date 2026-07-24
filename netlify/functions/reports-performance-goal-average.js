@@ -195,19 +195,58 @@ exports.handler = async function (event) {
     };
   });
 
-  const period = goals.computePeriodGoalAveragePercentage(
-    computedDays.map((d) => ({ date: d.date, dailyGoalAveragePercentage: d.dailyGoalAveragePercentage })),
-  );
+  // ── Percentual médio da meta — fórmula consolidada oficial ────────────────
+  // A coluna principal NÃO é a média das médias diárias (incidente corrigido
+  // em 2026-07-24: reports-performance-goal-average.js usava
+  // computePeriodGoalAveragePercentage sobre dailyGoalAveragePercentage — uma
+  // grandeza matematicamente diferente da média dos 3 percentuais
+  // consolidados exibidos nas colunas do relatório). A fórmula oficial é:
+  // para cada indicador, percentualConsolidado = min(realizadoTotal/metaTotal*100, 100);
+  // o valor principal é a média dos 3 percentuais consolidados. Os totais
+  // somam apenas os dias com meta > 0 configurada — a MESMA regra que o
+  // cliente usa para exibir "realizado/meta" em cada coluna — garantindo que
+  // a média usa exatamente os mesmos números já visíveis nas 3 colunas
+  // (nunca uma fonte diferente, nunca recalculado com outra fórmula).
+  const totals = {
+    newClients: { realized: 0, goal: 0 },
+    qualifiedLeads: { realized: 0, goal: 0 },
+    completedAttendances: { realized: 0, goal: 0 },
+  };
+  days.forEach((d) => {
+    ['newClients', 'qualifiedLeads'].forEach((key) => {
+      const entry = d[key];
+      if (entry && typeof entry.meta === 'number' && entry.meta > 0) {
+        totals[key].realized += typeof entry.realizado === 'number' ? entry.realizado : 0;
+        totals[key].goal += entry.meta;
+      }
+    });
+  });
+  computedDays.forEach((d) => {
+    const ca = d.completedAttendances;
+    if (ca && typeof ca.meta === 'number' && ca.meta > 0) {
+      totals.completedAttendances.realized += typeof ca.realizado === 'number' ? ca.realizado : 0;
+      totals.completedAttendances.goal += ca.meta;
+    }
+  });
 
-  logDiag(requestId, { uidMasked: maskUid(uid), code: 'ok', daysReceived: days.length, validDaysCount: period.validDaysCount });
+  const consolidated = goals.computeConsolidatedGoalAveragePercentage({
+    newClients: totals.newClients,
+    qualifiedLeads: totals.qualifiedLeads,
+    completedAttendances: totals.completedAttendances,
+  });
+
+  const validDaysCount = new Set(days.map((d) => d.date)).size;
+
+  logDiag(requestId, { uidMasked: maskUid(uid), code: 'ok', daysReceived: days.length, validDaysCount });
 
   const response = {
     ok: true,
     requestId,
     days: computedDays,
-    periodGoalAveragePercentage: period.average,
-    validDaysCount: period.validDaysCount,
-    status: period.status,
+    indicators: consolidated.indicators,
+    averagePercentage: consolidated.averagePercentage,
+    validDaysCount,
+    status: consolidated.status,
   };
   if (attendanceDiagnostics) response.attendanceDiagnostics = attendanceDiagnostics;
   return respond(200, response);
