@@ -344,7 +344,9 @@ function runStaticSuite() {
 
   assert('UP33 session-init.js não contém nenhum .set( em users/', !/db\.ref\([^)]*users[^)]*\)\.set\(/.test(sessionInitSrc));
   assert('UP34 session-init.js não contém nenhum .update( em users/', !/db\.ref\([^)]*users[^)]*\)\.update\(/.test(sessionInitSrc));
-  assert('UP35 session-init.js só lê "users" (db.ref(\'users\').once)', sessionInitSrc.includes("db.ref('users').once('value')"));
+  assert('UP35 session-init.js só lê "users" — agora via resolveUserByLogin() (_shared/user-identity.js), que internamente faz db.ref(\'users\').once(\'value\'); a leitura direta foi consolidada lá para resolver uid pela CHAVE do Firebase, nunca pelo campo .uid (correção de missão posterior)',
+    sessionInitSrc.includes("resolveUserByLogin(db, normalizedLogin)") &&
+    fs.readFileSync(path.join(NF, '_shared/user-identity.js'), 'utf8').includes("db.ref('users').once('value')"));
   assert('UP36 session-init.js não grava sessão/perfil nenhum no Firebase (nenhum db.ref(...).set/.update/.transaction) — só emite token',
     !/db\.ref\([^)]*\)\.(set|update|transaction)\(/.test(sessionInitSrc));
 

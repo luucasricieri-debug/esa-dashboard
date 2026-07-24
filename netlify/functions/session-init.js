@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const { getDatabase } = require('./_shared/firebase-admin');
 const { generateToken, TTL_SECONDS } = require('./_shared/upload-session');
+const { resolveUserByLogin } = require('./_shared/user-identity');
 
 const GENERIC_401 = JSON.stringify({ error: 'Login ou senha inválidos' });
 
@@ -42,16 +43,20 @@ exports.handler = async function (event) {
     return { statusCode: 500, body: JSON.stringify({ error: 'Erro de configuração do servidor' }) };
   }
 
-  let users;
+  // Causa raiz do incidente "HTTP 401 para alguns usuários": localizar o
+  // usuário e então usar o CAMPO `userEntry.uid` (que pode estar ausente em
+  // registros legados) como uid da sessão. resolveUserByLogin() retorna
+  // sempre a CHAVE do Firebase — a única fonte de verdade de uid em todo o
+  // projeto (é ela que users/{uid} usa em todos os outros endpoints).
+  let resolved;
   try {
-    const snapshot = await db.ref('users').once('value');
-    users = snapshot.val() || {};
+    resolved = await resolveUserByLogin(db, normalizedLogin);
   } catch (e) {
     return { statusCode: 500, body: JSON.stringify({ error: 'Erro ao acessar banco de dados' }) };
   }
 
-  // Localizar usuário por login — mesmo critério do doLogin() legado
-  const userEntry = Object.values(users).find(u => u && u.login === normalizedLogin);
+  const userKey = resolved ? resolved.uid : null;
+  const userEntry = resolved ? resolved.user : null;
 
   // SHA-256 hex do password, UTF-8 — mesmo algo de hashPass() no browser
   const receivedHash = sha256Hex(password);
@@ -72,7 +77,9 @@ exports.handler = async function (event) {
     return { statusCode: 401, body: GENERIC_401 };
   }
 
-  const token = generateToken(userEntry.uid, secret);
+  // uid canônico = chave do Firebase (userKey), NUNCA userEntry.uid — esse
+  // campo pode estar ausente ou desatualizado em registros legados.
+  const token = generateToken(userKey, secret);
   const expiresAt = Date.now() + TTL_SECONDS * 1000;
 
   return {

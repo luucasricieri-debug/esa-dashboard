@@ -1,6 +1,144 @@
 # CRM — Confiabilidade da Autenticação de Upload de Anexos
 
-## Causa raiz
+## 0. HTTP 401 para alguns usuários (missão de resolução canônica de identidade)
+
+A correção anterior (renovação automática, ver seção "Causa raiz" abaixo)
+resolveu o "Token inválido: token expirado" — mas outros usuários continuaram
+recebendo `401` genérico ("HTTP 401") ao anexar arquivos.
+
+### Qual endpoint retornava 401 e em qual etapa
+
+`crm-upload.js`, na etapa `upload_initial_auth` (validação inicial do token,
+antes de qualquer verificação de permissão). Para os usuários afetados, a
+tentativa de renovação (`session-token.js`, Path B) **também falhava**, sem
+sequer chegar a fazer uma chamada de rede — ver causa exata abaixo.
+
+### Por que afetava apenas alguns usuários
+
+`doLogin()` (`index.html`) e `session-init.js` resolviam o **uid da sessão**
+a partir do **campo** `.uid` dentro do valor do registro em
+`users/{alguma-chave}` (`Object.values(users).find(u => u.login === login)`),
+em vez da **chave** do Firebase sob a qual o registro está armazenado
+(`Object.entries(users).find(([key, u]) => ...)`).
+
+Isso funcionava perfeitamente para usuários cujo registro tinha `.uid` igual
+à própria chave (o caso comum, e o único caso testado antes). Falhava
+silenciosamente para:
+
+- usuários **legados**, cujo registro nunca teve o campo `.uid` preenchido
+  (criados antes dessa convenção existir);
+- usuários cujo campo `.uid` divergisse da chave real (registro criado/
+  editado manualmente no Firebase, ou por um fluxo antigo).
+
+### Schema dos tokens afetados
+
+Como `JSON.stringify` descarta chaves com valor `undefined`,
+`generateToken(undefined, secret)` — o que acontecia quando `user.uid` era
+`undefined` — produzia um token HMAC **estruturalmente válido e assinado
+corretamente**, mas cujo payload **literalmente não continha a claim `uid`**:
+`{"iat":...,"exp":...,"purpose":"crm-upload","iss":"esa-dashboard","aud":"crm-upload","version":2}`
+— sem `"uid"` nenhum. `verifyToken()` sempre rejeitou isso (`!payload.uid`),
+mas antes desta correção classificava como `invalid_session` genérico —
+agora classificado especificamente como **`legacy_session`**.
+
+### Diferença entre uid e login
+
+`login` é o identificador que o usuário digita (estável, escolhido por ele).
+`uid` é — e sempre deveria ter sido tratado como — a **chave do Firebase**
+sob `users/{uid}`, nunca um campo redundante dentro do valor. Nesta correção,
+`uid` deixou de ser lido de qualquer campo e passou a ser **sempre** a chave
+resolvida por varredura de `login` (`resolveUserByLogin()`).
+
+### Causa exata
+
+1. `doLogin()`/`session-init.js` resolviam uid via `Object.values(...).find(...).uid`.
+2. Para um registro sem `.uid`, `_sessObj.uid` (e o token gerado) ficavam sem uid utilizável.
+3. `crm-upload.js` rejeitava esse token (`legacy_session`).
+4. `authenticatedFetch()` tentava renovar via `refreshSessionToken()` (Path B),
+   que também lê `sess.uid` do `sessionStorage` — **igualmente ausente** —
+   então `refreshSessionToken()` lançava `renewal_failed` **sem nunca chamar
+   `session-token.js`**. O usuário nunca conseguia se recuperar, nem
+   tentando de novo, nem em outra aba, nem apenas esperando.
+
+### Função corrigida
+
+- `netlify/functions/_shared/user-identity.js` (novo):
+  `resolveUserByLogin(db, login)` — varre `users`, retorna sempre `{ uid: <chave>, user }`.
+  `resolveAuthenticatedUserIdentity(db, sessionToken, secret)` — resolução
+  canônica usada por `crm-upload.js`: valida o token, extrai uid do payload
+  já verificado, confirma usuário ativo, retorna `{ uid, user, role, tokenVersion }`.
+- `session-init.js` — usa `resolveUserByLogin()` para emitir o token com a
+  CHAVE como uid, nunca `userEntry.uid`.
+- `index.html` — `doLogin()`/`resumeSession()` corrigidos da mesma forma:
+  `CU.uid` e `sessionStorage.esa_session.uid` são sempre a chave resolvida,
+  nunca o campo `.uid` do registro (que pode faltar).
+
+### Compatibilidade com sessão legada
+
+Sessões **já emitidas** antes desta correção, para usuários sem `.uid`, não
+são aceitas silenciosamente nem migradas automaticamente — falham com
+`legacy_session` e exigem **um novo login**. Como `doLogin()`/`session-init.js`
+agora sempre resolvem a chave corretamente, o próximo login desse mesmo
+usuário já emite um token totalmente funcional — sem qualquer migração de
+dados no Firebase (o registro do usuário nunca precisou ser alterado; só a
+forma de RESOLVER o uid a partir dele).
+
+### Padronização de erros (todos os endpoints envolvidos)
+
+Toda resposta de erro do fluxo de upload agora é JSON com `ok`, `code`,
+`stage`, `message`, `requestId`:
+
+| status | code | stage | mensagem |
+|---|---|---|---|
+| 401 | `token_expired` | `upload_initial_auth` | Sessão expirada. |
+| 401 | `legacy_session` | `upload_initial_auth` ou `session_refresh` | Sua sessão precisa ser atualizada. |
+| 401 | `invalid_session` | `upload_initial_auth` ou `session_refresh` | Sessão inválida. |
+| 403 | `no_permission` | `permission_check` | Usuário sem permissão. |
+
+Nunca `HTTP 401` cru; nunca HTML em erro esperado.
+
+### Retry (reforçado)
+
+`AUTH_RETRYABLE_CODES = ['token_expired', 'invalid_session', 'legacy_session']`
+— `authenticatedFetch()` tenta renovar (uma única vez) para estes três; nunca
+para `no_permission` nem para erros de payload (`file_too_large` etc.).
+`parseAuthResponse()` (novo) lê `response.text()` primeiro e só então tenta
+`JSON.parse` — nunca chama `response.json()` direto (que lançaria em corpo
+vazio/HTML) — preserva `status`/`code`/`stage`/`requestId` mesmo quando o
+corpo não é JSON válido.
+
+### Múltiplas abas
+
+`sessionStorage` é isolado por aba por natureza do browser —
+`getStoredSession()`/`getValidSessionToken()` sempre leem o valor mais
+recente no momento do envio (nunca um valor capturado na abertura do modal),
+então cada aba renova seu próprio token de forma independente sem afetar as
+demais (testado em `RP23`, `FR23-26`).
+
+### Permissões
+
+`no_permission` continua sendo sempre `403`, nunca `401` — confirmado que
+nenhuma role autorizada (`diretor`, `trafego`, `gestor`, `engenharia`,
+`executivo`, `sdr`, `jackeline`) foi afetada pela correção; o problema nunca
+foi de permissão, sempre de resolução de identidade.
+
+### Diagnóstico
+
+Flag `CRM_UPLOAD_AUTH_DIAGNOSTICS=true` (`_shared/auth-diagnostics.js`) —
+quando ativa, inclui um campo `diagnostics` nas respostas 401/403 de
+`crm-upload.js`/`session-token.js` com `tokenPresent`, `tokenVersion`,
+`uidPresent`, `loginPresent`, `issuerValid`, `audienceValid`, `expired`,
+`refreshAttempted`, `refreshSucceeded` — nunca o token, a assinatura, o
+secret ou conteúdo de arquivo.
+
+`scripts/diagnose-crm-upload-user.js` (novo, somente leitura) — compara um
+usuário que funciona com um que falha: existência em `users/{uid}` e
+`users/{login}`, se o campo `.uid` está presente e bate com a chave,
+capacidade de renovação via Path B, aliases de login duplicados. **Não
+executado contra produção real nesta sessão** (sem
+`FIREBASE_SERVICE_ACCOUNT_JSON`/`DATABASE_URL` neste ambiente).
+
+## Causa raiz (missão anterior — renovação automática)
 
 O modal "Arquivos do Deal" enviava o `sessionToken` armazenado em
 `sessionStorage.esa_session` diretamente para `/.netlify/functions/crm-upload`
@@ -165,14 +303,15 @@ Auditadas (não modificadas nesta correção):
 | `code` (backend)         | Mensagem exibida                                                  |
 |---------------------------|--------------------------------------------------------------------|
 | `token_expired` (durante retry) | "Tivemos que renovar sua sessão. Tentando enviar novamente..." (transitória, na barra de progresso) |
-| `renewal_failed`           | "Sua sessão expirou. Faça login novamente para enviar o arquivo." |
-| `invalid_session`          | "Sua sessão expirou. Faça login novamente para enviar o arquivo." |
+| `renewal_failed`           | "Sua sessão não pôde ser renovada. Entre novamente e tente enviar o arquivo." |
+| `invalid_session`          | "Sua sessão não pôde ser renovada. Entre novamente e tente enviar o arquivo." |
+| `legacy_session`           | "Sua sessão não pôde ser renovada. Entre novamente e tente enviar o arquivo." |
 | `no_permission`            | "Sem permissão para upload no CRM."                                |
 | `file_too_large`           | "O arquivo excede o limite de 10 MB."                              |
 | `unsupported_file_type`    | "Formato de arquivo não permitido."                                |
 | `upload_failed` (padrão)   | "Não foi possível enviar o arquivo. Tente novamente."              |
 
-"Token inválido" nunca é exibido ao usuário final.
+"Token inválido" e "HTTP 401" nunca são exibidos ao usuário final.
 
 ## Rollback
 
@@ -206,3 +345,19 @@ de infraestrutura.
 - [ ] Confirmar que nenhum token aparece nos logs do Netlify Functions.
 - [ ] Confirmar download de anexo existente continua funcionando (URL não
       mudou de formato).
+
+### Validação adicional desta missão (resolução canônica de identidade)
+
+- [ ] Rodar `node scripts/diagnose-crm-upload-user.js --uid <uid> --login <login>`
+      para o usuário que hoje recebe 401, comparando com um que funciona —
+      confirmar `storedUidFieldPresent`/`storedUidFieldMatchesKey`.
+- [ ] Para o usuário afetado: logout completo (fechar todas as abas) → login
+      → abrir Deal → anexar PDF → confirmar 200 (upload funciona pela
+      primeira vez).
+- [ ] Repetir para Lucas Vizentin, Fernando Fadel, um usuário que já
+      funcionava, e o usuário antes bloqueado — todos devem funcionar
+      igualmente após um novo login.
+- [ ] Confirmar que sessões antigas (sem novo login) continuam recebendo
+      `legacy_session` de forma clara, nunca "HTTP 401" cru.
+- [ ] Ativar `CRM_UPLOAD_AUTH_DIAGNOSTICS=true` temporariamente se qualquer
+      caso permanecer obscuro; desativar depois de confirmado.

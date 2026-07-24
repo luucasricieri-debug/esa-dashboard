@@ -61,6 +61,8 @@ const getStoredSessionSrc = extractFunction(currentHtml, /function getStoredSess
 const getValidSessionTokenSrc = extractFunction(currentHtml, /async function getValidSessionToken\(\)/);
 const refreshInFlightDecl = extractStatement(currentHtml, /var _sessionRefreshInFlight=null;/);
 const refreshSessionTokenSrc = extractFunction(currentHtml, /async function refreshSessionToken\(\)/);
+const parseAuthResponseSrc = extractFunction(currentHtml, /async function parseAuthResponse\(res\)/);
+const retryableCodesDecl = extractStatement(currentHtml, /var AUTH_RETRYABLE_CODES=/);
 const authenticatedFetchSrc = extractFunction(currentHtml, /async function authenticatedFetch\(/);
 const crmErrorMessagesDecl = extractStatement(currentHtml, /var CRM_UPLOAD_ERROR_MESSAGES=/);
 const crmUploadArquivoSrc = extractFunction(currentHtml, /window\.crmUploadArquivo=async function\(\)/);
@@ -111,15 +113,15 @@ function makeSandbox(opts: {
     if (url.includes('crm-upload')) {
       crmUploadCallCount++;
       const { status, json } = opts.crmUploadBehavior(crmUploadCallCount, parsedBody);
-      return { ok: status >= 200 && status < 300, status, json: async () => json };
+      return { ok: status >= 200 && status < 300, status, json: async () => json, text: async () => JSON.stringify(json) };
     }
     if (url.includes('session-token')) {
       const behavior = opts.sessionTokenBehavior || (() => ({ status: 200, json: { sessionToken: 'renewed-token-xyz', expiresAt: Date.now() + 8 * 3600 * 1000 } }));
       const { status, json } = behavior(parsedBody);
-      return { ok: status >= 200 && status < 300, status, json: async () => json };
+      return { ok: status >= 200 && status < 300, status, json: async () => json, text: async () => JSON.stringify(json) };
     }
     // fbSet (Firebase REST PUT) — usado para persistir arqData em crm/deals/...
-    return { ok: true, json: async () => parsedBody };
+    return { ok: true, json: async () => parsedBody, text: async () => JSON.stringify(parsedBody) };
   };
 
   class FakeFileReader {
@@ -158,7 +160,7 @@ function buildAndRun(sandbox: ReturnType<typeof makeSandbox>) {
   vm.runInContext(
     [
       getStoredSessionSrc, getValidSessionTokenSrc, refreshInFlightDecl, refreshSessionTokenSrc,
-      authenticatedFetchSrc, crmErrorMessagesDecl, fbSetSrc, crmUploadArquivoSrc,
+      parseAuthResponseSrc, retryableCodesDecl, authenticatedFetchSrc, crmErrorMessagesDecl, fbSetSrc, crmUploadArquivoSrc,
       'this.__crmUploadArquivo = window.crmUploadArquivo;',
     ].join('\n'),
     sandbox.context,
@@ -267,7 +269,7 @@ async function run() {
     const crmUploadCalls = sandbox.calls.filter(c => c.url.includes('crm-upload'));
     assert('FR17 renovação falhou: apenas 1 chamada a crm-upload (não tenta reenviar sem token novo)', crmUploadCalls.length === 1);
     assert('FR18 renovação falhou: arquivo permanece selecionado', sandbox.elFor('arq-file').files.length === 1);
-    assert('FR19 renovação falhou: mensagem orienta login', sandbox.elFor('arq-err').textContent.includes('Faça login novamente'));
+    assert('FR19 renovação falhou: mensagem orienta login (texto atualizado nesta missão: "Entre novamente")', sandbox.elFor('arq-err').textContent.includes('Entre novamente'));
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

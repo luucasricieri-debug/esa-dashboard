@@ -6,6 +6,10 @@ const TTL_SECONDS = 8 * 60 * 60;
 const PURPOSE = 'crm-upload';
 const ISSUER = 'esa-dashboard';
 const AUDIENCE = 'crm-upload';
+// Versão explícita do formato de token — permite distinguir, em diagnósticos,
+// tokens emitidos antes desta claim existir (ausência de `version` não é por
+// si só motivo de rejeição; ver verifyToken()).
+const TOKEN_VERSION = 2;
 
 function tokenError(code, message) {
   const err = new Error(message);
@@ -38,7 +42,7 @@ function computeHMAC(data, secret) {
 
 function generateToken(uid, secret) {
   const now = Math.floor(Date.now() / 1000);
-  const payload = { uid, iat: now, exp: now + TTL_SECONDS, purpose: PURPOSE, iss: ISSUER, aud: AUDIENCE };
+  const payload = { uid, iat: now, exp: now + TTL_SECONDS, purpose: PURPOSE, iss: ISSUER, aud: AUDIENCE, version: TOKEN_VERSION };
   const body = toB64URL(JSON.stringify(payload));
   const sig = computeHMAC(body, secret);
   return `${body}.${sig}`;
@@ -77,7 +81,17 @@ function verifyToken(token, secret) {
     throw tokenError('invalid_session', 'payload inválido');
   }
 
-  if (!payload.uid) throw tokenError('invalid_session', 'uid ausente no token');
+  // uid ausente no token = sessão de formato LEGADO — não é uma assinatura
+  // adulterada nem um erro genérico. Causa raiz real: usuários cujo registro
+  // em users/{uid} nunca teve o campo .uid preenchido faziam com que
+  // generateToken(undefined, ...) emitisse um token sem essa claim (JSON.
+  // stringify descarta chaves undefined). Corrigido na emissão (session-init.js/
+  // doLogin() agora sempre usam a CHAVE do Firebase, nunca o campo .uid), mas
+  // sessões JÁ EMITIDAS antes dessa correção continuam chegando aqui — devem
+  // ser tratadas como legado explícito (força novo login), nunca como
+  // invalid_session genérico (que sugeriria adulteração) nem aceitas
+  // silenciosamente.
+  if (!payload.uid) throw tokenError('legacy_session', 'uid ausente no token — sessão de formato legado');
   if (typeof payload.iat !== 'number') throw tokenError('invalid_session', 'iat inválido');
   if (typeof payload.exp !== 'number') throw tokenError('invalid_session', 'exp inválido');
   if (payload.iss !== ISSUER) throw tokenError('invalid_session', 'issuer incorreto');
@@ -91,4 +105,4 @@ function verifyToken(token, secret) {
   return payload;
 }
 
-module.exports = { generateToken, verifyToken, TTL_SECONDS, PURPOSE, ISSUER, AUDIENCE };
+module.exports = { generateToken, verifyToken, TTL_SECONDS, PURPOSE, ISSUER, AUDIENCE, TOKEN_VERSION };

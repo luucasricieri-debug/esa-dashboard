@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const { getDatabase } = require('./_shared/firebase-admin');
 const { generateToken, verifyToken, TTL_SECONDS } = require('./_shared/upload-session');
+const { isAuthDiagnosticsEnabled, inspectTokenUnsafe, buildDiagnostics } = require('./_shared/auth-diagnostics');
 
 function newRequestId() {
   try { return crypto.randomUUID(); } catch { return `rid_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`; }
@@ -17,6 +18,14 @@ function maskUid(uid) {
 // Diagnóstico seguro: nunca loga token, secret ou senha — só requestId, code e uid mascarado.
 function logDiag(requestId, fields) {
   try { console.info('[session-token][diag]', JSON.stringify({ requestId, ...fields })); } catch { /* nunca derruba a request */ }
+}
+
+function respond401(code, requestId, message, diagOpts) {
+  const body = { ok: false, code, stage: 'session_refresh', message, requestId };
+  if (isAuthDiagnosticsEnabled() && diagOpts) {
+    body.diagnostics = buildDiagnostics('session_refresh', diagOpts);
+  }
+  return { statusCode: 401, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
 }
 
 exports.handler = async function (event) {
@@ -45,9 +54,17 @@ exports.handler = async function (event) {
     try {
       payload = verifyToken(body.sessionToken, secret);
     } catch (e) {
-      const code = e.code === 'token_expired' ? 'token_expired' : 'invalid_session';
+      // code pode ser token_expired, legacy_session (uid ausente — sessão
+      // emitida antes da correção de resolução de identidade) ou
+      // invalid_session (assinatura/issuer/audience incorretos).
+      const code = e.code || 'invalid_session';
       logDiag(requestId, { path: 'A', code });
-      return { statusCode: 401, body: JSON.stringify({ ok: false, code, error: 'Token inválido ou expirado', requestId }) };
+      const messages = {
+        token_expired: 'Token inválido ou expirado',
+        legacy_session: 'Sua sessão precisa ser atualizada.',
+        invalid_session: 'Token inválido ou expirado',
+      };
+      return respond401(code, requestId, messages[code] || 'Token inválido ou expirado', inspectTokenUnsafe(body.sessionToken));
     }
     const token = generateToken(payload.uid, secret);
     logDiag(requestId, { path: 'A', uidMasked: maskUid(payload.uid), code: 'ok' });
@@ -64,6 +81,12 @@ exports.handler = async function (event) {
   // segredo — são os mesmos identificadores já persistidos em sessionStorage/
   // localStorage por doLogin()/resumeSession(); a validação real acontece contra
   // o registro em users/{uid} no Firebase, nunca confiando cegamente no body.
+  //
+  // uid aqui DEVE ser a chave real do Firebase (users/{uid}) — desde a correção
+  // de doLogin()/session-init.js, é sempre isso que fica salvo em
+  // sessionStorage.esa_session.uid. Sessões capturadas antes dessa correção,
+  // que porventura tenham uid ausente/errado, falham aqui com invalid_session
+  // e exigem novo login (que já emitirá o uid canônico correto).
   const { uid, login } = body;
   if (!uid || typeof uid !== 'string' || !login || typeof login !== 'string') {
     return { statusCode: 400, body: JSON.stringify({ error: 'sessionToken ou (uid + login) são obrigatórios' }) };
@@ -90,7 +113,7 @@ exports.handler = async function (event) {
 
   if (!user || typeof user.login !== 'string' || user.login.trim().toLowerCase() !== normalizedLogin) {
     logDiag(requestId, { path: 'B', uidMasked: maskUid(uid), code: 'invalid_session' });
-    return { statusCode: 401, body: JSON.stringify({ ok: false, code: 'invalid_session', error: 'Sessão inválida', requestId }) };
+    return respond401('invalid_session', requestId, 'Sessão inválida', { uidPresent: true, loginPresent: true });
   }
 
   const token = generateToken(uid, secret);

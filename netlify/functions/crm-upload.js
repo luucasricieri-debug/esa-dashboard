@@ -2,7 +2,8 @@
 
 const crypto = require('crypto');
 const { getDatabase, getBucket, STORAGE_BUCKET, getDatabaseHost } = require('./_shared/firebase-admin');
-const { verifyToken, ISSUER, AUDIENCE } = require('./_shared/upload-session');
+const { resolveAuthenticatedUserIdentity } = require('./_shared/user-identity');
+const { isAuthDiagnosticsEnabled, inspectTokenUnsafe, buildDiagnostics } = require('./_shared/auth-diagnostics');
 
 const CRM_LEVELS = ['diretor', 'trafego', 'gestor', 'engenharia', 'executivo', 'sdr', 'jackeline'];
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -46,11 +47,18 @@ function logDiag(requestId, fields) {
   try { console.info('[crm-upload][diag]', JSON.stringify({ requestId, ...fields })); } catch { /* nunca derruba a request */ }
 }
 
-function respond(statusCode, code, message, requestId, extra) {
+// respond(): monta a resposta 401/403/etc SEMPRE em JSON, com code/stage/
+// message/requestId. Inclui `diagnostics` só quando CRM_UPLOAD_AUTH_DIAGNOSTICS
+// estiver ativa — nunca token, secret, ou payload do arquivo.
+function respond(statusCode, code, stage, message, requestId, extra, diagOpts) {
+  const body = { ok: false, code, stage, message, requestId, ...extra };
+  if (isAuthDiagnosticsEnabled() && diagOpts) {
+    body.diagnostics = buildDiagnostics(stage, diagOpts);
+  }
   return {
     statusCode,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ok: false, code, message, requestId, ...extra }),
+    body: JSON.stringify(body),
   };
 }
 
@@ -58,97 +66,90 @@ exports.handler = async function (event) {
   const requestId = newRequestId();
 
   if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, body: JSON.stringify({ error: 'Método não permitido' }) };
+    return { statusCode: 405, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ok: false, code: 'method_not_allowed', message: 'Método não permitido', requestId }) };
   }
 
   const secret = process.env.UPLOAD_SESSION_SECRET;
   if (!secret) {
     logDiag(requestId, { fatal: 'missing_secret' });
-    return respond(500, 'upload_failed', 'Erro de configuração do servidor.', requestId);
+    return respond(500, 'upload_failed', 'upload_initial_auth', 'Erro de configuração do servidor.', requestId);
   }
 
   let body;
   try {
     body = JSON.parse(event.body || '{}');
   } catch (e) {
-    return respond(400, 'invalid_body', 'Body inválido.', requestId);
+    return respond(400, 'invalid_body', 'payload_validation', 'Body inválido.', requestId);
   }
 
   const { sessionToken, dealId, fileName, contentType, fileBase64, clientRequestId } = body;
 
-  // Validar token — source of trust para uid. Nunca logamos o token, só o code
-  // do resultado (token_expired vs invalid_session) e claims não-sensíveis.
-  let tokenPayload;
-  try {
-    tokenPayload = verifyToken(sessionToken, secret);
-  } catch (e) {
-    const code = e.code === 'token_expired' ? 'token_expired' : 'invalid_session';
-    logDiag(requestId, { code, issuerExpected: ISSUER, audienceExpected: AUDIENCE });
-    const message = code === 'token_expired' ? 'Sessão expirada.' : 'Sessão inválida.';
-    return respond(401, code, message, requestId);
-  }
-
-  const uid = tokenPayload.uid;
-
-  // Buscar usuário do RTDB pelo uid do token (não confiar em nenhum campo do body)
   let db;
   try {
     db = getDatabase();
   } catch (e) {
     logDiag(requestId, { fatal: 'firebase_init_failed' });
-    return respond(500, 'upload_failed', 'Erro de configuração do servidor.', requestId);
+    return respond(500, 'upload_failed', 'upload_initial_auth', 'Erro de configuração do servidor.', requestId);
   }
 
-  let user;
+  // Resolução canônica de identidade: uid SEMPRE vem do payload do token
+  // verificado (nunca do body). Ver netlify/functions/_shared/user-identity.js
+  // para a causa raiz do incidente "HTTP 401 para alguns usuários" (uid
+  // resolvido antes por um campo de perfil que podia estar ausente/errado).
+  let identity;
   try {
-    const snapshot = await db.ref('users/' + uid).once('value');
-    user = snapshot.val();
+    identity = await resolveAuthenticatedUserIdentity(db, sessionToken, secret);
   } catch (e) {
-    logDiag(requestId, { uidMasked: maskUid(uid), fatal: 'user_read_failed' });
-    return respond(500, 'upload_failed', 'Erro ao verificar usuário.', requestId);
+    const code = e.code || 'invalid_session';
+    const stage = e.stage || 'upload_initial_auth';
+    logDiag(requestId, { code, stage });
+    const messages = {
+      token_expired: 'Sessão expirada.',
+      legacy_session: 'Sua sessão precisa ser atualizada.',
+      invalid_session: 'Sessão inválida.',
+    };
+    return respond(401, code, stage, messages[code] || 'Sessão inválida.', requestId, undefined, inspectTokenUnsafe(sessionToken));
   }
 
-  if (!user) {
-    logDiag(requestId, { uidMasked: maskUid(uid), code: 'invalid_session', reason: 'user_not_found' });
-    return respond(401, 'invalid_session', 'Sessão inválida.', requestId);
-  }
+  const { uid, user } = identity;
 
-  // Verificar acesso ao CRM pelo level server-side
+  // Verificar acesso ao CRM pelo level server-side — erro de permissão é
+  // SEMPRE 403, nunca 401 (401 é só para problemas de autenticação/sessão).
   const level = (user.level || '').toLowerCase().trim();
   if (!CRM_LEVELS.includes(level)) {
     logDiag(requestId, { uidMasked: maskUid(uid), code: 'no_permission' });
-    return respond(403, 'no_permission', 'Usuário sem permissão.', requestId);
+    return respond(403, 'no_permission', 'permission_check', 'Usuário sem permissão.', requestId, undefined, { ...inspectTokenUnsafe(sessionToken), expired: false });
   }
 
   // Validar dealId — sem path separators
   if (!isValidDealId(dealId)) {
-    return respond(400, 'invalid_deal_id', 'dealId inválido.', requestId);
+    return respond(400, 'invalid_deal_id', 'payload_validation', 'dealId inválido.', requestId);
   }
 
   // Validar fileName
   if (!fileName || typeof fileName !== 'string' || fileName.trim().length === 0) {
-    return respond(400, 'invalid_file_name', 'fileName ausente.', requestId);
+    return respond(400, 'invalid_file_name', 'payload_validation', 'fileName ausente.', requestId);
   }
 
   // Validar contentType — whitelist estrita de MIME
   if (!contentType || !ALLOWED_MIMES.has(contentType)) {
     logDiag(requestId, { uidMasked: maskUid(uid), code: 'unsupported_file_type' });
-    return respond(415, 'unsupported_file_type', 'Formato de arquivo não permitido.', requestId);
+    return respond(415, 'unsupported_file_type', 'payload_validation', 'Formato de arquivo não permitido.', requestId);
   }
 
   // Validar e decodificar base64
   if (!fileBase64 || typeof fileBase64 !== 'string' || fileBase64.length === 0) {
-    return respond(400, 'invalid_file_payload', 'fileBase64 ausente.', requestId);
+    return respond(400, 'invalid_file_payload', 'payload_validation', 'fileBase64 ausente.', requestId);
   }
 
   const fileBuffer = Buffer.from(fileBase64, 'base64');
   if (fileBuffer.length === 0) {
-    return respond(400, 'invalid_file_payload', 'Arquivo vazio ou base64 inválido.', requestId);
+    return respond(400, 'invalid_file_payload', 'payload_validation', 'Arquivo vazio ou base64 inválido.', requestId);
   }
 
   if (fileBuffer.length > MAX_BYTES) {
     logDiag(requestId, { uidMasked: maskUid(uid), code: 'file_too_large' });
-    return respond(413, 'file_too_large', 'O arquivo excede o limite de 10 MB.', requestId);
+    return respond(413, 'file_too_large', 'payload_validation', 'O arquivo excede o limite de 10 MB.', requestId);
   }
 
   // Idempotência: se o cliente reenviou um clientRequestId já processado
@@ -176,7 +177,7 @@ exports.handler = async function (event) {
   try {
     bucket = getBucket();
   } catch (e) {
-    return respond(500, 'upload_failed', 'Erro de configuração do Storage.', requestId);
+    return respond(500, 'upload_failed', 'payload_validation', 'Erro de configuração do Storage.', requestId);
   }
 
   // Token de download permanente compatível com Firebase Storage getDownloadURL()
@@ -194,7 +195,7 @@ exports.handler = async function (event) {
     });
   } catch (e) {
     logDiag(requestId, { uidMasked: maskUid(uid), code: 'upload_failed', databaseHost: getDatabaseHost() });
-    return respond(500, 'upload_failed', 'Não foi possível enviar o arquivo. Tente novamente.', requestId);
+    return respond(500, 'upload_failed', 'payload_validation', 'Não foi possível enviar o arquivo. Tente novamente.', requestId);
   }
 
   // URL permanente no mesmo formato que getDownloadURL() gera

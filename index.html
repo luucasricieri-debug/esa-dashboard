@@ -935,9 +935,36 @@ async function refreshSessionToken(){
   try{ return await _sessionRefreshInFlight; }
   finally{ _sessionRefreshInFlight=null; }
 }
-// authenticatedFetch: envia com o token atual; em 401 code token_expired/invalid_session,
-// renova UMA única vez e repete a mesma requisição uma única vez com o token novo.
-// buildBody(token) monta o corpo da requisição — chamado de novo no retry com o token novo.
+// Interpreta QUALQUER resposta HTTP com robustez: lê o corpo como texto
+// primeiro (nunca chama response.json() direto, que lança se o corpo for
+// vazio ou não-JSON) e só então tenta JSON.parse — preserva status/code/
+// stage/requestId sempre que existirem, sem nunca reduzir o erro a
+// "HTTP <status>" cru. Nunca lança — pior caso, todos os campos ficam null.
+async function parseAuthResponse(res){
+  var text='';
+  try{ text=await res.text(); }catch(e){ text=''; }
+  var parsed=null;
+  if(text){
+    try{ parsed=JSON.parse(text); }catch(e){ parsed=null; } // corpo vazio ou HTML inesperado — parsed continua null
+  }
+  return {
+    status:res.status,
+    code:(parsed&&parsed.code)||null,
+    stage:(parsed&&parsed.stage)||null,
+    message:(parsed&&parsed.message)||null,
+    requestId:(parsed&&parsed.requestId)||null,
+  };
+}
+// Códigos de autenticação/sessão que justificam UMA tentativa de renovação —
+// nunca no_permission (403, é autorização, não sessão) nem erros de payload
+// (file_too_large, unsupported_file_type etc., que não seriam resolvidos por
+// um token novo).
+var AUTH_RETRYABLE_CODES=['token_expired','invalid_session','legacy_session'];
+// authenticatedFetch: envia com o token atual; em 401 com code retryable,
+// renova UMA única vez (lendo o token mais recente do storage, nunca um
+// valor capturado na abertura do modal) e repete a mesma requisição uma
+// única vez com o token novo. buildBody(token) monta o corpo da requisição —
+// chamado de novo no retry com o token novo.
 async function authenticatedFetch(url, buildBody){
   var token=await getValidSessionToken();
   if(!token){
@@ -946,17 +973,17 @@ async function authenticatedFetch(url, buildBody){
   }
   var res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(buildBody(token))});
   if(res.ok) return {ok:true, res:res, renewed:false};
-  var errBody=await res.json().catch(function(){return{};});
-  if(errBody.code==='token_expired'||errBody.code==='invalid_session'){
+  var parsed=await parseAuthResponse(res);
+  if(AUTH_RETRYABLE_CODES.indexOf(parsed.code)>=0){
     var newToken;
     try{ newToken=await refreshSessionToken(); }
-    catch(e){ return {ok:false, code:'renewal_failed', renewed:false}; }
+    catch(e){ return {ok:false, code:'renewal_failed', status:parsed.status, stage:parsed.stage, requestId:parsed.requestId, renewed:false}; }
     var res2=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(buildBody(newToken))});
     if(res2.ok) return {ok:true, res:res2, renewed:true};
-    var errBody2=await res2.json().catch(function(){return{};});
-    return {ok:false, code:errBody2.code||'upload_failed', renewed:true};
+    var parsed2=await parseAuthResponse(res2);
+    return {ok:false, code:parsed2.code||'upload_failed', status:parsed2.status, stage:parsed2.stage, requestId:parsed2.requestId, renewed:true};
   }
-  return {ok:false, code:errBody.code||'upload_failed', renewed:false};
+  return {ok:false, code:parsed.code||'upload_failed', status:parsed.status, stage:parsed.stage, requestId:parsed.requestId, renewed:false};
 }
 
 function setPill(s,t){
@@ -1014,8 +1041,14 @@ async function doLogin() {
   btn.disabled=true; btn.textContent='Verificando...';
   try {
     const users = await fbGet('users') || {};
-    const user = Object.values(users).find(u=>u.login===loginVal);
-    if(!user){errEl.textContent='Usuário não encontrado.';return;}
+    // Causa raiz do incidente "HTTP 401 para alguns usuários": o uid da
+    // sessão era lido do CAMPO user.uid, que pode estar ausente em registros
+    // legados (criados antes dessa convenção). O uid canônico é SEMPRE a
+    // CHAVE do Firebase sob a qual o registro está armazenado — nunca um
+    // campo dentro do valor, que é apenas metadado redundante.
+    const foundEntry = Object.entries(users).find(function(e){return e[1]&&e[1].login===loginVal;});
+    if(!foundEntry){errEl.textContent='Usuário não encontrado.';return;}
+    const userKey = foundEntry[0], user = foundEntry[1];
     const hash = await hashPass(passVal);
     if(hash !== user.passHash){errEl.textContent='Senha incorreta.';return;}
     // Ponte de sessão segura para upload — chamada ANTES de descartar passVal
@@ -1025,8 +1058,10 @@ async function doLogin() {
       if(_siRes.ok){var _siData=await _siRes.json();_sessionToken=_siData.sessionToken||null;_sessionExpiresAt=_siData.expiresAt||null;}
     }catch(_sie){}
     // passVal não é mais utilizado a partir daqui
-    CU = user;
-    var _sessObj={uid:user.uid,login:user.login};
+    // CU.uid é sempre a chave resolvida (userKey) — nunca user.uid, que pode
+    // estar ausente/desatualizado. Preserva os demais campos do perfil.
+    CU = Object.assign({}, user, {uid:userKey});
+    var _sessObj={uid:userKey,login:user.login};
     if(_sessionToken){_sessObj.sessionToken=_sessionToken;_sessObj.sessionExpiresAt=_sessionExpiresAt;}
     sessionStorage.setItem('esa_session', JSON.stringify(_sessObj));
     var rememberEl=document.getElementById('auth-remember');
@@ -1049,11 +1084,16 @@ async function resumeSession() {
   try {
     var parsed=JSON.parse(sess);
     var uid=parsed.uid;
+    if(!uid) return false; // sessão sem uid (formato legado) — não há como resolver users/{uid}
     var user=await fbGet('users/'+uid);
     if(!user) return false;
-    CU=user;
-    // Re-sync sessionStorage preservando sessionToken existente
-    var _resync={uid:user.uid,login:user.login};
+    // CU.uid usa sempre a chave já validada (uid), nunca user.uid — esse
+    // campo pode estar ausente no registro (mesma causa raiz de doLogin()).
+    CU=Object.assign({}, user, {uid:uid});
+    // Re-sync sessionStorage preservando sessionToken existente e o uid
+    // (chave) já resolvido — nunca reintroduzir user.uid, que pode ser
+    // undefined e apagaria silenciosamente o uid correto no re-sync.
+    var _resync={uid:uid,login:user.login};
     if(parsed.sessionToken){_resync.sessionToken=parsed.sessionToken;}
     if(parsed.sessionExpiresAt){_resync.sessionExpiresAt=parsed.sessionExpiresAt;}
     sessionStorage.setItem('esa_session',JSON.stringify(_resync));
@@ -4200,9 +4240,10 @@ window.crmOpenArquivos=function(dealId){
 // Mensagens honestas para o usuário final — nunca expõe "Token inválido" nem
 // detalhes internos de validação de assinatura/issuer/audience.
 var CRM_UPLOAD_ERROR_MESSAGES={
-  renewal_failed:'Sua sessão expirou. Faça login novamente para enviar o arquivo.',
+  renewal_failed:'Sua sessão não pôde ser renovada. Entre novamente e tente enviar o arquivo.',
   no_permission:'Sem permissão para upload no CRM.',
-  invalid_session:'Sua sessão expirou. Faça login novamente para enviar o arquivo.',
+  invalid_session:'Sua sessão não pôde ser renovada. Entre novamente e tente enviar o arquivo.',
+  legacy_session:'Sua sessão não pôde ser renovada. Entre novamente e tente enviar o arquivo.',
   file_too_large:'O arquivo excede o limite de 10 MB.',
   unsupported_file_type:'Formato de arquivo não permitido.',
   invalid_deal_id:'Não foi possível identificar o card. Recarregue a página.',
