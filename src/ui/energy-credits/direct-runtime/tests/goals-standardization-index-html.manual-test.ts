@@ -31,6 +31,7 @@ function assert(label: string, condition: boolean): void {
 
 const currentHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const goalsModuleSrc = fs.readFileSync(path.join(ROOT, 'assets/performance-goals.js'), 'utf8');
+const businessDaysModuleSrc = fs.readFileSync(path.join(ROOT, 'assets/performance-business-days.js'), 'utf8');
 
 function extractFunction(src: string, startPattern: RegExp): string {
   const m = startPattern.exec(src);
@@ -88,6 +89,10 @@ console.log('\nSuite GS2 — METAS.executivo: execução real (não só leitura 
   const context = vm.createContext({ console, Date, Math, String, Object, JSON });
   // UMD do módulo detecta ausência de module/self e anexa em `this` (o global
   // do contexto) como ESAPerformanceGoals — mesmo caminho usado pelo browser.
+  // performance-business-days.js precisa ser carregado ANTES (mesma ordem de
+  // <script> em index.html) — performance-goals.js depende dele para
+  // countBusinessDays().
+  vm.runInContext(businessDaysModuleSrc, context);
   vm.runInContext(goalsModuleSrc, context);
   vm.runInContext(`${businessDaysFnSrc}\n${dailyGoalConstSrc}\n${metasConstSrc}\nthis.__METAS = METAS;`, context);
   const METAS = context.__METAS as any;

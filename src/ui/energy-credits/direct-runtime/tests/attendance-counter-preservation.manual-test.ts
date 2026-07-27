@@ -46,7 +46,9 @@ function assert(label: string, condition: boolean): void {
 }
 
 const goals = require(path.join(ROOT, 'assets/performance-goals.js'));
+const businessDays = require(path.join(ROOT, 'assets/performance-business-days.js'));
 const currentHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+const businessDaysModuleSrc = fs.readFileSync(path.join(ROOT, 'assets/performance-business-days.js'), 'utf8');
 
 function extractFunction(src: string, startPattern: RegExp): string {
   const m = startPattern.exec(src);
@@ -97,10 +99,18 @@ console.log('\nSuite AC3 — countMeta(): contador diário e mensal continuam so
 {
   // atend_mensal usa o mês corrente REAL (new Date()) internamente — a
   // fixture precisa usar datas do mês/ano atuais, não uma data fixa arbitrária.
+  // Desde a missão de dias válidos (segunda a sexta), atend_mensal também
+  // ignora sábado/domingo — por isso os 3 dias da fixture são escolhidos
+  // dinamicamente entre os dias úteis REAIS do mês corrente (nunca um
+  // dia-do-mês fixo como 3/4/10, que poderia cair num fim de semana
+  // dependendo do mês em que o teste roda).
   const now = new Date();
   const y = now.getFullYear(), m = now.getMonth();
-  const iso = (day: number) => `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-  const day1 = iso(3), day2 = iso(4), day3 = iso(10);
+  const monthStartKey = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+  const lastDayOfMonth = new Date(y, m + 1, 0).getDate();
+  const monthEndKey = `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
+  const bizDaysThisMonth = businessDays.listPerformanceBusinessDays(monthStartKey, monthEndKey);
+  const day1 = bizDaysThisMonth[0], day2 = bizDaysThisMonth[1], day3 = bizDaysThisMonth[2];
 
   const countMetaSrc = extractFunction(currentHtml, /function countMeta\(/);
   const context = vm.createContext({
@@ -123,6 +133,10 @@ console.log('\nSuite AC3 — countMeta(): contador diário e mensal continuam so
       },
     },
   });
+  // atend_mensal (e prosp_mensal/leads_qualificados) chamam
+  // ESAPerformanceBusinessDays globalmente — carrega o módulo real no mesmo
+  // contexto (mesma ordem de <script> de index.html) antes de countMeta.
+  vm.runInContext(businessDaysModuleSrc, context);
   vm.runInContext(`${countMetaSrc}\nthis.__countMeta = countMeta;`, context);
   const countMeta = context.__countMeta as (list: unknown[], id: string, uid?: string, name?: string) => number;
 

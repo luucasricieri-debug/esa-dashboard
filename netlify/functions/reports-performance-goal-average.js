@@ -18,6 +18,7 @@ const { verifyToken } = require('./_shared/upload-session');
 const { hasPerformanceGoalAveragePermission } = require('./_shared/reports-permissions');
 const goals = require('../../assets/performance-goals.js');
 const attendance = require('../../assets/attendance-performance.js');
+const businessDays = require('../../assets/performance-business-days.js');
 const { isReportAttendanceDiagnosticsEnabled, buildAttendanceDiagnostics } = require('./_shared/report-attendance-diagnostics');
 
 const MAX_DAYS_PER_REQUEST = 366;
@@ -149,7 +150,12 @@ exports.handler = async function (event) {
     }
     const personName = (targetUser && (targetUser.name || targetUser.displayName)) || '';
 
-    const uniqueDates = Array.from(new Set(days.map((d) => d.date))).sort();
+    // Sábados e domingos não entram no realizado — nem sequer lemos
+    // events/{data} para essas datas (menos I/O, e attendanceByDate[date]
+    // fica undefined para elas, resolvendo para 0 mais abaixo).
+    const uniqueDates = Array.from(new Set(days.map((d) => d.date)))
+      .filter(businessDays.isPerformanceBusinessDay)
+      .sort();
     const eventsByDate = {};
     try {
       await Promise.all(uniqueDates.map(async (date) => {
@@ -207,12 +213,21 @@ exports.handler = async function (event) {
   // cliente usa para exibir "realizado/meta" em cada coluna — garantindo que
   // a média usa exatamente os mesmos números já visíveis nas 3 colunas
   // (nunca uma fonte diferente, nunca recalculado com outra fórmula).
+  //
+  // Dias válidos (regra desta missão): sábado e domingo NUNCA entram no
+  // realizadoTotal nem no metaTotal de nenhum dos 3 indicadores — nem como
+  // "dia com resultado 0" (isso reduziria a média artificialmente), apenas
+  // ficam de fora do cálculo inteiro, exatamente como um dia sem meta
+  // configurada. isPerformanceBusinessDay() é a única fonte dessa regra (ver
+  // assets/performance-business-days.js) — nenhum evento/deal de fim de
+  // semana é apagado; só não entra nesta soma.
   const totals = {
     newClients: { realized: 0, goal: 0 },
     qualifiedLeads: { realized: 0, goal: 0 },
     completedAttendances: { realized: 0, goal: 0 },
   };
   days.forEach((d) => {
+    if (!businessDays.isPerformanceBusinessDay(d.date)) return;
     ['newClients', 'qualifiedLeads'].forEach((key) => {
       const entry = d[key];
       if (entry && typeof entry.meta === 'number' && entry.meta > 0) {
@@ -222,6 +237,7 @@ exports.handler = async function (event) {
     });
   });
   computedDays.forEach((d) => {
+    if (!businessDays.isPerformanceBusinessDay(d.date)) return;
     const ca = d.completedAttendances;
     if (ca && typeof ca.meta === 'number' && ca.meta > 0) {
       totals.completedAttendances.realized += typeof ca.realizado === 'number' ? ca.realizado : 0;
@@ -235,7 +251,10 @@ exports.handler = async function (event) {
     completedAttendances: totals.completedAttendances,
   });
 
-  const validDaysCount = new Set(days.map((d) => d.date)).size;
+  // validDaysCount = quantidade de datas de segunda a sexta no período
+  // recebido — nunca a contagem bruta de datas civis (que incluiria fins de
+  // semana). Ex.: segunda a domingo (7 datas civis) → validDaysCount = 5.
+  const validDaysCount = new Set(days.map((d) => d.date).filter(businessDays.isPerformanceBusinessDay)).size;
 
   logDiag(requestId, { uidMasked: maskUid(uid), code: 'ok', daysReceived: days.length, validDaysCount });
 

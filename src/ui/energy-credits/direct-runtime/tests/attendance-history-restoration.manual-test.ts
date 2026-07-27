@@ -57,6 +57,7 @@ function assert(label: string, condition: boolean): void {
 
 const currentHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const goals = require(path.join(ROOT, 'assets/performance-goals.js'));
+const businessDaysModuleSrc = fs.readFileSync(path.join(ROOT, 'assets/performance-business-days.js'), 'utf8');
 
 function extractFunction(src: string, startPattern: RegExp): string {
   const m = startPattern.exec(src);
@@ -132,6 +133,10 @@ function makeCountMetaContext(agEvs: Record<string, unknown>, crmDeals: Record<s
     allProsp: {},
     agEvs,
   });
+  // atend_mensal (e prosp_mensal/leads_qualificados) chamam
+  // ESAPerformanceBusinessDays globalmente — carrega o módulo real no mesmo
+  // contexto (mesma ordem de <script> de index.html) antes de countMeta.
+  vm.runInContext(businessDaysModuleSrc, context);
   vm.runInContext(`${countMetaSrc}\nthis.__countMeta = countMeta;`, context);
   return { countMeta: context.__countMeta as (list: unknown[], id: string, uid?: string, name?: string) => number, context };
 }
@@ -181,10 +186,14 @@ async function run() {
   }
 
   {
+    // 3, 10 e 27 de julho/2026 são sexta, sexta e segunda — todos dias úteis
+    // (dia 25 seria sábado, excluído pela regra de dias válidos desta
+    // missão; trocado por 27 para preservar a intenção original do teste:
+    // provar que múltiplos dias diferentes do mês somam corretamente).
     const { countMeta } = makeCountMetaContext({
       [iso(3)]: { e1: { author: 'Lucas Vizentin', resultado: 'sucesso', tipo_atendimento: 'cliente' } },
       [iso(10)]: { e2: { author: 'Lucas Vizentin', resultado: 'sucesso', tipo_atendimento: 'cliente' } },
-      [iso(25)]: { e3: { author: 'Lucas Vizentin', resultado: 'sucesso', tipo_atendimento: 'cliente' } },
+      [iso(27)]: { e3: { author: 'Lucas Vizentin', resultado: 'sucesso', tipo_atendimento: 'cliente' } },
     });
     assert('AH13 3 atendimentos em dias diferentes do mesmo mês: contador mensal (julho/2026) = 3 (não zerado)', countMeta([], 'atend_mensal') === 3);
   }
@@ -247,18 +256,22 @@ async function run() {
   }
 
   {
+    // Dias 6 e 13 de julho/2026 são ambos segunda-feira (dias 5 e 12 seriam
+    // domingo, excluídos pela regra de dias válidos desta missão) — trocados
+    // para preservar a intenção original: provar coerência entre diário e
+    // mensal em semanas diferentes do mesmo mês.
     const { countMeta, context } = makeCountMetaContext({
-      [iso(5)]: { e1: { author: 'Lucas Vizentin', resultado: 'sucesso', tipo_atendimento: 'cliente' } },
-      [iso(12)]: {
+      [iso(6)]: { e1: { author: 'Lucas Vizentin', resultado: 'sucesso', tipo_atendimento: 'cliente' } },
+      [iso(13)]: {
         e2: { author: 'Lucas Vizentin', resultado: 'sucesso', tipo_atendimento: 'cliente' },
         e3: { author: 'Lucas Vizentin', resultado: 'sucesso', tipo_atendimento: 'cliente' },
       },
     });
-    (context as any).window._metaDataSel = iso(12);
+    (context as any).window._metaDataSel = iso(13);
     const daily = countMeta([], 'atendimentos');
     const monthly = countMeta([], 'atend_mensal');
-    assert('AH21 diário (dia 12): 2 atendimentos', daily === 2);
-    assert('AH22 mensal (julho inteiro): 3 atendimentos (5 tem 1, 12 tem 2) — diário e mensal coerentes entre si', monthly === 3);
+    assert('AH21 diário (dia 13): 2 atendimentos', daily === 2);
+    assert('AH22 mensal (julho inteiro): 3 atendimentos (dia 6 tem 1, dia 13 tem 2) — diário e mensal coerentes entre si', monthly === 3);
   }
 
   {

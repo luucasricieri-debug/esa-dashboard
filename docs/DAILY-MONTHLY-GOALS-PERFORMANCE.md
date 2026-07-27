@@ -1,5 +1,160 @@
 # Metas Diárias/Mensais e o Indicador "Percentual médio da meta"
 
+## Dias válidos: apenas segunda a sexta-feira (missão mais recente)
+
+**Regra oficial**: todas as metas e indicadores diários, mensais e de período
+(Novos Clientes, Leads Qualificados, Atendimentos Realizados) consideram
+exclusivamente segunda, terça, quarta, quinta e sexta-feira. **Sábado e
+domingo nunca compõem** meta, realizado, denominador, média ou "quantidade de
+dias considerados" — em nenhum lugar do sistema.
+
+**A regra atual exclui APENAS sábados e domingos.** Feriados de segunda a
+sexta continuam válidos e contam normalmente — esta missão não implementa,
+não integra e não consulta nenhum calendário de feriados (nacional, estadual
+ou municipal). Isso é intencional e está fora do escopo desta correção.
+
+### Fonte única: `assets/performance-business-days.js`
+
+Novo módulo UMD (mesmo padrão de `performance-goals.js`/`lead-origin.js`/
+`attendance-performance.js`/`user-identity-resolution.js`):
+
+```js
+isPerformanceBusinessDay(dateKey)              // "YYYY-MM-DD" -> boolean
+listPerformanceBusinessDays(startDate, endDate) // -> string[] (ambos inclusivos)
+countPerformanceBusinessDays(startDate, endDate)// -> number
+filterRecordsByPerformanceBusinessDay(records, getDateKey)
+```
+
+Usado por (nenhum outro lugar reimplementa esta regra):
+
+- `assets/performance-goals.js` — `countBusinessDays()` agora é um alias que
+  delega inteiramente para `countPerformanceBusinessDays()` (mantido pelo
+  mesmo nome por compatibilidade com `index.html` e testes existentes).
+- `assets/attendance-performance.js` — `countAttendancesForPersonOnDate(eventsForDate, personName, dateKey)`
+  ganhou um 3º parâmetro opcional: quando informado e o dia é sábado/domingo,
+  retorna `0` sem sequer iterar os eventos. `countAttendancesForPersonInPeriod()`
+  sempre passa a data de cada dia do período, então nunca soma um evento de
+  fim de semana.
+- `netlify/functions/reports-performance-goal-average.js` — totais
+  (`realizadoTotal`/`metaTotal`) de todos os 3 indicadores e `validDaysCount`
+  ignoram datas de sábado/domingo.
+- `index.html` — `countMeta('prosp_mensal')`, `countMeta('leads_qualificados')`
+  (mensal) e `countMeta('atend_mensal')` ignoram registros/eventos de fim de
+  semana; a tela **Minhas Metas** exibe "Dia não considerado" quando a data
+  selecionada (`window._metaDataSel`) cai em sábado/domingo, em vez de
+  calcular/exibir a tabela de metas diárias.
+
+### Segurança de fuso horário
+
+**Nunca** `new Date('YYYY-MM-DD')` (data-only — interpretada como UTC-meia-
+-noite pelo ECMAScript; em fusos com offset negativo, como o do Brasil
+(UTC-3), a conversão para hora local pode "voltar" um dia civil e corromper o
+dia da semana). `isPerformanceBusinessDay()` sempre decompõe `ano-mês-dia`
+manualmente e constrói a data via `new Date(year, month-1, day)` — o
+construtor de 3+ argumentos do ECMAScript é **sempre** interpretado em hora
+LOCAL, nunca UTC, garantindo que o dia da semana corresponda exatamente à
+data civil pedida, **independente do fuso horário** do navegador ou do
+servidor (testado explicitamente com `TZ` alterado para offsets extremos,
+`+14` e `-12`, no mesmo processo Node).
+
+### Meta diária: sábado/domingo mostram "Dia não considerado"
+
+Na tela **Minhas Metas** (`renderMetasFor()`), quando a data selecionada no
+seletor "CONSULTAR DIA" é sábado ou domingo:
+
+- a tabela de metas diárias (Novos Clientes, Interação Comercial, Leads
+  Qualificados, Atendimentos Realizados) **não é calculada nem exibida**;
+- em seu lugar, um bloco "Dia não considerado" (com a explicação "Sábados e
+  domingos não entram nas metas e indicadores.");
+- **nenhum registro é apagado ou alterado** — o usuário pode continuar
+  registrando atividades normalmente em qualquer dia; apenas a exibição/
+  cálculo de meta para aquele dia específico é suprimida.
+- um texto informativo discreto, sempre visível (mesmo em dias úteis):
+  "As metas consideram apenas segunda a sexta-feira."
+
+As **Metas Mensais** não são afetadas pela data selecionada no seletor de
+"Minhas Metas" (elas sempre usam o mês corrente real, independente de qual
+dia está selecionado ali) — mas o **realizado mensal** em si agora exclui
+registros de fim de semana (ver seção seguinte).
+
+### Meta mensal: quantidade real de dias úteis, nunca hardcoded
+
+`_currentMonthBusinessDays()` (`index.html`) já delegava para
+`countBusinessDays()`, que agora delega para `countPerformanceBusinessDays()`
+— nenhuma mudança de comportamento aqui, só consolidação de fonte. Exemplo
+oficial validado: meta diária de Leads Qualificados = `0,5`; julho/2026 tem
+23 dias de segunda a sexta → meta mensal = `0,5 × 23 = 11,5`. Fevereiro/2026
+(20 dias úteis), maio/2026 (21) e janeiro/2026 (22) produzem valores
+diferentes entre si — nunca um número fixo.
+
+### Realizado: registros de fim de semana ficam de fora do CÁLCULO, não do dado
+
+| Indicador | Regra aplicada |
+|---|---|
+| Novos Clientes (mensal, `prosp_mensal`) | conta apenas registros cuja data (`p.ts`, hora local) caia em segunda a sexta |
+| Leads Qualificados (mensal, `leads_qualificados`) | conta apenas deals cuja data de criação caia em segunda a sexta |
+| Atendimentos Realizados (mensal, `atend_mensal`) | ignora, no laço de dias 1–31, qualquer `key` de sábado/domingo — o evento em `agEvs`/`events/{data}` permanece intocado |
+
+As versões **diárias** (`novos_clientes`, `leads_qualificados_diario`,
+`atendimentos`) não precisaram de alteração interna: elas já operam sobre um
+único dia selecionado, e o guard de "Dia não considerado" em Minhas Metas
+impede que sejam sequer chamadas quando esse dia é sábado/domingo. No
+relatório "Percentual médio da meta" (que itera todo um período, podendo
+incluir fins de semana), a exclusão é aplicada pelo **backend**, autoritativo
+para os totais do período (ver abaixo) — independente do que o cliente
+computar por dia.
+
+Em nenhum caso um evento, deal ou prospecção de fim de semana é apagado,
+migrado ou alterado — ele continua existindo normalmente no CRM/Agenda/
+histórico; apenas não entra na soma de realizado/meta.
+
+### Relatório: `validDaysCount` e totais
+
+`reports-performance-goal-average.js` agora:
+
+- só lê `events/{data}` (para Atendimentos Realizados) nas datas que sejam
+  dias úteis do período pedido — datas de fim de semana nem chegam a ser
+  lidas do Firebase;
+- soma `realizadoTotal`/`metaTotal` de **cada um dos 3 indicadores** apenas
+  para dias de segunda a sexta — sábado/domingo nunca entram como "dia com
+  resultado 0" (o que reduziria a média artificialmente), simplesmente ficam
+  de fora do cálculo, como um dia sem meta configurada;
+- `validDaysCount` = quantidade de datas de segunda a sexta no período
+  recebido (nunca a contagem bruta de datas civis). Exemplo: um período de
+  segunda a domingo (7 datas civis) retorna `validDaysCount: 5`.
+
+**Período só com sábado/domingo**: `validDaysCount: 0`; `averagePercentage: null`;
+`status: 'not_configured'` — nunca `0%`, `NaN` ou `Infinity`. O frontend
+(`renderRelCharts()`) exibe, nesse caso específico, **"Nenhum dia útil
+considerado no período."** — mensagem distinta de "Meta não configurada"
+(que continua aparecendo quando há dias úteis no período, mas nenhum dos 3
+indicadores tem meta definida).
+
+### Compatibilidade histórica
+
+Nenhuma migração foi executada. Nenhum registro (`crm/deals`, `prospections`,
+`events`, metas, resultados, histórico) foi apagado, movido ou alterado. A
+nova regra de dia válido é aplicada **somente na leitura e no cálculo** —
+qualquer relatório de um período histórico já encerrado é recalculado, na
+próxima vez que for consultado, usando a regra atual (sábado/domingo
+excluídos); não existem, neste projeto, snapshots fechados/imutáveis de
+períodos passados para os indicadores de metas — cada consulta ao relatório
+sempre lê os dados brutos atuais de `crm/deals`/`prospections`/`events` e
+recalcula os totais na hora, então não há "recálculo retroativo" a auditar
+além do que já é o comportamento normal do sistema.
+
+### Testes
+
+[`report-attendance-performance` e demais suítes](../src/ui/energy-credits/direct-runtime/tests/)
+existentes precisaram apenas injetar o novo módulo `ESAPerformanceBusinessDays`
+nos sandboxes `vm` que já extraíam `countMeta()`/`performance-goals.js` de
+`index.html` (nenhuma regra de negócio pré-existente foi alterada além da
+exclusão de fim de semana em si) — e, em dois casos, trocar uma data de
+fixture que coincidia com um fim de semana por uma data equivalente em dia
+útil, preservando a intenção original de cada teste.
+Nova suíte dedicada:
+[`performance-business-days.manual-test.ts`](../src/ui/energy-credits/direct-runtime/tests/performance-business-days.manual-test.ts).
+
 ## Indicadores oficiais
 
 Três indicadores oficiais, sempre os mesmos, diários e mensais:
@@ -378,3 +533,15 @@ manualmente contra o Firebase real.
     Yasmin Crosoletti, Jéssica Lane, Jaqueline Demarchi e Felipe dos Santos
     (os 4 casos confirmados no incidente); testar com período de 1 dia e com
     período de vários dias.
+11. **Validação específica de dias válidos (segunda a sexta)**: em **Minhas
+    Metas**, selecionar uma segunda-feira → confirmar metas diárias normais;
+    selecionar um sábado → confirmar "Dia não considerado"; selecionar um
+    domingo → confirmar "Dia não considerado". Abrir **Metas Mensais** →
+    conferir que a quantidade de dias úteis usada bate com o calendário real
+    do mês corrente (nunca 20/22 fixo). Em **Relatórios**, selecionar um
+    período de segunda a domingo → confirmar "5 dia(s) considerado(s)" (não
+    7). Selecionar um período que caia só em sábado e domingo → confirmar
+    "Nenhum dia útil considerado no período." (nunca 0%/NaN/Infinity).
+    Conferir no CRM e na Agenda que deals/eventos criados em sábado/domingo
+    continuam visíveis normalmente — e conferir nos indicadores que eles não
+    entram na contagem de realizado.

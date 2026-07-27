@@ -695,6 +695,7 @@ body.esa-energy-credits-active #esa-energy-credits-react-root{
 
 <div class="toast" id="toast"></div>
 
+<script src="/assets/performance-business-days.js"></script>
 <script src="/assets/performance-goals.js"></script>
 <script src="/assets/lead-origin.js"></script>
 <script src="/assets/user-identity-resolution.js"></script>
@@ -2069,6 +2070,14 @@ function _sumKwhAssinatura(filterFn){
   });
   return sum;
 }
+// Converte um timestamp (ms) para "YYYY-MM-DD" em hora LOCAL — nunca
+// toISOString() (UTC, pode deslocar o dia civil conforme o fuso horário).
+// Usada para checar isPerformanceBusinessDay() a partir de registros que só
+// guardam ts/createdAt (prospecções, deals), nunca a data atual do navegador.
+function _perfDateKey(ts){
+  var d=new Date(ts);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
 function countMeta(list,id,_uid,_uName){
   var _eu=_uid||CU.uid, _en=_uName||CU.name;
   if(id==='prosp') return list.filter(function(p){return !p.tipo||p.tipo!=='atendimento';}).length;
@@ -2086,7 +2095,16 @@ function countMeta(list,id,_uid,_uName){
   // Executivo — novas métricas
   if(id==='novos_clientes')
     return list.filter(function(p){return !p.tipo||p.tipo!=='atendimento'&&p.tipo!=='retomada';}).length;
-  if(id==='prosp_mensal'||id==='prosp_sdr'||id==='prosp_sdr_mensal')
+  if(id==='prosp_mensal'){
+    // Novos Clientes (mensal) — considera apenas registros de segunda a
+    // sexta (dia do próprio registro, nunca a data atual do navegador). Ver
+    // assets/performance-business-days.js e docs/DAILY-MONTHLY-GOALS-PERFORMANCE.md.
+    return list.filter(function(p){
+      if(!p||(p.tipo&&p.tipo==='atendimento')) return false;
+      return ESAPerformanceBusinessDays.isPerformanceBusinessDay(_perfDateKey(p.ts));
+    }).length;
+  }
+  if(id==='prosp_sdr'||id==='prosp_sdr_mensal')
     return list.filter(function(p){return !p.tipo||p.tipo!=='atendimento';}).length;
   // SDR — novas métricas
   if(id==='agendamentos_sdr'){
@@ -2145,6 +2163,9 @@ function countMeta(list,id,_uid,_uName){
       var dt=new Date(now.getFullYear(),now.getMonth(),d);
       if(dt.getMonth()!==now.getMonth()) break;
       var key=dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
+      // Sábado/domingo não entram no realizado mensal — o evento continua
+      // existindo em agEvs/events, só não é somado aqui.
+      if(!ESAPerformanceBusinessDays.isPerformanceBusinessDay(key)) continue;
       var dayEvs2=agEvs[key]||{};
       Object.values(dayEvs2).forEach(function(ev){
         if(!ev) return;
@@ -2162,8 +2183,12 @@ function countMeta(list,id,_uid,_uName){
     var _now1=new Date();
     return Object.values(crmDeals||{}).filter(function(d){
       if(!d||d.captadorUid!==_eu||d.funil!=='venda_ufv') return false;
-      var _dt=new Date(d.createdAt||d.ts||0);
-      return _dt.getMonth()===_now1.getMonth()&&_dt.getFullYear()===_now1.getFullYear();
+      var _ts1=d.createdAt||d.ts||0;
+      var _dt=new Date(_ts1);
+      if(_dt.getMonth()!==_now1.getMonth()||_dt.getFullYear()!==_now1.getFullYear()) return false;
+      // Leads Qualificados (mensal) — considera apenas dias de segunda a
+      // sexta (data real do deal, nunca a data atual do navegador).
+      return ESAPerformanceBusinessDays.isPerformanceBusinessDay(_perfDateKey(_ts1));
     }).length;
   }
   if(id==='leads_qualificados_diario'){
@@ -2310,8 +2335,15 @@ function renderMetasFor(c, targetUid, targetName, targetLevel) {
     <div class="kpi-card"><div class="kpi-val">${qual}</div><div class="kpi-label">Qualificados</div><div class="kpi-meta">Taxa: ${conv}%</div></div>
     <div class="kpi-card"><div class="kpi-val">${agend}</div><div class="kpi-label">Visitas agendadas</div></div>
   </div>`;
+  // Dia válido = segunda a sexta (assets/performance-business-days.js —
+  // fonte única). Sábado/domingo: não aplica meta, não considera realizado,
+  // não gera percentual — exibe "Dia não considerado" no lugar da tabela.
+  // Os registros do próprio dia continuam intactos no CRM/Agenda/histórico;
+  // apenas não são exibidos/computados aqui.
+  const _metaIsBizDay = ESAPerformanceBusinessDays.isPerformanceBusinessDay(window._metaDataSel);
   if(metas.diaria.length) html+=`<div class="card">
     <div class="card-title">Metas Diárias ${isHoje?'— Hoje':'— '+selDate.toLocaleDateString('pt-BR')}</div>
+    <div style="font-size:11px;color:var(--gr);margin-bottom:10px">As metas consideram apenas segunda a sexta-feira.</div>
     <div style="display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;margin-bottom:14px">
       <div><label style="display:block;font-size:10px;color:var(--gr);font-family:DM Mono,monospace;margin-bottom:4px">CONSULTAR DIA</label>
       <input type="date" value="${window._metaDataSel}" onchange="window._metaDataSel=this.value;renderMetas(document.getElementById('content'))" style="background:#F7F5F0;border:1.5px solid #E0DBD0;border-radius:8px;padding:8px 12px;font-family:DM Sans,sans-serif;font-size:13px;outline:none"></div>
@@ -2319,7 +2351,10 @@ function renderMetasFor(c, targetUid, targetName, targetLevel) {
       <button class="btn btn-secondary btn-sm" onclick="metaSetDia(1)">Ontem</button>
       <button class="btn btn-secondary btn-sm" onclick="metaSetDia(2)">Anteontem</button>
     </div>
-    <table class="tbl"><thead><tr><th>Atividade</th><th>Realizado</th><th>Meta</th><th>Progresso</th><th>Status</th></tr></thead><tbody>${metas.diaria.map(m=>metaRow(m,countMetaFor(targetUid,hj,m.id,window._metaDataSel),m.meta)).join('')}</tbody></table></div>`;
+    ${_metaIsBizDay
+      ? `<table class="tbl"><thead><tr><th>Atividade</th><th>Realizado</th><th>Meta</th><th>Progresso</th><th>Status</th></tr></thead><tbody>${metas.diaria.map(m=>metaRow(m,countMetaFor(targetUid,hj,m.id,window._metaDataSel),m.meta)).join('')}</tbody></table>`
+      : `<div style="text-align:center;padding:28px 12px;color:var(--gr)"><div style="font-size:13px;font-weight:600;color:var(--g)">Dia não considerado</div><div style="font-size:11px;margin-top:6px">Sábados e domingos não entram nas metas e indicadores.</div></div>`
+    }</div>`;
   let mensalList=(metas.mensal||[]).map(function(m){
     if(targetName==='Marcus Zucoloto'&&(m.id==='vendas'||m.id==='vendas_mensal')){
       return Object.assign({},m,{meta:600000});
@@ -2900,7 +2935,14 @@ async function renderRelCharts(){
       var _qlInd=_pgaInd.qualifiedLeads||{realized:0,goal:null,cappedPercentage:null};
       var _caInd=_pgaInd.completedAttendances||{realized:0,goal:null,cappedPercentage:null};
       var _pgaAvg=_pgaResp.averagePercentage;
-      var _pgaAvgLbl=(_pgaAvg===null||_pgaAvg===undefined)?'Meta não configurada':_fmtNumPga(_pgaAvg)+'%';
+      // validDaysCount===0 significa que o período não tem NENHUM dia de
+      // segunda a sexta (ex.: período selecionado cai só em sábado/domingo)
+      // — mensagem específica, distinta de "Meta não configurada" (que pode
+      // ocorrer mesmo com dias úteis, quando nenhum dos 3 indicadores tem
+      // meta definida). Nunca exibe 0%/NaN/Infinity nesse caso.
+      var _pgaAvgLbl=(_pgaResp.validDaysCount||0)===0
+        ?'Nenhum dia útil considerado no período.'
+        :(_pgaAvg===null||_pgaAvg===undefined)?'Meta não configurada':_fmtNumPga(_pgaAvg)+'%';
       _pgaRowsHtml+='<tr style="border-top:1px solid #F0EDE8">'
         +'<td style="padding:9px 14px;font-weight:600">'+_pgaUser.name+'<div style="font-size:10px;color:var(--gr);font-weight:400">'+(_pgaResp.validDaysCount||0)+' dia(s) considerado(s)</div></td>'
         +'<td style="padding:9px 8px;text-align:center;font-weight:700">'+_pgaAvgLbl+'</td>'

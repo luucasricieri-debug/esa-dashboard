@@ -17,11 +17,11 @@
 (function (root, factory) {
   'use strict';
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory();
+    module.exports = factory(require('./performance-business-days.js'));
   } else {
-    root.ESAPerformanceGoals = factory();
+    root.ESAPerformanceGoals = factory(root.ESAPerformanceBusinessDays);
   }
-})(typeof self !== 'undefined' ? self : this, function () {
+})(typeof self !== 'undefined' ? self : this, function (businessDays) {
   'use strict';
 
   // ── Configuração central dos indicadores oficiais ──────────────────────────
@@ -101,20 +101,14 @@
   }
 
   // ── Contagem de dias úteis (segunda–sexta) — nunca hardcoded em 22 ─────────
+  // Delega inteiramente para assets/performance-business-days.js — fonte
+  // única da regra de dia válido (segunda a sexta), usada também por
+  // attendance-performance.js e reports-performance-goal-average.js. Mantido
+  // aqui como alias de compatibilidade (mesmo nome/assinatura já usado por
+  // index.html e pelos testes existentes) — nunca reimplementa a regra.
 
   function countBusinessDays(startISO, endISO) {
-    if (!startISO || !endISO) return 0;
-    var start = new Date(startISO + 'T00:00:00');
-    var end = new Date(endISO + 'T00:00:00');
-    if (isNaN(start.getTime()) || isNaN(end.getTime()) || start > end) return 0;
-    var count = 0;
-    var cur = new Date(start.getTime());
-    while (cur.getTime() <= end.getTime()) {
-      var day = cur.getDay(); // 0=domingo, 6=sábado
-      if (day !== 0 && day !== 6) count++;
-      cur.setDate(cur.getDate() + 1);
-    }
-    return count;
+    return businessDays.countPerformanceBusinessDays(startISO, endISO);
   }
 
   // Meta mensal derivada da meta diária × dias úteis do período (nunca 22 fixo).

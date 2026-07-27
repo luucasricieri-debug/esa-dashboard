@@ -17,11 +17,11 @@
 (function (root, factory) {
   'use strict';
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory();
+    module.exports = factory(require('./performance-business-days.js'));
   } else {
-    root.ESAAttendancePerformance = factory();
+    root.ESAAttendancePerformance = factory(root.ESAPerformanceBusinessDays);
   }
-})(typeof self !== 'undefined' ? self : this, function () {
+})(typeof self !== 'undefined' ? self : this, function (businessDays) {
   'use strict';
 
   // Mesmo bloco Unicode de acentos combinantes usado em performance-goals.js
@@ -76,7 +76,16 @@
 
   // Conta atendimentos válidos de uma pessoa em um único dia. eventsForDate é
   // o objeto bruto lido de events/{YYYY-MM-DD} (mapa eventId -> evento).
-  function countAttendancesForPersonOnDate(eventsForDate, personName) {
+  //
+  // dateKey (opcional, "YYYY-MM-DD") é a data desse conjunto de eventos —
+  // quando informado e cair em sábado/domingo, retorna 0 IMEDIATAMENTE, sem
+  // sequer iterar os eventos (regra de dia válido: apenas segunda a sexta
+  // contam no realizado, ver assets/performance-business-days.js). Os
+  // eventos do próprio dia NUNCA são apagados/alterados — só não entram
+  // nesta contagem. Omitir dateKey preserva o comportamento anterior (sem
+  // filtro de dia), para chamadores que já apliquem o filtro externamente.
+  function countAttendancesForPersonOnDate(eventsForDate, personName, dateKey) {
+    if (dateKey !== undefined && !businessDays.isPerformanceBusinessDay(dateKey)) return 0;
     if (!eventsForDate) return 0;
     var count = 0;
     Object.values(eventsForDate).forEach(function (ev) {
@@ -93,12 +102,16 @@
   // eventsForDate. As chaves já são datas civis (sem componente de hora), e a
   // comparação é feita por string (formato zero-padded ISO), nunca via Date/
   // fuso horário — isso evita qualquer deslocamento de dia por conversão UTC.
+  //
+  // Sábados e domingos dentro do período são automaticamente excluídos (via
+  // countAttendancesForPersonOnDate(..., dateKey)) — os eventos permanecem
+  // intactos em events/{data}, apenas não entram nesta soma.
   function countAttendancesForPersonInPeriod(eventsByDate, personName, startDate, endDate) {
     if (!eventsByDate) return 0;
     var total = 0;
     Object.keys(eventsByDate).forEach(function (dateKey) {
       if (dateKey < startDate || dateKey > endDate) return;
-      total += countAttendancesForPersonOnDate(eventsByDate[dateKey], personName);
+      total += countAttendancesForPersonOnDate(eventsByDate[dateKey], personName, dateKey);
     });
     return total;
   }

@@ -221,16 +221,20 @@ console.log('\nSuite AP3 — período (2026-07-01 a 2026-07-24): bordas inclusiv
       e2: { ...base, author: 'Jéssica Lane' },
       e3: { ...base, guests: [{ name: 'Felipe dos Santos', status: 'confirmed' }] },
     }, // múltiplos eventos, múltiplos usuários, mesmo dia
-    '2026-07-24': { e1: { ...base, author: 'Felipe dos Santos' } }, // último dia do período (inclusivo)
-    '2026-07-25': { e1: { ...base, author: 'Felipe dos Santos' } }, // FORA do período — não deve contar
+    '2026-07-24': { e1: { ...base, author: 'Felipe dos Santos' } }, // último dia do período (inclusivo) — sexta-feira
+    // 2026-07-25/26 são sábado/domingo (fora de escopo desta suíte de bordas
+    // de período — ver mobile-login... não, ver performance-business-days
+    // manual-test para exclusão de fim de semana); usa 2026-07-27 (segunda),
+    // o primeiro dia útil seguinte, para não colidir com a nova regra.
+    '2026-07-27': { e1: { ...base, author: 'Felipe dos Santos' } }, // FORA do período — não deve contar
     '2026-06-30': { e1: { ...base, author: 'Felipe dos Santos' } }, // FORA do período (antes do início)
   };
 
   const felipeCount = attendance.countAttendancesForPersonInPeriod(eventsByDate, 'Felipe dos Santos', '2026-07-01', '2026-07-24');
-  const felipeCountIncludingNextDay = attendance.countAttendancesForPersonInPeriod(eventsByDate, 'Felipe dos Santos', '2026-07-01', '2026-07-25');
+  const felipeCountIncludingNextDay = attendance.countAttendancesForPersonInPeriod(eventsByDate, 'Felipe dos Santos', '2026-07-01', '2026-07-27');
   assert('AP19 primeiro dia do período (2026-07-01) conta', attendance.countAttendancesForPersonOnDate(eventsByDate['2026-07-01'], 'Felipe dos Santos') === 1);
   assert('AP20 último dia do período (2026-07-24) conta (borda inclusiva)', attendance.countAttendancesForPersonOnDate(eventsByDate['2026-07-24'], 'Felipe dos Santos') === 1);
-  assert('AP21 data posterior ao período (2026-07-25) NÃO conta quando endDate=2026-07-24 (só conta se o período for estendido até 07-25)', felipeCountIncludingNextDay === felipeCount + 1);
+  assert('AP21 data posterior ao período (2026-07-27) NÃO conta quando endDate=2026-07-24 (só conta se o período for estendido até 07-27)', felipeCountIncludingNextDay === felipeCount + 1);
   assert('AP22 múltiplos eventos no mesmo dia (2026-07-10): Felipe aparece como autor em 1 e convidado confirmado em outro = 2 no dia',
     attendance.countAttendancesForPersonOnDate(eventsByDate['2026-07-10'], 'Felipe dos Santos') === 2);
   assert('AP23 múltiplos usuários no mesmo dia: Jéssica Lane conta separadamente (1)',
