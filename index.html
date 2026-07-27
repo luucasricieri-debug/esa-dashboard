@@ -832,6 +832,21 @@ const CRM_FUNIS = {
   assinatura_energia: {nome:'Assinatura de Energia', etapas:['Lead','Lead Triado','Lead Quarto','Pedido de Documento','Envio de Proposta','Termo de Adesão','Conclusão da GD','Início do faturamento']},
   pre_vendas: {nome:'Pré-vendas', etapas:['Lead Desqualificado','Lead Frio','Lead Passando','Lead Quarto','Maduro Aguardando','Maduro Real Validado']},
   om: {nome:'Funil O&M', etapas:['Lead','Visita Técnica','Elaboração de Proposta','Negociação','Assinatura GD','Conclusão GD','Início do faturamento']},
+  // Funil "Compra de Energia" — novo produto comercial. Mesma convenção de
+  // TODOS os funis acima: `etapas` são os labels EXATOS persistidos em
+  // deal.etapa (nunca um id separado — o Kanban/drag-and-drop/filtros/
+  // relatórios já são genéricos sobre essa string em todo o arquivo). Como
+  // esta missão pede explicitamente ids internos estáveis por etapa
+  // ("lead", "proposta", ...), `etapaIds` guarda essa referência em paralelo
+  // (mesma ordem/tamanho de `etapas`) SOMENTE como metadado de configuração —
+  // nunca é gravado no registro do deal, evitando um campo paralelo a
+  // `etapa` (deal.etapa continua sendo sempre o label acentuado, idêntico ao
+  // que todo o resto do CRM já espera).
+  compra_energia: {
+    nome: 'Compra de Energia',
+    etapas: ['Lead','Proposta','Visita Técnica','Documentação','Contrato','Pagamento Adesão','Homologação'],
+    etapaIds: ['lead','proposta','visita_tecnica','documentacao','contrato','pagamento_adesao','homologacao'],
+  },
 };
 const CRM_STATUSES = ['Em andamento','Vendido','Perdido','Pausado'];
 let crmDeals = {};
