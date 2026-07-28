@@ -1424,7 +1424,7 @@
                 </div>
                 <div style="border-radius:10px; border:1px solid #e2e8f0; overflow:hidden;">
                   <div style="overflow-x:auto;">
-                    <table style="width:100%; border-collapse:collapse; font-size:12px; min-width:860px;">
+                    <table style="width:100%; border-collapse:collapse; font-size:12px; min-width:760px;">
                       <thead>
                         <tr>
                           <th style="padding:9px 12px; text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:#64748b; font-weight:600; border-bottom:1px solid #e2e8f0; white-space:nowrap;">Beneficiária</th>
@@ -1435,7 +1435,6 @@
                           <th style="padding:9px 12px; text-align:right; font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:#64748b; font-weight:600; border-bottom:1px solid #e2e8f0; white-space:nowrap;">Compensado</th>
                           <th style="padding:9px 12px; text-align:right; font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:#64748b; font-weight:600; border-bottom:1px solid #e2e8f0; white-space:nowrap;">Saldo anterior</th>
                           <th style="padding:9px 12px; text-align:right; font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:#64748b; font-weight:600; border-bottom:1px solid #e2e8f0; white-space:nowrap;">Saldo final</th>
-                          <th style="padding:9px 12px; text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:#64748b; font-weight:600; border-bottom:1px solid #e2e8f0; white-space:nowrap;">Cobertura</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1449,7 +1448,6 @@
                             <td style="padding:10px 12px; border-bottom:1px solid #f1f5f9; text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ d.compTxt }}</td>
                             <td style="padding:10px 12px; border-bottom:1px solid #f1f5f9; text-align:right; font-variant-numeric:tabular-nums; color:#64748b; white-space:nowrap;">{{ d.saldoAntTxt }}</td>
                             <td style="padding:10px 12px; border-bottom:1px solid #f1f5f9; text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">{{ d.saldoTxt }}</td>
-                            <td style="padding:10px 12px; border-bottom:1px solid #f1f5f9; white-space:nowrap;"><span style="display:inline-flex; padding:2px 8px; border-radius:999px; font-size:10px; font-weight:600; background:{{ d.covBg }}; color:{{ d.covColor }}; border:1px solid {{ d.covBorder }};">{{ d.covText }}</span></td>
                           </tr>
                         </sc-for>
                       </tbody>
@@ -1754,6 +1752,108 @@
               </div>
             </div>
           </div>
+          </sc-if>
+
+          <!-- ===== RELATÓRIO DA BENEFICIÁRIA ===== -->
+          <sc-if value="{{ repKindBen }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px;">
+            <div style="display:flex; flex-direction:column; gap:4px;">
+              <label style="font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:#64748b; font-weight:600;">Unidade Beneficiária</label>
+              <select value="{{ repBenId }}" onChange="{{ onRepBen }}" style="height:36px; border:1px solid #cbd5e1; border-radius:8px; padding:0 10px; font-size:13px; color:#1e293b; background:#ffffff; outline:none; cursor:pointer; min-width:220px;">
+                <option value="">Selecione...</option>
+                <sc-for list="{{ repBenOpts }}" as="o" hint-placeholder-count="3">
+                  <option value="{{ o.value }}">{{ o.label }}</option>
+                </sc-for>
+              </select>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:4px;">
+              <label style="font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:#64748b; font-weight:600;">Ciclo</label>
+              <select value="{{ repMonth }}" onChange="{{ onRepMonth }}" style="height:36px; border:1px solid #cbd5e1; border-radius:8px; padding:0 10px; font-size:13px; color:#1e293b; background:#ffffff; outline:none; cursor:pointer; min-width:180px;">
+                <sc-for list="{{ repMonthOpts }}" as="o" hint-placeholder-count="5">
+                  <option value="{{ o.value }}">{{ o.label }}</option>
+                </sc-for>
+              </select>
+            </div>
+            <div style="flex:1;"></div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button disabled="{{ true }}" style="font-size:11px; font-weight:600; padding:8px 12px; border-radius:8px; border:1px solid #e2e8f0; background:rgba(248,250,252,.7); color:#94a3b8; cursor:not-allowed;">Baixar PDF — em breve</button>
+              <button disabled="{{ true }}" style="font-size:11px; font-weight:600; padding:8px 12px; border-radius:8px; border:1px solid #e2e8f0; background:rgba(248,250,252,.7); color:#94a3b8; cursor:not-allowed;">Enviar por e-mail — em breve</button>
+              <button disabled="{{ true }}" style="font-size:11px; font-weight:600; padding:8px 12px; border-radius:8px; border:1px solid #e2e8f0; background:rgba(248,250,252,.7); color:#94a3b8; cursor:not-allowed;">Enviar por WhatsApp — em breve</button>
+              <button onClick="{{ repManualDelivery }}" style="font-size:11px; font-weight:600; padding:8px 12px; border-radius:8px; border:1px solid #a9e4cb; background:#eaf8f1; color:#00875a; cursor:pointer;" style-hover="background:#d3f1e3;">Entrega manual</button>
+            </div>
+          </div>
+          <sc-if value="{{ repBenNoUbs }}" hint-placeholder-val="{{ false }}">
+            <div style="border-radius:14px; border:1px solid #e2e8f0; background:#ffffff; padding:40px 24px; text-align:center; color:#64748b; font-size:13px;">Nenhuma Unidade Beneficiária cadastrada.</div>
+          </sc-if>
+          <sc-if value="{{ repBenNoSelection }}" hint-placeholder-val="{{ false }}">
+            <div style="border-radius:14px; border:1px solid #e2e8f0; background:#ffffff; padding:40px 24px; text-align:center; color:#64748b; font-size:13px;">Selecione uma Unidade Beneficiária para visualizar o relatório.</div>
+          </sc-if>
+          <sc-if value="{{ repBenHasReport }}" hint-placeholder-val="{{ false }}">
+          <div style="border-radius:14px; border:1px solid #e2e8f0; background:#ffffff; box-shadow:0 2px 8px rgba(15,23,42,.05); overflow:hidden;">
+            <div style="padding:24px 28px; border-bottom:1px solid #f1f5f9; background:linear-gradient(135deg, #f8fafc, rgba(234,248,241,.5));">
+              <div style="display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+                <div style="flex:1; min-width:240px;">
+                  <div style="font-size:10px; text-transform:uppercase; letter-spacing:.14em; color:#00875a; font-weight:700;">Relatório Mensal da Beneficiária</div>
+                  <h2 style="font-size:20px; font-weight:600; color:#062e20; margin:6px 0 2px;">{{ repBenHeader.name }}</h2>
+                  <p style="font-size:12px; color:#64748b; margin:0;">Ciclo {{ repBenHeader.ciclo }} · {{ repBenHeader.distributor }} · UC {{ repBenHeader.uc }}</p>
+                </div>
+                <div style="text-align:right;">
+                  <span style="display:inline-flex; padding:3px 10px; border-radius:999px; font-size:10px; font-weight:700; letter-spacing:.05em; background:{{ repBenHeader.cycleBg }}; color:{{ repBenHeader.cycleColor }}; border:1px solid {{ repBenHeader.cycleBorder }};">{{ repBenHeader.cycleText }}</span>
+                  <div style="font-size:13px; font-weight:600; color:#062e20; margin-top:8px;">UG: {{ repBenHeader.ugName }}</div>
+                </div>
+              </div>
+            </div>
+            <div style="padding:20px 28px; display:flex; flex-direction:column; gap:20px;">
+              <sc-if value="{{ repBenHasCycleNote }}" hint-placeholder-val="{{ false }}">
+                <div style="border-radius:10px; border:1px solid #fde68a; background:rgba(255,251,235,.6); padding:10px 14px; font-size:12px; color:#92400e;">{{ repBenCycleNote }}</div>
+              </sc-if>
+              <sc-if value="{{ repBenNoApuracao }}" hint-placeholder-val="{{ false }}">
+                <div style="border-radius:10px; border:1px solid #e2e8f0; background:rgba(248,250,252,.7); padding:10px 14px; font-size:12px; color:#64748b;">Não há apuração disponível para esta beneficiária neste ciclo.</div>
+              </sc-if>
+              <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
+                <sc-for list="{{ repBenCards }}" as="c" hint-placeholder-count="8">
+                  <div style="border-radius:10px; border:1px solid #e2e8f0; background:rgba(248,250,252,.5); padding:14px;">
+                    <div style="font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:#64748b; font-weight:600;">{{ c.label }}</div>
+                    <div style="margin-top:6px; font-size:18px; font-weight:600; font-variant-numeric:tabular-nums; color:{{ c.color }};">{{ c.value }}</div>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:12px;">
+                <sc-for list="{{ repBenSections }}" as="sec" hint-placeholder-count="4">
+                  <div style="border-radius:10px; border:1px solid #e2e8f0; overflow:hidden;">
+                    <button onClick="{{ sec.toggle }}" style="display:flex; align-items:center; gap:8px; width:100%; border:none; background:rgba(248,250,252,.5); cursor:pointer; padding:11px 14px; text-align:left;" style-hover="background:#eaf8f1;">
+                      <span style="font-size:12px; color:#00875a; font-weight:700;">{{ sec.chevron }}</span>
+                      <span style="flex:1; font-size:11px; text-transform:uppercase; letter-spacing:.08em; font-weight:700; color:#00875a;">{{ sec.title }}</span>
+                    </button>
+                    <sc-if value="{{ sec.open }}" hint-placeholder-val="{{ false }}">
+                      <div style="overflow-x:auto; border-top:1px solid #f1f5f9;">
+                        <table style="width:100%; border-collapse:collapse; font-size:12px; min-width:420px;">
+                          <thead>
+                            <tr>
+                              <sc-for list="{{ sec.cols }}" as="col" hint-placeholder-count="2">
+                                <th style="padding:8px 12px; font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:#64748b; font-weight:600; border-bottom:1px solid #e2e8f0; white-space:nowrap; text-align:{{ col.align }};">{{ col.label }}</th>
+                              </sc-for>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <sc-for list="{{ sec.rows }}" as="row" hint-placeholder-count="3">
+                              <tr style="background:transparent;" style-hover="background:rgba(248,250,252,.7);">
+                                <sc-for list="{{ row.cells }}" as="c" hint-placeholder-count="2">
+                                  <td style="padding:9px 12px; border-bottom:1px solid #f1f5f9; white-space:nowrap; font-variant-numeric:tabular-nums; text-align:{{ c.align }}; color:{{ c.color }}; font-weight:{{ c.weight }};">{{ c.text }}</td>
+                                </sc-for>
+                              </tr>
+                            </sc-for>
+                          </tbody>
+                        </table>
+                      </div>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="font-size:11px; color:#94a3b8;">Dados oficiais retornados pelo Billing Engine/backend — nenhum cálculo é refeito neste relatório.</div>
+            </div>
+          </div>
+          </sc-if>
           </sc-if>
         </div>
       </sc-if>
@@ -2203,7 +2303,7 @@
                 <div style="display:flex; flex-direction:column; gap:6px; grid-column:{{ f.span }};">
                   <label style="font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:#64748b; font-weight:600;">{{ f.label }}</label>
                   <sc-if value="{{ f.isInput }}" hint-placeholder-val="{{ true }}">
-                    <input value="{{ f.value }}" onChange="{{ f.onChange }}" placeholder="{{ f.placeholder }}" readOnly="{{ f.readOnly }}" style="height:38px; border:1px solid {{ f.border }}; border-radius:8px; padding:0 12px; font-size:14px; color:#1e293b; background:{{ f.bg }}; outline:none; box-sizing:border-box; width:100%;">
+                    <input type="{{ f.type }}" value="{{ f.value }}" onChange="{{ f.onChange }}" placeholder="{{ f.placeholder }}" readOnly="{{ f.readOnly }}" style="height:38px; border:1px solid {{ f.border }}; border-radius:8px; padding:0 12px; font-size:14px; color:#1e293b; background:{{ f.bg }}; outline:none; box-sizing:border-box; width:100%;">
                   </sc-if>
                   <sc-if value="{{ f.isSelect }}" hint-placeholder-val="{{ false }}">
                     <select value="{{ f.value }}" onChange="{{ f.onChange }}" style="height:38px; border:1px solid {{ f.border }}; border-radius:8px; padding:0 10px; font-size:14px; color:#1e293b; background:#ffffff; outline:none; cursor:pointer; box-sizing:border-box; width:100%;">
@@ -2328,7 +2428,7 @@
                 <div style="display:flex; flex-direction:column; gap:6px; grid-column:{{ f.span }};">
                   <label style="font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:#64748b; font-weight:600;">{{ f.label }}</label>
                   <sc-if value="{{ f.isInput }}" hint-placeholder-val="{{ true }}">
-                    <input value="{{ f.value }}" onChange="{{ f.onChange }}" placeholder="{{ f.placeholder }}" readOnly="{{ f.readOnly }}" style="height:38px; border:1px solid {{ f.border }}; border-radius:8px; padding:0 12px; font-size:14px; color:#1e293b; background:{{ f.bg }}; outline:none; box-sizing:border-box; width:100%;">
+                    <input type="{{ f.type }}" value="{{ f.value }}" onChange="{{ f.onChange }}" placeholder="{{ f.placeholder }}" readOnly="{{ f.readOnly }}" style="height:38px; border:1px solid {{ f.border }}; border-radius:8px; padding:0 12px; font-size:14px; color:#1e293b; background:{{ f.bg }}; outline:none; box-sizing:border-box; width:100%;">
                   </sc-if>
                   <sc-if value="{{ f.isSelect }}" hint-placeholder-val="{{ false }}">
                     <select value="{{ f.value }}" onChange="{{ f.onChange }}" style="height:38px; border:1px solid {{ f.border }}; border-radius:8px; padding:0 10px; font-size:14px; color:#1e293b; background:#ffffff; outline:none; cursor:pointer; box-sizing:border-box; width:100%;">
@@ -2899,7 +2999,7 @@ class Component extends DCLogic {
     payModal: null, payDate: "15/07/2026", payValue: "", payNote: "",
     reopenModal: null, reopenReason: "", reopenMissing: false,
     finDetail: null,
-    repMonth: "2026-07", repUgId: "UG-001", repKind: "proprietario",
+    repMonth: "2026-07", repUgId: "UG-001", repKind: "proprietario", repBenId: "",
     alSev: "all", alStatusF: "all", alUgF: "all", alUbF: "all", alSearch: "", alMonth: "2026-07",
     alDetailId: null, alAction: null, alNote: "", alNoteMissing: false, alertOv: {},
     riOpen: { ugperf: true }, rfStatus: "all",
@@ -3245,14 +3345,39 @@ class Component extends DCLogic {
   UB_HIST_ORIGIN = { "2026-07": "FATURA IMPORTADA", "2026-06": "FATURA IMPORTADA", "2026-05": "CSV", "2026-04": "CSV", "2026-03": "MANUAL" };
   UB_HIST_FILE = { "2026-07": "conta-copel-jul-2026.pdf", "2026-06": "conta-copel-jun-2026.pdf", "2026-05": "ubm-2026-05.csv", "2026-04": "ubm-2026-04.csv", "2026-03": "—" };
   UB_HIST_IMPORTED = { "2026-07": "08/07/2026", "2026-06": "05/06/2026", "2026-05": "06/05/2026", "2026-04": "05/04/2026", "2026-03": "10/03/2026" };
-  UG_WIZ_DEFAULT() { return { code: "UG-004", status: "ativa", name: "", owner: "", ownerDoc: "", uc: "", distributor: "Copel", startDate: "", price: "0,35", validity: "01/08/2026", notes: "", recName: "", recDoc: "", pixType: "cpf", pixKey: "" }; }
+  UG_WIZ_DEFAULT() { return { code: "UG-004", status: "ativa", name: "", owner: "", ownerDoc: "", ownerPhone: "", ownerEmail: "", uc: "", distributor: "Copel", startDate: "", price: "0,35", validity: "01/08/2026", notes: "", recName: "", recDoc: "", pixType: "cpf", pixKey: "" }; }
+  // Máscara visual pt-BR para telefone (celular ou fixo) — soft mask: nunca
+  // impede a digitação, apenas reformata progressivamente enquanto o usuário
+  // digita. Números que já começam com "+" (formato internacional) passam
+  // direto, sem mascaramento — o sistema não tem suporte a máscaras
+  // internacionais, então apenas preserva o que foi digitado.
+  formatBrPhone(raw) {
+    const s = String(raw == null ? "" : raw);
+    if (s.trim().startsWith("+")) return s;
+    const digits = s.replace(/\D/g, "").slice(0, 11);
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 6) return "(" + digits.slice(0, 2) + ") " + digits.slice(2);
+    if (digits.length <= 10) return "(" + digits.slice(0, 2) + ") " + digits.slice(2, 6) + "-" + digits.slice(6);
+    return "(" + digits.slice(0, 2) + ") " + digits.slice(2, 7) + "-" + digits.slice(7);
+  }
+  // Validação sintática simples (não RFC5322 completa) — campo vazio é
+  // considerado válido (opcional). Mesma regra usada no domínio
+  // (src/domains/energy/credits/validator.js) para dupla proteção.
+  isValidEmailFormat(raw) {
+    const s = String(raw == null ? "" : raw).trim();
+    if (!s) return true;
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+  }
+  normalizeEmail(raw) {
+    return String(raw == null ? "" : raw).trim().toLowerCase();
+  }
   openUgWiz(ug) {
     const S = this.state;
     if (S._rtMode === "real") {
       const cachedPayee = (S._rtUgDetail && S._rtUgDetail.ug && ug && S._rtUgDetail.ug.id === ug.id) ? S._rtUgDetail.payee : null;
       const p = cachedPayee || { name: "", document: "", pixKey: "", pixType: "cpf" };
       const f = ug
-        ? { code: ug.id, status: ug.status || "ativa", name: ug.name, owner: ug.owner, ownerDoc: ug.document || "", uc: ug.uc, distributor: ug.distributor, startDate: "", price: (ug.purchasePrice || 0).toFixed(2).replace(".", ","), validity: "", notes: "", recName: p.name, recDoc: p.document, pixType: p.pixType || "cpf", pixKey: p.pixKey || "" }
+        ? { code: ug.id, status: ug.status || "ativa", name: ug.name, owner: ug.ownerName, ownerDoc: ug.ownerDocument || "", ownerPhone: ug.ownerPhone || "", ownerEmail: ug.ownerEmail || "", uc: ug.uc, distributor: ug.utilityCompany, startDate: "", price: (ug.purchasePrice || 0).toFixed(2).replace(".", ","), validity: "", notes: "", recName: p.name, recDoc: p.document, pixType: p.pixType || "cpf", pixKey: p.pixKey || "" }
         : this.UG_WIZ_DEFAULT();
       this.setState({ ugWizOpen: true, ugWizStep: 0, ugWizSame: "sim", ugWizEditingId: ug ? ug.id : null, ugWizF: f });
       return;
@@ -3955,7 +4080,8 @@ class Component extends DCLogic {
       const ro = !!o.readOnly;
       return {
         label, value: o.value !== undefined ? o.value : (F2[key] !== undefined ? F2[key] : ""),
-        onChange: setter(key), placeholder: o.ph || "",
+        onChange: o.onChange ? o.onChange : setter(key), placeholder: o.ph || "",
+        type: o.type || "text",
         isSelect: !!o.options && !o.area, isArea: !!o.area, isInput: !o.options && !o.area,
         options: o.options || [], readOnly: ro,
         border: ro ? "#e2e8f0" : "#cbd5e1", bg: ro ? "rgba(248,250,252,.7)" : "#ffffff",
@@ -3969,10 +4095,13 @@ class Component extends DCLogic {
     const gf = mkFld(setGF, GF);
     const ugSame = S.ugWizSame === "sim";
     let ugWizFields = [];
+    const ugEmailInvalid = !!GF.ownerEmail && !this.isValidEmailFormat(GF.ownerEmail);
     if (S.ugWizStep === 0) ugWizFields = [
       gf("ID / Código", "code"), gf("Status", "status", { options: ugStatusOpts }),
       gf("Nome da UG", "name", { ph: "Ex.: UG Solar Cascavel", full: true }),
       gf("Proprietário", "owner", { ph: "Nome ou razão social" }), gf("CPF / CNPJ do proprietário", "ownerDoc", { ph: "00.000.000/0000-00" }),
+      gf("Telefone", "ownerPhone", { ph: "(43) 9 9999-9999", onChange: (e) => { const v = this.formatBrPhone(e.target.value); this.setState((s) => ({ ugWizF: { ...s.ugWizF, ownerPhone: v } })); } }),
+      gf("E-mail", "ownerEmail", { ph: "nome@dominio.com.br", type: "email", hint: ugEmailInvalid ? "E-mail em formato inválido." : "" }),
       gf("Unidade Consumidora — UC", "uc", { ph: "Somente números" }), gf("Distribuidora", "distributor"),
       gf("Data de início da operação", "startDate", { ph: "dd/mm/aaaa" }),
     ];
@@ -3990,7 +4119,8 @@ class Component extends DCLogic {
       { title: "Identificação", rows: [
         { label: "ID / Código", value: dash(GF.code) }, { label: "Status", value: this.statusPill(GF.status || "ativa").text },
         { label: "Nome da UG", value: dash(GF.name) }, { label: "Proprietário", value: dash(GF.owner) },
-        { label: "CPF / CNPJ", value: dash(GF.ownerDoc) }, { label: "UC", value: dash(GF.uc) },
+        { label: "CPF / CNPJ", value: dash(GF.ownerDoc) }, { label: "Telefone", value: dash(GF.ownerPhone) },
+        { label: "E-mail", value: dash(GF.ownerEmail) }, { label: "UC", value: dash(GF.uc) },
         { label: "Distribuidora", value: dash(GF.distributor) }, { label: "Início da operação", value: dash(GF.startDate) },
       ] },
       { title: "Condição de compra", rows: [
@@ -4023,7 +4153,7 @@ class Component extends DCLogic {
         const tab = S.ugDetailTab;
         ugdVals = {
           ugdOpen: true, ugdName: ugRT ? ugRT.name : "—", ugdPill: dpill,
-          ugdMeta: ugRT ? ugRT.id + " · " + ugRT.owner + " · UC " + ugRT.uc + " · " + ugRT.distributor : "—",
+          ugdMeta: ugRT ? ugRT.id + " · " + ugRT.ownerName + " · UC " + ugRT.uc + " · " + ugRT.utilityCompany : "—",
           ugdTabs: [["resumo", "Resumo"], ["beneficiarias", "Beneficiárias"], ["condicao", "Condição comercial"], ["pix", "Recebedor / PIX"], ["historico", "Histórico"]].map(([k, label]) => ({
             label, color: tab === k ? "#00875a" : "#64748b", weight: tab === k ? "600" : "400",
             borderBottom: tab === k ? "2px solid #00a86b" : "2px solid transparent",
@@ -4055,13 +4185,15 @@ class Component extends DCLogic {
             { label: "Preço aplicado no ciclo atual", value: ugRT ? "R$ " + num(ugRT.purchasePrice || 0, 2) + "/kWh" : "—" },
           ],
           ugdPixRows: [
-            { label: "Proprietário", value: ugRT ? ugRT.owner : "—" },
+            { label: "Proprietário", value: ugRT ? ugRT.ownerName : "—" },
+            { label: "Telefone do proprietário", value: (ugRT && ugRT.ownerPhone) ? ugRT.ownerPhone : "—" },
+            { label: "E-mail do proprietário", value: (ugRT && ugRT.ownerEmail) ? ugRT.ownerEmail : "—" },
             { label: "Recebedor do pagamento", value: payeeRT.name || "—" },
             { label: "Documento do recebedor", value: payeeRT.document || "—" },
             { label: "Tipo da chave PIX", value: payeeRT.pixType ? (this.PIX_LABEL[payeeRT.pixType] || payeeRT.pixType) : "—" },
             { label: "Chave PIX", value: payeeRT.pixKey || "—" },
           ],
-          ugdPixEqual: ugRT ? payeeRT.name === ugRT.owner : true, ugdPixDiff: ugRT ? payeeRT.name !== ugRT.owner : false,
+          ugdPixEqual: ugRT ? payeeRT.name === ugRT.ownerName : true, ugdPixDiff: ugRT ? payeeRT.name !== ugRT.ownerName : false,
           ugdHist: [],
         };
         ugdVals.ugdHasAlerts = ugdVals.ugdAlerts.length > 0;
@@ -5188,6 +5320,95 @@ class Component extends DCLogic {
       ];
     }
 
+    // ---------- RELATÓRIO DA BENEFICIÁRIA ----------
+    // Fonte oficial única: EnergyCreditsReportService.buildBeneficiaryMonthlyReport()
+    // (exposto via rt.getBeneficiaryInvoice(), a MESMA função já usada pelo
+    // Relatório Interno/Financeiro ESA para dados de beneficiária — ver
+    // docs/ENERGY-CREDITS-REPORTS.md). O frontend só formata para exibição;
+    // nenhum valor de rateio/compensação/faturamento é recalculado aqui.
+    let repBenOpts = [], repBenHeader = null, repBenCards = [], repBenSections = [];
+    let repBenNoUbs = false, repBenNoSelection = false, repBenNoApuracao = false, repBenCycleNote = "", repBenLoading = false;
+    const BEN_CYCLE_KEY = { open: "aberto", review: "em_apuracao", closed: "fechado", paid: "fechado", cancelled: "fechado" };
+    if (S._rtMode === "real") {
+      const benUbs = S._rtBenRepUbs || [];
+      repBenOpts = benUbs.map((u) => ({ value: u.id, label: u.name }));
+      repBenLoading = !!S._rtBenRepLoading;
+      repBenNoUbs = !repBenLoading && S._rtBenRepUbs !== undefined && benUbs.length === 0;
+      if (!S.repBenId) {
+        repBenNoSelection = !repBenNoUbs;
+      } else {
+        const benData = S._rtBenRep;
+        const rep = benData && benData.report;
+        if (rep) {
+          const sum = rep.summary || {};
+          const idSec = (rep.sections && rep.sections.identification) || {};
+          const balSec = (rep.sections && rep.sections.creditBalance) || {};
+          const savSec = (rep.sections && rep.sections.savings) || {};
+          const payment = (rep.sections && rep.sections.payment) || {};
+          const ug = benData.ug;
+          const cycleKey = BEN_CYCLE_KEY[sum.status] || "aberto";
+          const cyclePill = this.cycleBadgeFor(cycleKey);
+          const addrParts = [idSec.address, idSec.city, idSec.state].filter((v) => v && String(v).trim());
+          repBenHeader = {
+            name: dash(idSec.name || (benData.ub && benData.ub.name)), uc: dash(idSec.uc), distributor: dash(idSec.utilityCompany),
+            ciclo: repMObj ? repMObj.label : rep.referenceMonth,
+            cycleText: cyclePill.text, cycleBg: cyclePill.bg, cycleColor: cyclePill.color, cycleBorder: cyclePill.border,
+            ugName: ug ? dash(ug.name) : "—",
+          };
+          if (cycleKey === "em_apuracao") repBenCycleNote = "Este ciclo ainda está em apuração.";
+          repBenNoApuracao = sum.monthlyConsumptionKwh == null && sum.allocatedKwh == null && sum.compensatedKwh == null;
+          const fmtKwh = (v) => (v == null ? "—" : kwh(v));
+          const fmtBrl = (v) => (v == null ? "—" : brl(v));
+          const fmtPct = (v) => (v == null ? "—" : (v * 100).toFixed(2).replace(".", ",") + "%");
+          repBenCards = [
+            { label: "Consumo do mês", value: fmtKwh(sum.monthlyConsumptionKwh), color: "#062e20" },
+            { label: "Créditos recebidos", value: fmtKwh(balSec.creditsReceivedKwh != null ? balSec.creditsReceivedKwh : sum.allocatedKwh), color: "#00a86b" },
+            { label: "Créditos compensados", value: fmtKwh(sum.compensatedKwh), color: "#00875a" },
+            { label: "Saldo anterior", value: fmtKwh(balSec.previousBalanceKwh), color: "#64748b" },
+            { label: "Saldo final", value: fmtKwh(balSec.currentBalanceKwh), color: "#062e20" },
+            { label: "% Rateio", value: fmtPct(balSec.allocationPercentage), color: "#062e20" },
+            { label: "Economia", value: fmtBrl(savSec.monthlySavings), color: "#00875a" },
+            { label: "Valor faturado", value: fmtBrl(sum.esaInvoiceAmount), color: "#e11d48" },
+          ];
+          repBenSections = [
+            mkSection("benid", S.riOpen, "A. Identificação", ["Campo", "Valor"], [
+              { cells: [mkCell("Beneficiária", { weight: "600" }), mkCell(dash(idSec.name))] },
+              { cells: [mkCell("CPF / CNPJ", { weight: "600" }), mkCell(dash(idSec.holderName))] },
+              { cells: [mkCell("UC", { weight: "600" }), mkCell(dash(idSec.uc))] },
+              { cells: [mkCell("Distribuidora", { weight: "600" }), mkCell(dash(idSec.utilityCompany))] },
+              { cells: [mkCell("Endereço", { weight: "600" }), mkCell(addrParts.length ? addrParts.join(", ") : "—")] },
+              { cells: [mkCell("E-mail", { weight: "600" }), mkCell("—")] },
+              { cells: [mkCell("Telefone", { weight: "600" }), mkCell("—")] },
+              { cells: [mkCell("UG associada", { weight: "600" }), mkCell(ug ? dash(ug.name) : "—")] },
+            ]),
+            mkSection("benenergia", S.riOpen, "B. Energia do ciclo", ["Campo", "Valor"], [
+              { cells: [mkCell("Consumo", { weight: "600" }), mkCell(fmtKwh(sum.monthlyConsumptionKwh))] },
+              { cells: [mkCell("Créditos alocados/recebidos", { weight: "600" }), mkCell(fmtKwh(sum.allocatedKwh))] },
+              { cells: [mkCell("Créditos compensados", { weight: "600" }), mkCell(fmtKwh(sum.compensatedKwh))] },
+              { cells: [mkCell("Saldo anterior", { weight: "600" }), mkCell(fmtKwh(balSec.previousBalanceKwh))] },
+              { cells: [mkCell("Saldo final", { weight: "600" }), mkCell(fmtKwh(balSec.currentBalanceKwh))] },
+              { cells: [mkCell("Créditos expirados", { weight: "600" }), mkCell(fmtKwh(balSec.negativeAdjustmentsKwh))] },
+              { cells: [mkCell("Créditos pendentes", { weight: "600" }), mkCell(fmtKwh(sum.pendingKwh))] },
+            ]),
+            mkSection("benfin", S.riOpen, "C. Resultado financeiro", ["Campo", "Valor"], [
+              { cells: [mkCell("Tarifa da distribuidora", { weight: "600" }), mkCell(sum.utilityReferenceTariff == null ? "—" : "R$ " + num(sum.utilityReferenceTariff, 4))] },
+              { cells: [mkCell("Preço aplicado por kWh", { weight: "600" }), mkCell(sum.esaKwhPrice == null ? "—" : "R$ " + num(sum.esaKwhPrice, 4))] },
+              { cells: [mkCell("Economia", { weight: "600" }), mkCell(fmtBrl(savSec.monthlySavings))] },
+              { cells: [mkCell("Valor faturado", { weight: "600" }), mkCell(fmtBrl(sum.esaInvoiceAmount))] },
+              { cells: [mkCell("Desconto do mês", { weight: "600" }), mkCell(fmtBrl(sum.monthlyDiscount))] },
+              { cells: [mkCell("Situação financeira", { weight: "600" }), mkCell(payment.paymentStatus ? (this.statusPill(payment.paymentStatus).text || payment.paymentStatus) : "—")] },
+            ]),
+            mkSection("benhist", S.riOpen, "D. Histórico / observações", ["Campo", "Valor"], [
+              { cells: [mkCell("Status de fechamento", { weight: "600" }), mkCell(cyclePill.text)] },
+              { cells: [mkCell("Alertas do ciclo", { weight: "600" }), mkCell(String((rep.alerts || []).length))] },
+              { cells: [mkCell("Data de emissão", { weight: "600" }), mkCell(rep.generatedAt ? dash(rep.generatedAt) : "—")] },
+            ]),
+          ];
+        }
+      }
+    }
+    const repBenHasReport = !!repBenHeader;
+
     const toast = S.toast;
 
     // GATE 5B — runtime status gate
@@ -5488,20 +5709,40 @@ class Component extends DCLogic {
       ugWizBack: () => this.setState((s) => ({ ugWizStep: Math.max(0, s.ugWizStep - 1) })),
       ugWizNext: () => {
         if (S.ugWizStep < 3) {
+          // Bloqueia avanço da etapa "Identificação" se o e-mail informado
+          // (opcional) estiver em formato inválido — nunca deixa passar
+          // silenciosamente para as próximas etapas.
+          if (S.ugWizStep === 0 && GF.ownerEmail && !this.isValidEmailFormat(GF.ownerEmail)) {
+            this.showToast("E-mail inválido", "Informe um e-mail em formato válido ou deixe o campo vazio.");
+            return;
+          }
           this.setState((s) => ({ ugWizStep: s.ugWizStep + 1 }));
         } else if (S._rtMode === "real") {
           const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
           if (!rt) return;
           const GF2 = S.ugWizF || {};
           const ugSame2 = S.ugWizSame !== "nao";
+          // Chaves alinhadas ao schema real do domínio (ownerName/uc/utilityCompany
+          // — ver src/domains/energy/credits/service.js e validator.js). O
+          // wizard antes enviava owner/utilityCode/distributor, que NUNCA
+          // batiam com o validador — toda criação/edição falhava
+          // silenciosamente (result.ok===false) e a UI mostrava sucesso mesmo
+          // assim. Corrigido junto com a checagem de result.ok abaixo.
           const input = {
-            name: GF2.name, owner: GF2.owner, ownerDocument: GF2.ownerDoc, utilityCode: GF2.uc, distributor: GF2.distributor,
+            name: GF2.name, ownerName: GF2.owner, ownerDocument: GF2.ownerDoc, uc: GF2.uc, utilityCompany: GF2.distributor,
+            ownerPhone: (GF2.ownerPhone || "").trim(), ownerEmail: this.normalizeEmail(GF2.ownerEmail),
             purchasePrice: parseFloat(String(GF2.price || "0").replace(",", ".")) || 0, status: GF2.status || "ativa",
             payee: { name: ugSame2 ? GF2.owner : GF2.recName, document: ugSame2 ? GF2.ownerDoc : GF2.recDoc, pixType: GF2.pixType, pixKey: GF2.pixKey },
           };
-          (S.ugWizEditingId ? rt.updateGeneratingUnit(S.ugWizEditingId, input) : rt.createGeneratingUnit(input)).then(() => {
+          (S.ugWizEditingId ? rt.updateGeneratingUnit(S.ugWizEditingId, input) : rt.createGeneratingUnit(input)).then((result) => {
+            if (result && result.ok === false) {
+              const msg = (result.errors && result.errors[0] && result.errors[0].message) || "Verifique os dados e tente novamente.";
+              this.showToast("Erro ao salvar UG", msg);
+              return null;
+            }
             return rt.listGeneratingUnits();
           }).then((ugs) => {
+            if (!ugs) return; // resultado de erro já tratado acima — nada a persistir/recarregar
             this.setState({ ugWizOpen: false, _rtUgs: ugs });
             this.showToast(S.ugWizEditingId ? "UG atualizada" : "UG cadastrada", (S.ugWizEditingId ? "Alterações salvas" : "Unidade Geradora criada") + " com sucesso.");
           }).catch((err) => {
@@ -5713,8 +5954,8 @@ class Component extends DCLogic {
       alNoteMissing: S.alNoteMissing,
 
       // relatórios — seletor de tipo
-      repKindProp: S.repKind === "proprietario", repKindInterno: S.repKind === "interno", repKindFin: S.repKind === "financeiro",
-      repKindTabs: [["proprietario", "Relatório do Proprietário"], ["interno", "Relatório Interno ESA"], ["financeiro", "Relatório Financeiro ESA"]].map(([k, label]) => ({
+      repKindProp: S.repKind === "proprietario", repKindBen: S.repKind === "beneficiaria", repKindInterno: S.repKind === "interno", repKindFin: S.repKind === "financeiro",
+      repKindTabs: [["proprietario", "Relatório do Proprietário"], ["beneficiaria", "Relatório da Beneficiária"], ["interno", "Relatório Interno ESA"], ["financeiro", "Relatório Financeiro ESA"]].map(([k, label]) => ({
         label,
         border: S.repKind === k ? "1px solid #00a86b" : "1px solid #e2e8f0",
         bg: S.repKind === k ? "#eaf8f1" : "#ffffff",
@@ -5723,6 +5964,12 @@ class Component extends DCLogic {
         onClick: () => this.setState({ repKind: k }),
       })),
       repVisualizar: () => this.showToast("Prévia atualizada", "O relatório abaixo reflete os filtros selecionados."),
+
+      // relatório da beneficiária
+      repBenId: S.repBenId, repBenOpts, onRepBen: (e) => this.setState({ repBenId: e.target.value }),
+      repBenHeader, repBenCards, repBenSections, repBenHasReport,
+      repBenNoUbs, repBenNoSelection, repBenNoApuracao, repBenCycleNote, repBenHasCycleNote: !!repBenCycleNote,
+      repBenLoading,
 
       // relatório interno — status bruto do ciclo (sem a coerção do relatório do proprietário)
       riCardsOp, riCardsFin, riCardsCiclo, riCardsAlertas, riPend, riSections,
@@ -5902,6 +6149,14 @@ class Component extends DCLogic {
       const repKey = (this.state.repUgId || '') + '|' + (this.state.repMonth || '');
       if (repKey !== this.state._rtLastRepKey && !this.state._rtRepAllLoading) {
         this._loadRealReports(this.state.repUgId, this.state.repMonth);
+      }
+      // Relatório da Beneficiária — carrega independente da UG selecionada
+      // (o filtro principal é a própria Unidade Beneficiária + ciclo).
+      if (this.state.repKind === "beneficiaria") {
+        const benRepKey = (this.state.repBenId || '') + '|' + (this.state.repMonth || '');
+        if (benRepKey !== this.state._rtLastBenRepKey && !this.state._rtBenRepLoading) {
+          this._loadRealBenReport(this.state.repBenId, this.state.repMonth);
+        }
       }
     }
     // Gate 3D — load financeiro on financeiro view entry or month change (key dedup)
@@ -6237,6 +6492,48 @@ class Component extends DCLogic {
       if (seq !== this._finSeq) return;
       console.error("[ESA] Financeiro load error", err);
       this.setState({ _rtFinAllLoading: false });
+    });
+  }
+
+  // Relatório da Beneficiária — carrega a lista de beneficiárias (para o
+  // seletor) e, quando uma está selecionada, o relatório mensal completo via
+  // rt.getBeneficiaryInvoice(), que já encapsula
+  // uiProvider.getBeneficiaryMonthlyReport() → EnergyCreditsReportService.
+  // buildBeneficiaryMonthlyReport() — a MESMA fonte oficial já usada pelo
+  // Relatório Interno/Financeiro ESA para dados de beneficiária. O frontend
+  // nunca recalcula nada aqui — apenas lê e formata o que já vem pronto.
+  _loadRealBenReport(ubId, month) {
+    const rt = window.ESA_ENERGY_CREDITS_RUNTIME;
+    if (!rt || rt.mode !== "real") return;
+    this._benRepSeq = (this._benRepSeq || 0) + 1;
+    const seq = this._benRepSeq;
+    const benRepKey = (ubId || "") + "|" + (month || "");
+    this.setState({ _rtBenRepLoading: true, _rtBenRep: null, _rtLastBenRepKey: benRepKey });
+    rt.listBeneficiaryUnits().then((ubs) => {
+      if (seq !== this._benRepSeq) return null;
+      const realUbs = ubs || [];
+      if (!ubId) {
+        this.setState({ _rtBenRepUbs: realUbs, _rtBenRep: null, _rtBenRepLoading: false });
+        return null;
+      }
+      return Promise.all([
+        Promise.resolve(realUbs),
+        rt.getBeneficiaryUnit(ubId).catch(() => null),
+        rt.getBeneficiaryInvoice(ubId, month).catch(() => null),
+      ]);
+    }).then((res) => {
+      if (!res || seq !== this._benRepSeq) return;
+      const [realUbs, ub, report] = res;
+      const ugId = ub && ub.generatingUnitId;
+      const loadUg = ugId ? rt.getGeneratingUnit(ugId).catch(() => null) : Promise.resolve(null);
+      return loadUg.then((ug) => {
+        if (seq !== this._benRepSeq) return;
+        this.setState({ _rtBenRepUbs: realUbs, _rtBenRep: { ub, report, ug }, _rtBenRepLoading: false });
+      });
+    }).catch((err) => {
+      if (seq !== this._benRepSeq) return;
+      console.error("[ESA] Relatório da Beneficiária load error", err);
+      this.setState({ _rtBenRepLoading: false });
     });
   }
 

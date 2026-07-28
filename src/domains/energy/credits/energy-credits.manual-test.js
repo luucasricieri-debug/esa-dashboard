@@ -226,6 +226,46 @@ test('aceita operationalStatus maintenance válido', () => {
   assert(r.ok === true, 'maintenance é status válido');
 });
 
+// ── [9b] GENERATING UNIT — ownerPhone/ownerEmail (contato do proprietário) ───
+
+section('[9b] GENERATING UNIT — ownerPhone/ownerEmail');
+
+test('cria UG sem contato — ownerPhone/ownerEmail ficam null (compatibilidade com UGs antigas)', () => {
+  const r = service.createGeneratingUnit(GEN_UNIT_BASE);
+  assert(r.ok === true, 'ok deve ser true');
+  eq(r.data.ownerPhone, null);
+  eq(r.data.ownerEmail, null);
+});
+
+test('cria UG com ownerPhone e ownerEmail válidos — persistidos tal como enviados', () => {
+  const r = service.createGeneratingUnit({ ...GEN_UNIT_BASE, ownerPhone: '(43) 99999-9999', ownerEmail: 'joao@exemplo.com' });
+  assert(r.ok === true, 'ok deve ser true');
+  eq(r.data.ownerPhone, '(43) 99999-9999');
+  eq(r.data.ownerEmail, 'joao@exemplo.com');
+});
+
+test('ownerEmail ausente não gera erro (campo opcional)', () => {
+  const r = service.createGeneratingUnit({ ...GEN_UNIT_BASE, ownerPhone: '(43) 99999-9999' });
+  assert(r.ok === true, 'ok deve ser true sem ownerEmail');
+});
+
+test('ownerEmail em formato inválido é rejeitado', () => {
+  const r = service.createGeneratingUnit({ ...GEN_UNIT_BASE, ownerEmail: 'nao-e-email' });
+  assert(r.ok === false, 'ok deve ser false para e-mail inválido');
+  assert(r.errors.some(e => e.field === 'ownerEmail'), 'error deve referenciar ownerEmail');
+});
+
+test('ownerEmail string vazia é tratada como ausente (não rejeita)', () => {
+  const r = service.createGeneratingUnit({ ...GEN_UNIT_BASE, ownerEmail: '' });
+  assert(r.ok === true, 'string vazia não deve ser tratada como e-mail inválido');
+});
+
+test('ownerPhone aceita número internacional sem quebrar (sem formato imposto no domínio)', () => {
+  const r = service.createGeneratingUnit({ ...GEN_UNIT_BASE, ownerPhone: '+1 415 555 0132' });
+  assert(r.ok === true, 'ok deve ser true para telefone internacional');
+  eq(r.data.ownerPhone, '+1 415 555 0132');
+});
+
 // ── [10] BENEFICIARY UNIT — criação válida (#4) ───────────────────────────────
 
 section('[10] BENEFICIARY UNIT — criação válida');

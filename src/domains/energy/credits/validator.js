@@ -10,6 +10,10 @@
 import { OPERATIONAL_STATUS, SUBSCRIPTION_STATUS, STATEMENT_STATUS } from './constants.js';
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+// Validação sintática simples e pragmática (não é um validador RFC5322
+// completo) — usada apenas para o campo opcional ownerEmail da Unidade
+// Geradora. Rejeita ausência de "@", de domínio ou de espaços em branco.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function _err(code, message, field = null, metadata = {}) {
   return { code, message, field, metadata };
@@ -39,6 +43,14 @@ export class EnergyCreditsValidator {
       if (typeof input.installedPower !== 'number' || isNaN(input.installedPower) || input.installedPower < 0) {
         errors.push(_err('INVALID_VALUE', 'installedPower deve ser número não-negativo', 'installedPower'));
       }
+    }
+    // ownerPhone/ownerEmail são opcionais — só validados quando presentes.
+    // Telefone não tem formato validado aqui (aceita nacional ou internacional,
+    // a máscara visual é responsabilidade do formulário); e-mail exige
+    // sintaxe válida quando informado, nunca aceita string vazia como "ausente"
+    // de forma ambígua (string vazia é tratada como ausente pelo formulário).
+    if (input.ownerEmail != null && input.ownerEmail !== '' && !EMAIL_RE.test(input.ownerEmail)) {
+      errors.push(_err('INVALID_FORMAT', 'ownerEmail deve ser um e-mail em formato válido', 'ownerEmail'));
     }
     return errors;
   }

@@ -36,6 +36,12 @@ export interface GeneratingUnit {
   previousBalance: number;
   monthlyGeneration: number;
   payee?: Payee;
+  // Contato do proprietário — opcionais, adicionados para o cadastro de
+  // telefone/e-mail da UG. Nomeados com o mesmo padrão de `owner`/`document`
+  // já usado nesta interface (não confundir com o schema real do domínio,
+  // que usa ownerName/ownerDocument — ver docs/ENERGY-CREDITS-REPORTS.md).
+  ownerPhone?: string;
+  ownerEmail?: string;
 }
 
 export interface CreateGeneratingUnitInput {
@@ -49,6 +55,8 @@ export interface CreateGeneratingUnitInput {
   payee: Payee;
   startDate?: string;
   notes?: string;
+  ownerPhone?: string;
+  ownerEmail?: string;
 }
 
 export type UpdateGeneratingUnitInput = Partial<CreateGeneratingUnitInput>;

@@ -272,6 +272,10 @@ export class EnergyCreditsReportService {
     const rec     = hist.length > 0 ? hist[0] : null;
     const aFilters = { ...filters, generatingUnitId: unit.generatingUnitId };
     const alerts  = this._qs.getAlertsSummary(aFilters, qOpts).data.alerts;
+    // Status do ciclo (open/review/closed/...) vive no monthlyStatement da UG,
+    // não no registro da beneficiária — nunca calculado aqui, apenas lido.
+    const stmt    = this._qs.getMonthlyStatement(unit.generatingUnitId, referenceMonth, qOpts).data;
+    const cycleStatus = (stmt && stmt.metadata && stmt.metadata.status) || null;
     const billingSnapshot   = options.billingSnapshot           || null;
     const savingsHistory    = options.beneficiarySavingsHistory || null;
     const SECTIONS = ['identification', 'consumption', 'creditBalance', 'billingComparison', 'savings', 'savingsHistory', 'settlement', 'payment', 'alerts', 'documentsPlaceholder'];
@@ -283,7 +287,7 @@ export class EnergyCreditsReportService {
       referenceMonth,
       target:        this._benTarget(unit),
       title:         `Relatório Mensal da Unidade Beneficiária — ${unit.name} — ${referenceMonth}`,
-      summary:       this._benSummary(unit, rec, referenceMonth),
+      summary:       this._benSummary(unit, rec, referenceMonth, cycleStatus),
       sections:      this._benSections(unit, rec, alerts, referenceMonth, billingSnapshot, savingsHistory),
       totals:        this._benTotals(rec),
       alerts,
@@ -306,11 +310,15 @@ export class EnergyCreditsReportService {
     };
   }
 
-  _benSummary(unit, rec, referenceMonth) {
+  _benSummary(unit, rec, referenceMonth, cycleStatus = null) {
     return {
       beneficiaryName:        unit.name,
       uc:                     unit.uc,
       referenceMonth,
+      // Status do ciclo — 'open'|'review'|'closed'|... — lido do
+      // monthlyStatement da UG (metadata.status), nunca calculado aqui;
+      // null quando não há statement para o mês (ciclo sem apuração).
+      status:                 cycleStatus,
       monthlyConsumptionKwh:  rec ? rec.monthlyConsumptionKwh : null,
       allocatedKwh:           rec ? rec.allocatedKwh : null,
       compensatedKwh:         rec ? rec.compensatedKwh : null,

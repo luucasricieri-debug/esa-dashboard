@@ -226,6 +226,7 @@ assert(benSummary.billWithEsa === 427.50,                        '2.19 summary.b
 assert(benSummary.monthlyDiscount === 67.50,                     '2.20 summary.monthlyDiscount');
 assert(benSummary.accumulatedDiscountTotal === 67.50,            '2.21 summary.accumulatedDiscountTotal');
 assert(benSummary.paymentStatus === 'paid',                      '2.22 summary.paymentStatus');
+assert(benSummary.status === 'open',                             '2.22b summary.status reflete o monthlyStatement.metadata.status da UG (open)');
 
 // sections
 const benSections = benReport.sections;
@@ -244,6 +245,25 @@ assert(typeof benSections.documentsPlaceholder === 'object',     '2.33 sections.
 // totals
 assert(benReport.totals !== null,                                '2.34 totals não null quando há dados');
 assert(benReport.totals.esaInvoiceAmount === 427.50,             '2.35 totals.esaInvoiceAmount');
+
+// 2b. status do ciclo é lido do monthlyStatement da UG (nunca calculado) — Relatório da Beneficiária
+const rm2b = new EnergyCreditsReadModel();
+rm2b.hydrate({
+  generatingUnits:              [GEN_UNIT],
+  beneficiaryUnits:             [BEN_UNIT_1, BEN_UNIT_2],
+  generatingUnitMonthlyRecords: [GEN_REC],
+  beneficiaryMonthlyRecords:    [BEN_REC_1, BEN_REC_2],
+  ownerSettlements:             [SETTLEMENT],
+  esaInvoices:                  [INVOICE_1, INVOICE_2],
+  monthlyStatements:            [{ ...STMT, metadata: { status: 'review', source: 'auto' } }],
+}, { replace: true, referenceDate: '2024-03' });
+const svc2b = new EnergyCreditsReportService(new EnergyCreditsQueryService(rm2b));
+const benReport2b = svc2b.buildBeneficiaryMonthlyReport('ben-001', '2024-03', { referenceDate: '2024-03' }).data;
+assert(benReport2b.summary.status === 'review',                  '2.36 summary.status reflete exatamente o valor do monthlyStatement (review), nunca recalculado');
+
+// 2c. beneficiária sem statement no mês (sem apuração) — status null, sem valores inventados
+const benReportNoRec = svc2.buildBeneficiaryMonthlyReport('ben-002', '2024-04', { referenceDate: '2024-04' }).data;
+assert(benReportNoRec.summary.status === null,                   '2.37 sem monthlyStatement no mês → status null (ciclo sem apuração)');
 
 // ── 3. ESA INTERNAL MONTHLY REPORT ────────────────────────────────────────────
 

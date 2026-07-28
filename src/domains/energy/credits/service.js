@@ -50,6 +50,12 @@ export class EnergyCreditsService {
       operationalStatus: input.operationalStatus || OPERATIONAL_STATUS.ACTIVE,
       startedAt:        input.startedAt        || null,
       notes:            input.notes            || null,
+      // Contato do proprietário — campos opcionais, sem valor default além de
+      // null. Nomeados com o mesmo prefixo de ownerName/ownerDocument (não
+      // "phone"/"email" soltos) para deixar explícito que são dados do
+      // PROPRIETÁRIO, não da própria UG. Ver docs/ENERGY-CREDITS-REPORTS.md.
+      ownerPhone:       input.ownerPhone       || null,
+      ownerEmail:       input.ownerEmail       || null,
     };
     return EnergyCreditsResult.ok(unit);
   }
